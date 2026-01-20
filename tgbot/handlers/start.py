@@ -1,20 +1,25 @@
 from aiogram import Dispatcher
 from aiogram.dispatcher import FSMContext
 from aiogram.types import Message
-
 from tgbot.models.commands import add_or_create_user
+from  ..keyboards import reply
+from aiogram.utils.markdown import hbold
+from app_telegram.models import TGUser
+from asgiref.sync import sync_to_async
 
 
 async def user_start(message: Message, state: FSMContext):
-    await state.finish()
-    async with state.proxy() as data:
-        data['last_command'] = 'start'
+    await state.finish()   # всегда чистим
 
-    user = await add_or_create_user(user_id=int(message.from_user.id))
-    await message.answer(f'Привет. Вы в базе с id {user.tg_id}')
+    user = await sync_to_async(TGUser.objects.filter(tg_id=message.from_user.id).first)()
+    # debug: если нужно, логируй:
+    # print("user from start:", user, getattr(user, "phone", None))
 
-    states = await state.get_data()
-    await message.answer(f"вы ввели команду, {states.get('last_command')}")
+    if user:
+        await message.answer("👋 Salom, ism! @YashilQollar oilasiga xush kelibsiz.", reply_markup=reply.hi_there())
+    else:
+        await message.answer(f"👋 Salom, ism! @YashilQollar oilasiga xush kelibsiz., {hbold(message.from_user.full_name)}", reply_markup=reply.auth_btn())
+
 
 
 def register_user(dp: Dispatcher):

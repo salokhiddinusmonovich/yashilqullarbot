@@ -51,7 +51,7 @@ services:
     env_file:
       - .env
     ports:
-      - ${REDIS_PORT}:${REDIS_PORT}
+      - ${REDIS_PORT}
     expose:
       - ${REDIS_PORT}
     volumes:

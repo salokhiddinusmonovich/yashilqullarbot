@@ -93,3 +93,8 @@ venv/
 # Project files
 postgres_db/
 redis.conf
+
+
+/home/salokhiddin/Python/tg_bot_projects/
+.yashilqollar/venv/
+.yashilqollar/venv

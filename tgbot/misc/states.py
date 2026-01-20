@@ -11,3 +11,15 @@ class UsersStates(StatesGroup):
     """
 
     last_command = State()
+
+
+
+class RegisterState(StatesGroup):
+    fullname = State()
+    age = State()
+    email = State()
+    region = State()
+    education = State()
+    phone = State()
+
+

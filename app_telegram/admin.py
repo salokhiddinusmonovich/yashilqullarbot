@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from app_telegram.models import TGUser
+from app_telegram.models import TGUser, TeamMemberYashilQullar
 
 
 class TGUserAdmin(admin.ModelAdmin):
@@ -11,3 +11,5 @@ class TGUserAdmin(admin.ModelAdmin):
 
 
 admin.site.register(TGUser, TGUserAdmin)
+
+admin.site.register(TeamMemberYashilQullar)

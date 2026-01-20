@@ -7,9 +7,14 @@ from aiogram.contrib.fsm_storage.redis import RedisStorage2
 from tgbot.config import load_config
 from tgbot.filters.admin import AdminFilter
 from tgbot.handlers.admin import register_admin
-from tgbot.handlers.echo import register_echo
 from tgbot.handlers.start import register_user
+from tgbot.handlers.profile import register_profile
+from tgbot.handlers.register import register_register
+from tgbot.handlers.team import register_team
+from tgbot.handlers.about import register_about_us
+
 from tgbot.middlewares.environment import EnvironmentMiddleware
+from aiogram.contrib.fsm_storage.redis import RedisStorage2
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +30,12 @@ def register_all_filters(dp):
 def register_all_handlers(dp):
     register_admin(dp)
     register_user(dp)
-
-    register_echo(dp)
+    register_register(dp)   
+    register_profile(dp)
+    register_team(dp)
+    register_about_us(dp)
+    print("Handlers registered!")
+    
 
 
 def setup_django():
