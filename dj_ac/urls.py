@@ -18,11 +18,9 @@ from django.contrib import admin
 from django.urls import path
 from django.conf import settings
 from django.conf.urls.static import static
-from app_telegram import views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-       path('qr/<uuid:token>/', views.qr_check, name='qr_check'),
 ]
 
 
