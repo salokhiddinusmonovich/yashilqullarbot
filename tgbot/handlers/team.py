@@ -7,7 +7,6 @@ from PIL import Image
 import io
 import os
 
-
 MAX_PHOTO_SIZE = 10 * 1024 * 1024  # 10 МБ
 
 
@@ -72,6 +71,6 @@ async def show_team_all_member(message: types.Message):
 def register_team(dp: Dispatcher):
     dp.register_message_handler(
         show_team_all_member,
-        lambda m: m.text == "🫂 Loyiha yetakchilari",
+        lambda m: m.text == "🎯 Loyiha yetakchilari",
         state="*"
     )

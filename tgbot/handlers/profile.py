@@ -13,13 +13,13 @@ async def show_profile(message: types.Message):
 
     # Формируем текст профиля
     profile_text = (
-        f"👤 Ism va Familiya: {user.fullname}\n"
-        f"🎂 Yoshingiz: {user.age or 'Ko‘rsatilmagan'}\n"
-        f"📧 Email: {user.email}\n"
-        f"📞 Telefon: {user.phone}\n"
-        f"🏙 Hudud: {user.region or 'Ko‘rsatilmagan'}\n"
-        f"🏫 O‘qish joyi: {user.education_place or 'Ko‘rsatilmagan'}\n"
-        f"📅 Ro‘yxatdan o‘tgan: {user.created.strftime('%d.%m.%Y')}\n"
+        f"👤 {user.fullname}\n"
+        f"• Yoshingiz: {user.age or 'Ko‘rsatilmagan'}\n"
+        f"• Email: {user.email}\n"
+        f"• Telefon: {user.phone}\n"
+        f"• Hudud: {user.region or 'Ko‘rsatilmagan'}\n"
+        f"• O‘qish joyi: {user.education_place or 'Ko‘rsatilmagan'}\n"
+        f"• Ro‘yxatdan o‘tgan: {user.created.strftime('%d.%m.%Y')}\n"
     )
 
     # # Если есть связанный TeamMemberYashilQullar, добавляем инфо

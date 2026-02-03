@@ -25,3 +25,5 @@ psycopg2-binary~=2.9.3
 Pillow
 asgiref~=3.7.2
 redis==4.6.0
+
+qrcode

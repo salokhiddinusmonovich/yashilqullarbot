@@ -18,6 +18,6 @@ async def about_us(message):
 def register_about_us(dp: Dispatcher):
     dp.register_message_handler(
         about_us,
-        lambda m: m.text == "👉🏻 Biz haqimizda",
+        lambda m: m.text == "🌟 Biz haqimizda",
         state="*"
     )
