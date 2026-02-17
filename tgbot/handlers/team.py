@@ -1,76 +1,80 @@
-from aiogram import types
-from aiogram.dispatcher import Dispatcher
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram import types, Dispatcher
 from asgiref.sync import sync_to_async
 from app_telegram.models import TeamMemberYashilQullar
-from aiogram.types import InputFile
-from PIL import Image
-import io
-import os
 
-MAX_PHOTO_SIZE = 10 * 1024 * 1024  # 10 МБ
+TEAM_MENU_KB = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="🌟 Project Lead"), KeyboardButton(text="💻 Digital Lead")],
+        [KeyboardButton(text="📸 Media Lead"), KeyboardButton(text="📋 Organization")],
+        [KeyboardButton(text="⬅️ Orqaga")]
+    ],
+    resize_keyboard=True
+)
 
-
-@sync_to_async
-def get_all_team_members():
-    return list(
-        TeamMemberYashilQullar.objects.select_related('tg_user').all()
+async def show_team_categories(message: types.Message):
+    await message.answer(
+        "Yashil Qo‘llar jamoasining yo‘nalishini tanlang: 👇",
+        reply_markup=TEAM_MENU_KB
     )
 
-
-def resize_image_for_telegram(path: str) -> io.BytesIO:
-    """Сжимает изображение для Telegram (если больше 10 МБ)"""
-    img = Image.open(path)
-    max_side = 1024  # рекомендуемый размер по большей стороне
-    img.thumbnail((max_side, max_side))
-    buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=85)
-    buf.seek(0)
-    return buf
-
-
-async def show_team_all_member(message: types.Message):
-    members = await get_all_team_members()
+async def show_team_members_by_focus(message: types.Message):
+    focus_map = {
+        "🌟 Project Lead": "founder",
+        "💻 Digital Lead": "digital",
+        "📸 Media Lead": "media",
+        "📋 Organization": "organization"
+    }
+    
+    selected_focus = focus_map.get(message.text)
+    
+    # tg_user ma'lumotlarini select_related orqali birga olamiz
+    members = await sync_to_async(lambda: list(
+        TeamMemberYashilQullar.objects.filter(focus__iexact=selected_focus).select_related('tg_user')
+    ))()
 
     if not members:
-        await message.answer("Jamoa a’zolari hali qo‘shilmagan.")
+        await message.answer("Hozircha bu bo‘limda a’zolar mavjud emas.")
         return
 
     for member in members:
-        text = (
-            f"👤 <b>{member.full_name}</b>\n"
-            f"🎓 {member.education or '—'}\n"
-            f"🛠 {member.skills or '—'}\n"
-            f"💬 {member.motto or '—'}\n"
-            f"🔗 @{member.telegram_username}" if member.telegram_username else ""
+        # Ma'lumotlarni tg_user (TGUser modeli)dan olamiz
+        user = member.tg_user
+        
+        caption = (
+            f" 👤 <b>{user.fullname}</b>\n"
+            f"• Yosh: {user.age or '—'}\n"
+            f"• Hudud: {user.region}\n"
+            f"• O‘qish joyi: {user.education_place or '—'}\n"
+            f"• Email: {user.email}\n"
+            f"• Telefon: {user.phone}\n"
         )
+        
+        # Telegram username yoki ID
+        contact = member.telegram_username or user.tg_id
+        caption += f"• @{str(contact).replace('@', '')}\n"
 
-        if member.image:
-            file_size = os.path.getsize(member.image.path)
-            if file_size <= MAX_PHOTO_SIZE:
-                # отправляем как обычное фото
+        # Rasmni foydalanuvchining o'z profilidan (TGUser.photo) olamiz
+        if user.photo:
+            try:
+                photo_file = types.InputFile(user.photo.path)
                 await message.answer_photo(
-                    photo=InputFile(member.image.path),
-                    caption=text,
+                    photo=photo_file,
+                    caption=caption,
                     parse_mode="HTML"
                 )
-            else:
-                # сжимаем и отправляем как фото
-                buf = resize_image_for_telegram(member.image.path)
-                await message.answer_photo(
-                    photo=InputFile(buf, filename="member.jpg"),
-                    caption=text,
-                    parse_mode="HTML"
-                )
+            except Exception:
+                # Agar profil rasmi serverda topilmasa
+                await message.answer(caption, parse_mode="HTML")
         else:
-            await message.answer(
-                text,
-                parse_mode="HTML"
-            )
-
+            # Profil rasmi yo'q bo'lsa
+            await message.answer(caption, parse_mode="HTML")
 
 def register_team(dp: Dispatcher):
+    dp.register_message_handler(show_team_categories, text="🎯 Loyiha yetakchilari", state="*")
+    
     dp.register_message_handler(
-        show_team_all_member,
-        lambda m: m.text == "🎯 Loyiha yetakchilari",
+        show_team_members_by_focus, 
+        lambda m: m.text in ["🌟 Project Lead", "💻 Digital Lead", "📸 Media Lead", "📋 Organization"],
         state="*"
     )

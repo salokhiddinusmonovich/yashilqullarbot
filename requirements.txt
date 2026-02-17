@@ -27,3 +27,6 @@ asgiref~=3.7.2
 redis==4.6.0
 
 qrcode
+django-import-export
+tablib[xlsx]
+openpyxl

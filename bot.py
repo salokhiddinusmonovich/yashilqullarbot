@@ -13,6 +13,8 @@ from tgbot.handlers.register import register_register
 from tgbot.handlers.team import register_team
 from tgbot.handlers.about import register_about_us
 from tgbot.handlers.ecoclub import register_eco_clubs
+from tgbot.handlers.contact_with_team import register_project_handlers
+
 
 from tgbot.middlewares.environment import EnvironmentMiddleware
 from aiogram.contrib.fsm_storage.redis import RedisStorage2
@@ -36,6 +38,7 @@ def register_all_handlers(dp):
     register_team(dp)
     register_about_us(dp)
     register_eco_clubs(dp)
+    register_project_handlers(dp)
     print("Handlers registered!")
     
 

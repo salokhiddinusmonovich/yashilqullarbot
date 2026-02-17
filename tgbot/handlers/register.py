@@ -9,6 +9,9 @@ from ..keyboards.text import register_text
 from ..keyboards.reply import contact_btn
 from ..keyboards import reply
 from app_telegram.models import TGUser
+from django.core.files import File
+from io import BytesIO
+from django.core.files.base import ContentFile
 
 EMAIL_REGEX = re.compile(r"^[\w\.-]+@[\w\.-]+\.\w+$")
 
@@ -20,8 +23,9 @@ class RegisterState(StatesGroup):
     email = State()
     region = State()
     education = State()
+    experience = State()
+    photo = State()
     phone = State()
-
 
 # Step 1: Fullname
 async def register_handler(message: Message, state: FSMContext):
@@ -72,49 +76,76 @@ async def region_handler(message: Message, state: FSMContext):
     await message.answer("O‘qish joyingizni kiriting 👇", reply_markup=None)
 
 
-# Step 5: Education
+# 2. Education handlerdan keyin ishlaydigan yangi funksiya
 async def education_handler(message: Message, state: FSMContext):
     await state.update_data(education_place=message.text.strip())
+    await state.set_state(RegisterState.experience.state) # Tajribaga o'tish
+    await message.answer(
+        "Volontyorlik tajribangiz haqida yozing 👇"
+    )
+
+# 2. Experience dan keyin foto so'rash
+async def experience_handler(message: Message, state: FSMContext):
+    await state.update_data(experience=message.text.strip())
+    await state.set_state(RegisterState.photo.state)
+    await message.answer("Profil rasmingizni yuklang 📸")
+
+async def photo_handler(message: Message, state: FSMContext):
+    if not message.photo:
+        await message.answer("Iltimos, rasm yuboring!")
+        return
+
+    # Eng katta hajmli rasmni olish
+    photo = message.photo[-1]
+    
+    # Faqat file_id ni saqlaymiz (bu oddiy string, Redis buni yaxshi ko'radi)
+    await state.update_data(photo_file_id=photo.file_id)
+    
     await state.set_state(RegisterState.phone.state)
     await message.answer(
-        "Quyidagi tugmani bosib telefon raqamingizni yuboring 👇",
+        "Telefon raqamingizni yuboring 👇",
         reply_markup=contact_btn()
     )
 
 
-# Step 6: Phone + Create User
 async def phone_handler(message: Message, state: FSMContext):
     if not message.contact:
         await message.answer("Iltimos, tugma orqali telefon raqam yuboring 👇")
         return
 
-    phone = message.contact.phone_number
     data = await state.get_data()
-
-    existing = await sync_to_async(
-        TGUser.objects.filter(tg_id=message.from_user.id).exists
-    )()
-    if existing:
-        await state.finish()
-        await message.answer("Siz allaqachon ro‘yxatdan o‘tgansiz ✅")
-        return
-
-    await sync_to_async(TGUser.objects.create)(
-        tg_id=message.from_user.id,
+    user_id = message.from_user.id
+    
+    # 1. Yangi foydalanuvchi obyektini yaratish
+    new_user = TGUser(
+        tg_id=user_id,
         fullname=data.get("fullname"),
         age=data.get("age"),
+        username=message.from_user.username,
         email=data.get("email"),
-        phone=phone,
+        phone=message.contact.phone_number,
         region=data.get("region"),
         education_place=data.get("education_place"),
+        experience=data.get("experience"),
     )
+
+    # 2. Rasmni yuklab olish (agar file_id bo'lsa)
+    photo_file_id = data.get("photo_file_id")
+    if photo_file_id:
+        # Telegramdan rasmni yuklab olish
+        photo_buffer = BytesIO()
+        await message.bot.download_file_by_id(photo_file_id, photo_buffer)
+        photo_buffer.seek(0)
+        
+        # Django modeliga saqlash
+        photo_name = f"user_{user_id}.jpg"
+        new_user.photo.save(photo_name, ContentFile(photo_buffer.read()), save=False)
+
+    # 3. Bazaga saqlash
+    await sync_to_async(new_user.save)()
 
     await state.finish()
-    await message.answer(
-        "✅ Ro‘yxatdan o‘tish yakunlandi",
-        reply_markup=reply.hi_there()
-    )
-
+    await message.answer("✅ Ro‘yxatdan o‘tish muvaffaqiyatli yakunlandi!", reply_markup=reply.hi_there())
 
 # Register all handlers
 def register_register(dp: Dispatcher):
@@ -131,12 +162,22 @@ def register_register(dp: Dispatcher):
     # Step 4
     dp.register_message_handler(region_handler, state=RegisterState.region.state)
 
-    # Step 5
-    dp.register_message_handler(education_handler, state=RegisterState.education.state)
 
-    # Step 6
+    dp.register_message_handler(education_handler, state=RegisterState.education.state)
+    
+    # Step 5.5: Yangi tajriba handleri
+    dp.register_message_handler(experience_handler, state=RegisterState.experience.state)
+
+   # Step: Photo
+    dp.register_message_handler(
+        photo_handler, 
+        content_types=['photo'], 
+        state=RegisterState.photo.state
+    )
+
+    # Step: Phone
     dp.register_message_handler(
         phone_handler,
-        state=RegisterState.phone.state,
-        content_types=['contact']
+        content_types=['contact'],
+        state=RegisterState.phone.state
     )

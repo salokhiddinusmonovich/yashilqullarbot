@@ -15,25 +15,39 @@ class TimeBasedModel(models.Model):
 
 class TGUser(TimeBasedModel):
     class Region(models.TextChoices):
-        NAVOI = 'navoi', 'Navoi'
-        QASHQADARYO = 'qashqadaryo', 'Qashqadaryo'
-        TASHKENT = 'tashkent', 'Tashkent'
-        SAMARKAND = 'samarkand', 'Samarkand'
-        ANDIJON = 'andijon', 'Andijon'
-        FARGONA = 'fargona', 'Farg‘ona'
-        NAMANGAN = 'namangan', 'Namangan'
-        BUKHARA = 'bukhara', 'Buxoro'
-        KHOREZM = 'khorezm', 'Xorazm'
-        SIRDARYO = 'sirdaryo', 'Sirdaryo'
-        JIZZAKH = 'jizzakh', 'Jizzax'
-        SURKHANDARYO = 'surkhandaryo', 'Surxondaryo'
-        KARAKALPAKSTAN = 'karakalpakstan', 'Qoraqalpog‘iston'
+        KARAKALPAKSTAN = 'karakalpakstan', 'Qoraqalpogʻiston Respublikasi'
+        ANDIJON = 'andijon', 'Andijon viloyati'
+        BUKHARA = 'bukhara', 'Buxoro viloyati'
+        FARGONA = 'fargona', 'Fargʻona viloyati'
+        JIZZAKH = 'jizzakh', 'Jizzax viloyati'
+        KHOREZM = 'khorezm', 'Xorazm viloyati'
+        NAMANGAN = 'namangan', 'Namangan viloyati'
+        NAVOI = 'navoi', 'Navoiy viloyati'
+        QASHQADARYO = 'qashqadaryo', 'Qashqadaryo viloyati'
+        SAMARKAND = 'samarkand', 'Samarqand viloyati'
+        SIRDARYO = 'sirdaryo', 'Sirdaryo viloyati'
+        SURKHANDARYO = 'surkhandaryo', 'Surxondaryo viloyati'
+        TASHKENT_V = 'tashkent_v', 'Toshkent viloyati'
+        TASHKENT_S = 'tashkent_s', 'Toshkent shahri'
 
     tg_id = models.BigIntegerField(unique=True, db_index=True, verbose_name='id Telegram')
     fullname = models.CharField(max_length=255)
     age = models.PositiveSmallIntegerField(blank=True, null=True)
     email = models.EmailField(max_length=255)
     phone = models.CharField(max_length=20)
+    username = models.CharField(max_length=255, blank=True, null=True, verbose_name='Username')
+    experience = models.TextField(
+    blank=True, 
+    null=True, 
+    verbose_name='tajribasi'
+    )
+
+    photo = models.ImageField(
+    upload_to='users_photos/', 
+    blank=True, 
+    null=True, 
+    verbose_name='Profil rasmi'
+    )
 
     region = models.CharField(
         max_length=20,
@@ -66,51 +80,34 @@ class TeamMemberYashilQullar(TimeBasedModel):
         verbose_name='Telegram foydalanuvchi'
     )
 
-    full_name = models.CharField(
-        max_length=255,
-        verbose_name='To‘liq ism'
-    )
-
-    image = models.ImageField(
-        upload_to='team_members/',
-        blank=True,
-        null=True,
-        verbose_name='Rasm'
-    )
-
-    education = models.CharField(
-        max_length=255,
-        blank=True,
-        null=True,
-        verbose_name='Ta’lim / O‘qish joyi'
-    )
-
+    # Faqat jamoaga xos qo'shimcha ma'lumotlar qoladi
     skills = models.TextField(
-        blank=True,
-        null=True,
+        blank=True, 
+        null=True, 
         verbose_name='Ko‘nikmalar'
     )
-
     telegram_username = models.CharField(
-        max_length=100,
-        blank=True,
-        null=True,
+        max_length=100, 
+        blank=True, 
+        null=True, 
         verbose_name='Telegram username'
     )
-
-    motto = models.CharField(
-        max_length=255,
-        blank=True,
-        null=True,
-        verbose_name='Shior'
-    )
+    
+    FOCUS_CHOICES = [
+        ('founder', 'Founder'),
+        ('digital', 'Digital Lead'),
+        ('media', 'Media Lead'),
+        ('organization', 'Organization'),
+    ]
+    focus = models.CharField(max_length=255, choices=FOCUS_CHOICES)
 
     class Meta:
         verbose_name = 'Team member (Yashil Qullar)'
         verbose_name_plural = 'Team members (Yashil Qullar)'
 
     def __str__(self):
-        return self.full_name
+        # Ismni asosiy TGUser modelidan olamiz
+        return self.tg_user.fullname
 
 
 

@@ -21,5 +21,5 @@ class RegisterState(StatesGroup):
     region = State()
     education = State()
     phone = State()
-
+    experience = State()
 

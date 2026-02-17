@@ -9,17 +9,23 @@ from asgiref.sync import sync_to_async
 
 
 async def user_start(message: Message, state: FSMContext):
-    await state.finish()   # всегда чистим
+    await state.finish()  # Har doim holatni tozalaymiz
 
+    # Foydalanuvchini bazadan qidiramiz
     user = await sync_to_async(TGUser.objects.filter(tg_id=message.from_user.id).first)()
-    # debug: если нужно, логируй:
-    # print("user from start:", user, getattr(user, "phone", None))
 
     if user:
-        await message.answer("👋 Salom, ism! @YashilQollar oilasiga xush kelibsiz.", reply_markup=reply.hi_there())
+        # Ro'yxatdan o'tgan bo'lsa, bazadagi fullname ni ko'rsatamiz
+        await message.answer(
+            f"👋 Salom, {hbold(user.fullname)}! @YashilQollar oilasiga xush kelibsiz.", 
+            reply_markup=reply.hi_there()
+        )
     else:
-        await message.answer(f"👋 Salom, ism! @YashilQollar oilasiga xush kelibsiz., {hbold(message.from_user.full_name)}", reply_markup=reply.auth_btn())
-
+        # Ro'yxatdan o'tmagan bo'lsa, Telegramdagi ismini ko'rsatamiz
+        await message.answer(
+            f"👋 Salom, {hbold(message.from_user.full_name)}! @YashilQollar oilasiga xush kelibsiz.", 
+            reply_markup=reply.auth_btn()
+        )
 
 
 def register_user(dp: Dispatcher):

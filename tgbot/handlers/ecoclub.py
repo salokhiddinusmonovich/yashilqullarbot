@@ -4,48 +4,26 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from asgiref.sync import sync_to_async
 from io import BytesIO
 import qrcode
-from  ..keyboards import reply
+from ..keyboards import reply
 
-from app_telegram.models import TGUser
-from app_telegram.models import EcoProject, ProjectParticipation
+from app_telegram.models import TGUser, EcoProject, ProjectParticipation
 
+# --- KEYBOARDS ---
 
 MAIN_MENU_KB = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="🌱 Eco-klublar")],
+        [KeyboardButton(text="🌱 Tadbirlar")],
         [KeyboardButton(text="👤 Mening profilim")]
     ],
     resize_keyboard=True
 )
 
-ECO_MENU_KB = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="📌 Loyihalar")],
-        [KeyboardButton(text="⬅️ Orqaga")]
-    ],
-    resize_keyboard=True
-)
-
-
-
-
 def projects_list_kb(projects):
     keyboard = []
-
     for project in projects:
-        keyboard.append(
-            [KeyboardButton(text=f"📍 {project.title}")]
-        )
-
+        keyboard.append([KeyboardButton(text=f"📍 {project.title}")])
     keyboard.append([KeyboardButton(text="⬅️ Orqaga")])
-
-    return ReplyKeyboardMarkup(
-        keyboard=keyboard,
-        resize_keyboard=True
-    )
-
-
-
+    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
 
 PROJECT_DETAIL_KB = ReplyKeyboardMarkup(
     keyboard=[
@@ -55,32 +33,27 @@ PROJECT_DETAIL_KB = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
-
-async def eco_clubs(message: types.Message):
-    await message.answer(
-        "🌱 Eco-klublarga xush kelibsiz!",
-        reply_markup=ECO_MENU_KB
-    )
-
+# --- HANDLERS ---
 
 async def show_projects(message: types.Message):
+    # Bazadan aktiv loyihalarni olamiz
     projects = await sync_to_async(list)(
         EcoProject.objects.filter(is_active=True)
     )
 
+    # Agar loyihalar bo'lmasa
     if not projects:
         await message.answer(
-            "Hozircha loyihalar yo‘q.",
-            reply_markup=ECO_MENU_KB
+            "Hozircha faol loyihalar mavjud emas. 😔",
+            reply_markup=MAIN_MENU_KB 
         )
         return
 
+    # Agar loyihalar bo'lsa, srazu ro'yxatni chiqaramiz
     await message.answer(
-        "📌 Mavjud loyihalar:",
+        "📌 Mavjud loyihalar ro‘yxati bilan tanishing:",
         reply_markup=projects_list_kb(projects)
     )
-
-
 
 async def project_detail(message: types.Message, state: FSMContext):
     title = message.text.replace("📍 ", "").strip()
@@ -99,16 +72,7 @@ async def project_detail(message: types.Message, state: FSMContext):
         f"📍 Joy: {project.location}\n\n"
         f"{project.description}"
     )
-
     await message.answer(text, reply_markup=PROJECT_DETAIL_KB)
-
-
-
-
-# Пример join_project
-import qrcode
-from io import BytesIO
-from asgiref.sync import sync_to_async
 
 async def join_project(message: types.Message, state: FSMContext):
     data = await state.get_data()
@@ -124,14 +88,21 @@ async def join_project(message: types.Message, state: FSMContext):
         await message.answer("❗ Avval ro‘yxatdan o‘ting. /register")
         return
 
-    participation, created = await sync_to_async(ProjectParticipation.objects.get_or_create)(
+    # Tekshirish: Foydalanuvchi allaqachon a'zomi?
+    participation_exists = await sync_to_async(
+        ProjectParticipation.objects.filter(user=user, project_id=project_id).exists
+    )()
+
+    if participation_exists:
+        await message.answer("⚠️ Siz ushbu loyihaga allaqachon a'zo bo'lgansiz!")
+        return
+
+    participation = await sync_to_async(ProjectParticipation.objects.create)(
         user=user,
         project_id=project_id
     )
 
     qr_text = f"Yashil Qollar | Project: {participation.project.title} | Name: {user.fullname} | ID: {user.tg_id}"
-
-
     qr_img = qrcode.make(qr_text)
     bio = BytesIO()
     qr_img.save(bio)
@@ -146,8 +117,6 @@ async def join_project(message: types.Message, state: FSMContext):
         )
     )
 
-
-
 async def go_back(message: types.Message, state: FSMContext):
     await state.finish()
     await message.answer(
@@ -155,36 +124,12 @@ async def go_back(message: types.Message, state: FSMContext):
         reply_markup=reply.hi_there()
     )
 
-
+# --- REGISTRATION ---
 
 def register_eco_clubs(dp: Dispatcher):
-    dp.register_message_handler(
-    eco_clubs,
-    lambda m: m.text == "🌱 Eko klublar",
-    state="*"
-)
-
-
-    dp.register_message_handler(
-        show_projects,
-        lambda m: m.text == "📌 Loyihalar",
-        state="*"
-    )
-
-    dp.register_message_handler(
-        project_detail,
-        lambda m: m.text.startswith("📍 "),
-        state="*"
-    )
-
-    dp.register_message_handler(
-        join_project,
-        lambda m: m.text == "✅ Ishtirok etish",
-        state="*"
-    )
-
-    dp.register_message_handler(
-        go_back,
-        lambda m: m.text == "⬅️ Orqaga",
-        state="*"
-    )
+    # "🌱 Tadbirlar" bosilganda srazu show_projects ishlaydi
+    dp.register_message_handler(show_projects, lambda m: m.text == "🌱 Tadbirlar", state="*")
+    
+    dp.register_message_handler(project_detail, lambda m: m.text.startswith("📍 "), state="*")
+    dp.register_message_handler(join_project, lambda m: m.text == "✅ Ishtirok etish", state="*")
+    dp.register_message_handler(go_back, lambda m: m.text == "⬅️ Orqaga", state="*")

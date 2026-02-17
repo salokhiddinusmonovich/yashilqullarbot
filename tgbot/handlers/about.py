@@ -9,12 +9,15 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 # parents[2] -> корень проекта
 
 async def about_us(message):
-    file_path = BASE_DIR / "idk" / "canva tablet.pdf"
+    # Fayl yo'lini ko'rsatamiz
+    file_path = BASE_DIR / "idk" / "poster.png"
 
-    await message.answer_document(
-        InputFile(file_path),
-        caption="⬆️ Yuqoridagi faylni bosing"
+    # answer_photo orqali rasm sifatida yuboramiz
+    await message.answer_photo(
+        photo=InputFile(file_path),
+        caption="🌱 Biz haqimizda ma'lumotlar bilan tanishing."
     )
+
 def register_about_us(dp: Dispatcher):
     dp.register_message_handler(
         about_us,
