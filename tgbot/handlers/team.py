@@ -45,7 +45,7 @@ async def show_team_members_by_focus(message: types.Message):
             f" 👤 <b>{user.fullname}</b>\n"
             f"• Yosh: {user.age or '—'}\n"
             f"• Hudud: {user.region}\n"
-            f"• O‘qish joyi: {user.education_place or '—'}\n"
+            f"• Ta`lm muassasasi: {user.education_place or '—'}\n"
             f"• Email: {user.email}\n"
             f"• Telefon: {user.phone}\n"
         )

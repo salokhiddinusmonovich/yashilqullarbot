@@ -4,12 +4,12 @@ from aiogram.types import Message
 # 1. Tugma bosilganda ishlaydigan funksiya
 async def join_project(message: Message):
     text = (
-        "🌱 Barqaror kelajak uchun!\n\n"
+        "🌱 <b>Barqaror kelajak uchun!</b>\n\n"
         "✨ Taklif yoki savollaringiz bormi?\n"
         "👥 Jamoamizga qo‘shilishni xohlaysizmi?\n"
-        "📩 Unda @yashilqollar_admin ga yozing\n\n"
+        "📩 Unda <b>@yashilqollar_admin</b> ga yozing\n\n"
         "🤝 Hamkorlik bo‘yicha:\n"
-        "📩 @abdulboriyw ga murojaat qiling"
+        "📩 <b>@abdulboriyw</b> ga murojaat qiling"
     )
     await message.answer(text)
 
