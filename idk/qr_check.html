@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <title>QR Tekshiruv</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
+        .card { display: inline-block; padding: 20px; border: 2px solid #4CAF50; border-radius: 10px; }
+        h2 { color: #4CAF50; }
+        p { font-size: 18px; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>✅ QR tasdiqlandi</h2>
+        <p><strong>Ism:</strong> {{ user.fullname }}</p>
+        <p><strong>Loyiha:</strong> {{ project.title }}</p>
+        <p><strong>Status:</strong> {{ status }}</p>
+    </div>
+</body>
+</html>
