@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 # yashilqullarbot
 =======
 # django-aiogram-template
