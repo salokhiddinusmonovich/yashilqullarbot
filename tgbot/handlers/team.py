@@ -48,7 +48,7 @@ async def show_team_members_by_focus(message: types.Message):
         
         # Добавляем навыки (skills), если они заполнены
         if member.skills:
-            caption += f"• 🛠 <b>Ko‘nikmalar:</b> {member.skills}\n"
+            caption += f"{member.skills}\n"
 
         # Контакты
         contact = member.telegram_username or user.tg_id
