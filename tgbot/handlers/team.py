@@ -53,7 +53,7 @@ async def show_team_members_by_focus(message: types.Message):
         # Контакты
         contact = member.telegram_username or user.tg_id
         contact_str = str(contact).replace('@', '')
-        caption += f"• 🔗 @{contact_str}\n"
+        caption += f"•Telegram: @{contact_str}\n"
 
         # Отправка фото или просто текста
         if user.photo:
