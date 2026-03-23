@@ -28,7 +28,7 @@ async def show_team_members_by_focus(message: types.Message):
     
     selected_focus = focus_map.get(message.text)
     
-    # tg_user ma'lumotlarini select_related orqali birga olamiz
+    # Подгружаем tg_user сразу, чтобы не делать лишних запросов в цикле
     members = await sync_to_async(lambda: list(
         TeamMemberYashilQullar.objects.filter(focus__iexact=selected_focus).select_related('tg_user')
     ))()
@@ -38,25 +38,27 @@ async def show_team_members_by_focus(message: types.Message):
         return
 
     for member in members:
-        # Ma'lumotlarni tg_user (TGUser modeli)dan olamiz
         user = member.tg_user
         
+        # Основная информация
         caption = (
-            f" 👤 <b>{user.fullname}</b>\n"
+            f"👤 <b>{user.fullname}</b>\n"
             f"• Yosh: {user.age or '—'}\n"
-            f"• Hudud: {user.region}\n"
-            f"• Ta`lm muassasasi: {user.education_place or '—'}\n"
-            f"• Email: {user.email}\n"
-            f"• Telefon: {user.phone}\n"
         )
         
-        # Telegram username yoki ID
-        contact = member.telegram_username or user.tg_id
-        caption += f"• @{str(contact).replace('@', '')}\n"
+        # Добавляем навыки (skills), если они заполнены
+        if member.skills:
+            caption += f"• 🛠 <b>Ko‘nikmalar:</b> {member.skills}\n"
 
-        # Rasmni foydalanuvchining o'z profilidan (TGUser.photo) olamiz
+        # Контакты
+        contact = member.telegram_username or user.tg_id
+        contact_str = str(contact).replace('@', '')
+        caption += f"• 🔗 @{contact_str}\n"
+
+        # Отправка фото или просто текста
         if user.photo:
             try:
+                # В aiogram 2.x лучше передавать открытый файл или путь
                 photo_file = types.InputFile(user.photo.path)
                 await message.answer_photo(
                     photo=photo_file,
@@ -64,10 +66,8 @@ async def show_team_members_by_focus(message: types.Message):
                     parse_mode="HTML"
                 )
             except Exception:
-                # Agar profil rasmi serverda topilmasa
                 await message.answer(caption, parse_mode="HTML")
         else:
-            # Profil rasmi yo'q bo'lsa
             await message.answer(caption, parse_mode="HTML")
 
 def register_team(dp: Dispatcher):
