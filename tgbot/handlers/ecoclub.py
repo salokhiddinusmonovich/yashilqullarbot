@@ -35,26 +35,31 @@ PROJECT_DETAIL_KB = ReplyKeyboardMarkup(
 
 # --- HANDLERS ---
 
+# Измени функцию show_projects вот так:
+
 async def show_projects(message: types.Message):
-    # Bazadan aktiv loyihalarni olamiz
     projects = await sync_to_async(list)(
         EcoProject.objects.filter(is_active=True)
     )
 
-    # Agar loyihalar bo'lmasa
     if not projects:
+        # Создаем временную клавиатуру только с кнопкой Назад, 
+        # чтобы юзер не застрял
+        no_projects_kb = ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="⬅️ Orqaga")]],
+            resize_keyboard=True
+        )
         await message.answer(
             "Hozircha faol loyihalar mavjud emas. 😔",
-            reply_markup=MAIN_MENU_KB 
+            reply_markup=no_projects_kb  # <--- Теперь тут есть выход!
         )
         return
 
-    # Agar loyihalar bo'lsa, srazu ro'yxatni chiqaramiz
     await message.answer(
         "📌 Mavjud loyihalar ro‘yxati bilan tanishing:",
         reply_markup=projects_list_kb(projects)
     )
-
+    
 async def project_detail(message: types.Message, state: FSMContext):
     title = message.text.replace("📍 ", "").strip()
 
@@ -72,7 +77,8 @@ async def project_detail(message: types.Message, state: FSMContext):
         f"📍 Joy: {project.location}\n\n"
         f"{project.description}"
     )
-    await message.answer(text, reply_markup=PROJECT_DETAIL_KB)
+    # В функции project_detail замени строку вывода на эту:
+    await message.answer(text, reply_markup=PROJECT_DETAIL_KB, parse_mode=None)
 
 async def join_project(message: types.Message, state: FSMContext):
     data = await state.get_data()
