@@ -3,7 +3,7 @@ from django.utils.html import format_html
 from import_export import resources
 from import_export.admin import ExportMixin
 from import_export.fields import Field
-from .models import TGUser, TeamMemberYashilQullar, ProjectParticipation, EcoProject
+from .models import TGUser, TeamMemberYashilQullar, ProjectParticipation, EcoProject, Partner
 
 # --- 1. Ресурс для Экспорта (Excel) ---
 class ParticipationResource(resources.ModelResource):
@@ -61,4 +61,5 @@ class TGUserAdmin(admin.ModelAdmin):
     list_display = ('tg_id', 'username', 'fullname', 'phone')
 
 admin.site.register(EcoProject)
+admin.site.register(Partner)
 admin.site.register(TeamMemberYashilQullar)
