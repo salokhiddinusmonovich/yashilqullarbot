@@ -22,22 +22,17 @@ async def show_profile(message: types.Message):
     
     )
 
-    # Agar foydalanuvchining rasmi bo'lsa
     if user.photo:
         try:
-            # Django ImageField obyektining path'idan foydalanamiz
-            photo = types.InputFile(user.photo.path)
-            await message.answer_photo(
-                photo=photo,
-                caption=profile_text,
-                parse_mode="HTML"
-            )
-        except Exception:
-            # Agar fayl serverda topilmasa, rasmisiz yuboramiz
+            # Открываем файл напрямую
+            with open(user.photo.path, 'rb') as photo_file:
+                await message.answer_photo(
+                    photo=photo_file,
+                    caption=profile_text,
+                    parse_mode="HTML"
+                )
+        except Exception as e:
             await message.answer(profile_text, parse_mode="HTML")
-    else:
-        # Rasm bo'lmasa matnning o'zini yuboramiz
-        await message.answer(profile_text, parse_mode="HTML")
 
 def register_profile(dp: Dispatcher):
     dp.register_message_handler(
