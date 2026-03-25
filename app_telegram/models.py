@@ -203,3 +203,22 @@ class ProjectParticipation(TimeBasedModel):
 
     def __str__(self):
         return f'{self.user.fullname} – {self.project.title}'
+
+
+
+class Partner(models.Model):
+    name = models.CharField(max_length=255, verbose_name="Hamkor nomi")
+    logo = models.ImageField(upload_to='partners/', verbose_name="Logotip", null=True, blank=True)
+    description = models.TextField(verbose_name="Tavsif (ixtiyoriy)", null=True, blank=True)
+    
+    # Ijtimoiy tarmoqlar uchun linklar
+    website = models.URLField(verbose_name="Veb-sayt", null=True, blank=True)
+    instagram = models.URLField(verbose_name="Instagram", null=True, blank=True)
+    telegram = models.URLField(verbose_name="Telegram", null=True, blank=True)
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        verbose_name = "Hamkor"
+        verbose_name = "Hamkorlar"

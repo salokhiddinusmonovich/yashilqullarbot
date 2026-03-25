@@ -13,6 +13,7 @@ from tgbot.handlers.register import register_register
 from tgbot.handlers.team import register_team
 from tgbot.handlers.about import register_about_us
 from tgbot.handlers.ecoclub import register_eco_clubs
+from tgbot.handlers.partners import register_partners
 from tgbot.handlers.contact_with_team import register_project_handlers
 
 
@@ -39,6 +40,7 @@ def register_all_handlers(dp):
     register_about_us(dp)
     register_eco_clubs(dp)
     register_project_handlers(dp)
+    register_partners(dp)
     print("Handlers registered!")
     
 

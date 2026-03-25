@@ -6,8 +6,8 @@ def hi_there():
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="👤 Mening profilim"), KeyboardButton(text="🎯 Loyiha yetakchilari")],
-            [KeyboardButton(text="🌟 Biz haqimizda"), KeyboardButton(text="🚀 Loyihaga qo‘shilish ")],
-            [KeyboardButton(text="🌱 Tadbirlar")],
+            [KeyboardButton(text="🌟 Biz haqimizda"), KeyboardButton(text="🚀 Loyihaga qo‘shilish")],
+            [KeyboardButton(text="🌱 Tadbirlar"), KeyboardButton(text="Hamkorlarimiz")],
 
             
         ],
