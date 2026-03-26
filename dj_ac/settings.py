@@ -93,11 +93,11 @@ POSTGRES_PORT = 5432
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': POSTGRES_DB,
-        'USER': POSTGRES_USER,
+        'NAME': 'yashilqollar',
+        'USER': 'postgres',
         'PASSWORD': 'postgres',
-        'HOST': POSTGRES_HOST,
-        'PORT': POSTGRES_PORT,
+        'HOST': 'db',
+        'PORT': '5432',
         'ATOMIC_REQUESTS': True,
     },
 }
