@@ -1,64 +1,69 @@
 version: '3.9'
 
 services:
-  bot:
-    container_name: ${PROJECT_NAME}-bot
-    build:
-      dockerfile: Dockerfile.bot
-      context: .
-    working_dir: "/usr/src/app/${BOT_NAME:-tg_bot}"
-    volumes:
-      - .:/usr/src/app/${BOT_NAME:-tg_bot}
-    command: python bot.py
+  db:
+    image: postgres:15.0-alpine
+    container_name: yashilqollar-db
     restart: always
-    depends_on:
-      - db
-      - redis
-      - web
-    env_file: .env
+    # ЖЕСТКО ЗАДАЕМ ПЕРЕМЕННЫЕ ТУТ
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - 5433:5432
 
   web:
-    container_name: ${PROJECT_NAME}-web
+    container_name: yashilqollar-web
     build:
       dockerfile: Dockerfile.web
       context: .
-    working_dir: "/usr/src/app/${PROJECT_NAME:-web}"
+    working_dir: "/usr/src/app/web"
     volumes:
-      - .:/usr/src/app/${PROJECT_NAME:-web}
+      - .:/usr/src/app/web
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
     command: sh -c "python manage.py migrate &&
-          python manage.py collectstatic --noinput &&
-         python manage.py runserver 0.0.0.0:8000"
-
+              python manage.py collectstatic --noinput &&
+              python manage.py runserver 0.0.0.0:8000"
     ports:
       - 8000:8000
     restart: always
     depends_on:
       - db
       - redis
-    env_file: .env
 
-  db:
-    image: postgres:15.0-alpine
+  bot:
+    container_name: yashilqollar-bot
+    build:
+      dockerfile: Dockerfile.bot
+      context: .
+    working_dir: "/usr/src/app/tg_bot"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - .:/usr/src/app/tg_bot
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    command: python bot.py
     restart: always
-    container_name: ${PROJECT_NAME}-db
-    env_file: .env
-    ports:
-      - 5433:5432
+    depends_on:
+      - db
+      - redis
+      - web
 
   redis:
-    container_name: ${PROJECT_NAME}-redis
+    container_name: yashilqollar-redis
     image: redis:7.2-rc3-alpine
     restart: always
-    env_file:
-      - .env
     ports:
-      - ${REDIS_PORT}
-    expose:
-      - ${REDIS_PORT}
+      - 6379:6379
     volumes:
-      - ./redis.conf:/usr/local/etc/redis/redis.conf
+      - redis_data:/data
 
   adminer:
     image: adminer
