@@ -5,7 +5,6 @@ services:
     image: postgres:15.0-alpine
     container_name: yashilqollar-db
     restart: always
-    # ЖЕСТКО ЗАДАЕМ ПЕРЕМЕННЫЕ ТУТ
     environment:
       - POSTGRES_DB=postgres
       - POSTGRES_USER=postgres
@@ -14,6 +13,20 @@ services:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - 5433:5432
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    container_name: yashilqollar-redis
+    image: redis:7.2-rc3-alpine
+    restart: always
+    ports:
+      - 6379:6379
+    volumes:
+      - redis_data:/data
 
   web:
     container_name: yashilqollar-web
@@ -27,15 +40,18 @@ services:
       - POSTGRES_DB=postgres
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
-    command: sh -c "python manage.py migrate &&
-              python manage.py collectstatic --noinput &&
-              python manage.py runserver 0.0.0.0:8000"
+      - SECRET_KEY=123456qwerty
+      - DEBUG=True
+    # Добавили sleep 10, чтобы база точно успела подняться перед миграциями
+    command: sh -c "sleep 10 && python manage.py migrate && python manage.py collectstatic --noinput && python manage.py runserver 0.0.0.0:8000"
     ports:
       - 8000:8000
     restart: always
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
 
   bot:
     container_name: yashilqollar-bot
@@ -49,21 +65,16 @@ services:
       - POSTGRES_DB=postgres
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
-    command: python bot.py
+    # Бот тоже ждет базу
+    command: sh -c "sleep 15 && python bot.py"
     restart: always
     depends_on:
-      - db
-      - redis
-      - web
-
-  redis:
-    container_name: yashilqollar-redis
-    image: redis:7.2-rc3-alpine
-    restart: always
-    ports:
-      - 6379:6379
-    volumes:
-      - redis_data:/data
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      web:
+        condition: service_started
 
   adminer:
     image: adminer
