@@ -5,34 +5,25 @@ from import_export.admin import ExportMixin
 from import_export.fields import Field
 from .models import TGUser, TeamMemberYashilQullar, ProjectParticipation, EcoProject, Partner
 
-# --- 1. РЕСУРС ДЛЯ ЭКСПОРТА (EXCEL) ---
+# --- 1. РЕСУРС ДЛЯ ЭКСПОРТА ---
 class ParticipationResource(resources.ModelResource):
     username = Field(attribute='user__username', column_name='Telegram Username')
     fullname = Field(attribute='user__fullname', column_name='F.I.SH (Имя)')
     phone = Field(attribute='user__phone', column_name='Telefon')
-    experience = Field(attribute='user__experience', column_name='Tajriba (Опыт)')
-    photo_url = Field(column_name='ССЫЛКА НА ФОТО (URL)')
+    project_name = Field(attribute='project__title', column_name='Loyiha nomi') # Фильтр в экспорте
 
     class Meta:
         model = ProjectParticipation
-        fields = ('username', 'fullname', 'phone', 'experience', 'photo_url', 'project__title', 'status')
+        fields = ('username', 'fullname', 'phone', 'project_name', 'status')
         export_order = fields
 
-    def dehydrate_photo_url(self, obj):
-        if obj.user and obj.user.photo:
-            # Твой IP сервера для ссылок в Excel
-            domain = "http://127.0.0.1:8000" 
-            return f"{domain}{obj.user.photo.url}"
-        return "Нет фото"
-
-# --- 2. МАССОВЫЕ ДЕЙСТВИЯ (ACTIONS) ---
-
+# --- 2. ACTIONS (МАССОВЫЕ ДЕЙСТВИЯ) ---
 @admin.action(description='✅ Отметить как ПРИШЕДШИХ (+10 баллов)')
 def make_attended(modeladmin, request, queryset):
     for obj in queryset:
         if obj.status != 'attended':
             obj.status = 'attended'
-            obj.save() # Наша модель сама начислит баллы через свой метод save()
+            obj.save() # Начисляет баллы автоматически
 
 @admin.action(description='❌ Отменить участие (Удалить баллы)')
 def make_rejected(modeladmin, request, queryset):
@@ -40,62 +31,49 @@ def make_rejected(modeladmin, request, queryset):
         obj.status = 'rejected'
         obj.save()
 
-# --- 3. НАСТРОЙКА АДМИНКИ УЧАСТНИКОВ ---
+# --- 3. ГЛАВНАЯ АДМИНКА С ФИЛЬТРАЦИЕЙ ПО ЭВЕНТУ ---
 @admin.register(ProjectParticipation)
 class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
     resource_class = ParticipationResource
     
-    # В админке показываем фоточку и основные данные
-    list_display = ('display_face', 'get_fullname', 'get_username', 'project', 'status', 'applied_at')
+    # Что видим в таблице
+    list_display = ('display_face', 'get_fullname', 'project', 'status', 'applied_at')
     
-    # Фильтры — ТВОЁ СПАСЕНИЕ для 300+ юзеров
-    list_filter = ('project', 'status', 'applied_at')
+    # --- ВОТ ОНА, ФИЛЬТРАЦИЯ ПО ЭВЕНТУ (ПРОЕКТУ) ---
+    # Позволяет выбрать конкретный проект в правой колонке
+    list_filter = ('project', 'status', 'applied_at') 
     
-    # Поиск по всем полям
+    # Поиск для быстрого нахождения человека
     search_fields = ('user__fullname', 'user__username', 'user__phone')
     
-    # Добавляем Кнопки Массового Действия
+    # Массовые действия
     actions = [make_attended, make_rejected]
+    
+    # Сколько людей показывать на одной странице (сразу 500, чтобы не листать)
+    list_per_page = 500 
 
-    # ФОТО В ТАБЛИЦЕ АДМИНКИ (Лицо)
     def display_face(self, obj):
         if obj.user and obj.user.photo:
             return format_html('<img src="{}" width="50" height="50" style="border-radius:50%; object-fit:cover;"/>', obj.user.photo.url)
-        return "Нет фото"
+        return "👤"
     display_face.short_description = 'Лицо'
-
-    def get_username(self, obj):
-        return f"@{obj.user.username}" if obj.user.username else f"ID: {obj.user.tg_id}"
-    get_username.short_description = 'Username'
 
     def get_fullname(self, obj):
         return obj.user.fullname
-    get_fullname.short_description = 'Имя'
+    get_fullname.short_description = 'F.I.SH'
 
-# --- 4. ОСТАЛЬНЫЕ МОДЕЛИ ---
+# --- 4. ОСТАЛЬНЫЕ РЕГИСТРАЦИИ ---
 
 @admin.register(TGUser)
 class TGUserAdmin(admin.ModelAdmin):
-    list_display = ('display_avatar', 'fullname', 'username', 'balance', 'rank', 'region')
+    list_display = ('fullname', 'username', 'balance', 'rank', 'region')
     list_filter = ('region', 'balance')
-    search_fields = ('fullname', 'username', 'phone')
-
-    def display_avatar(self, obj):
-        if obj.photo:
-            return format_html('<img src="{}" width="40" height="40" style="border-radius:20px;"/>', obj.photo.url)
-        return "👤"
-    display_avatar.short_description = 'Фото'
+    search_fields = ('fullname', 'username')
 
 @admin.register(EcoProject)
 class EcoProjectAdmin(admin.ModelAdmin):
     list_display = ('title', 'date', 'location_name', 'is_active')
+    list_filter = ('is_active', 'date')
 
-@admin.register(Partner)
-class PartnerAdmin(admin.ModelAdmin):
-    list_display = ('name', 'is_active')
-
-@admin.register(TeamMemberYashilQullar)
-class TeamAdmin(admin.ModelAdmin):
-    list_display = ('get_name', 'focus')
-    def get_name(self, obj):
-        return obj.tg_user.fullname
+admin.site.register(Partner)
+admin.site.register(TeamMemberYashilQullar)
