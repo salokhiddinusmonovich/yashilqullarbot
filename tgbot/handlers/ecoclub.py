@@ -5,7 +5,7 @@ from asgiref.sync import sync_to_async
 from django.utils import timezone
 from app_telegram.models import TGUser, EcoProject, ProjectParticipation
 
-# --- ПРОСТЫЕ КЛАВИАТУРЫ ---
+# --- ТВОИ КНОПКИ ---
 
 def get_events_menu():
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
@@ -19,16 +19,14 @@ def get_registration_kb():
     kb.add(KeyboardButton("⬅️ Orqaga"))
     return kb
 
-# --- HANDLERS ---
+# --- ЛОГИКА ---
 
-# Главное меню
 async def show_events_menu(message: types.Message, state: FSMContext):
     await state.finish()
-    await message.answer("<b>Tadbirlar bo'limi</b> ✨\n\nBo'limni tanlang:", 
-                         reply_markup=get_events_menu(), parse_mode="HTML")
+    await message.answer("<b>Tadbirlar bo'limi</b> ✨", reply_markup=get_events_menu(), parse_mode="HTML")
 
-# Список будущих мероприятий
 async def list_upcoming_events(message: types.Message, state: FSMContext):
+    # Берем только активные будущие проекты
     projects = await sync_to_async(list)(
         EcoProject.objects.filter(is_active=True, date__gt=timezone.now())
     )
@@ -45,37 +43,36 @@ async def list_upcoming_events(message: types.Message, state: FSMContext):
             f"📝 {p.description}\n\n"
             f"<i>Ro'yxatdan o'tish uchun pastdagi tugmani bosing 👇</i>"
         )
+        # Сразу даем кнопку регистрации под каждым проектом
         await message.answer(text, reply_markup=get_registration_kb(), parse_mode="HTML")
 
-# Регистрация (Простая логика: Записали в базу -> Ответили юзеру)
 async def process_registration(message: types.Message, state: FSMContext):
+    # Ищем юзера в твоей новой модели (через tg_id)
     user = await sync_to_async(TGUser.objects.get)(tg_id=message.from_user.id)
-    # Берем ближайший активный проект
+    # Берем самый актуальный проект
     project = await sync_to_async(EcoProject.objects.filter(is_active=True, date__gt=timezone.now()).first)()
     
     if not project:
-        await message.answer("Xatolik: Faol loyihalar topilmadi. ❌", reply_markup=get_events_menu())
+        await message.answer("Xatolik: Loyiha topilmadi. ❌", reply_markup=get_events_menu())
         return
 
-    # Создаем запись в базе (по умолчанию статус 'pending' в модели)
+    # Записываем в базу
     part, created = await sync_to_async(ProjectParticipation.objects.get_or_create)(
         user=user, project=project
     )
     
     if created:
-        # Ответ на узбекском, как ты просил
+        # ТОТ САМЫЙ ОТВЕТ, КОТОРЫЙ ТЫ ПРОСИЛ:
         await message.answer(
-            f"✅ <b>Arizangiz qabul qilindi!</b>\n\n"
-            f"Loyiha: {project.title}\n"
-            f"Biz sizning profilingizni ko'rib chiqamiz va tez orada o'zimiz aloqaga chiqamiz. "
-            f"Iltimos, kuting! ✨",
+            "✅ <b>Siz muvaffaqiyatli ro'yxatdan o'tdingiz!</b>\n\n"
+            "Biz arizangizni ko'rib chiqamiz va tez orada o'zimiz siz bilan bog'lanamiz. "
+            "Hozircha kutib turing. 😊",
             reply_markup=get_events_menu(),
             parse_mode="HTML"
         )
     else:
-        await message.answer("Siz allaqachon ro'yxatdan o'tgansiz! 😊", reply_markup=get_events_menu())
+        await message.answer("Siz ushbu loyihaga allaqachon ariza topshirgansiz. 👍", reply_markup=get_events_menu())
 
-# Прошедшие мероприятия
 async def list_past_events(message: types.Message):
     projects = await sync_to_async(list)(
         EcoProject.objects.filter(date__lt=timezone.now()).order_by('-date')
@@ -85,23 +82,19 @@ async def list_past_events(message: types.Message):
         return
 
     for p in projects:
-        text = f"✅ <b>{p.title}</b>\n📅 {p.date.strftime('%d.%m.%Y')}\n\nTadbir yakunlangan."
-        await message.answer(text, parse_mode="HTML")
+        await message.answer(f"✅ <b>{p.title}</b>\n📅 {p.date.strftime('%d.%m.%Y')}\n\nTadbir yakunlangan.")
 
-# Обработка "Назад" и прочего текста
-async def handle_eco_logic(message: types.Message, state: FSMContext):
+async def handle_back(message: types.Message, state: FSMContext):
     if "Orqaga" in message.text:
         await state.finish()
         from ..keyboards import reply
         await message.answer("Asosiy menyu", reply_markup=reply.hi_there())
-    else:
-        # Если юзер просто что-то пишет в этом меню, ничего не делаем или даем подсказку
-        pass
 
 # --- РЕГИСТРАЦИЯ ХЕНДЛЕРОВ ---
+
 def register_eco_clubs(dp: Dispatcher):
     dp.register_message_handler(show_events_menu, lambda m: "Tadbirlar" in m.text, state="*")
     dp.register_message_handler(list_upcoming_events, lambda m: "Kelgusi" in m.text, state="*")
     dp.register_message_handler(list_past_events, lambda m: "O'tgan" in m.text, state="*")
     dp.register_message_handler(process_registration, lambda m: "Ro'yxatdan o'tish" in m.text, state="*")
-    dp.register_message_handler(handle_eco_logic, state="*")
+    dp.register_message_handler(handle_back, lambda m: "Orqaga" in m.text, state="*")
