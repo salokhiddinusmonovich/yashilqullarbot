@@ -64,6 +64,18 @@ class TGUser(TimeBasedModel):
         verbose_name='O‘qish joyi'
     )
 
+    balance = models.PositiveIntegerField(default=0, verbose_name="Эко-баллы") # Наши монетки
+    
+    # Можно добавить метод для определения статуса прямо в модель
+    @property
+    def rank(self):
+        if self.balance < 50:
+            return "🌱 Nihol (Росток)"
+        elif self.balance < 150:
+            return "🌳 Daraxt (Дерево)"
+        else:
+            return "🛡 Tabiat Himoyachisi (Защитник)"
+
     class Meta:
         verbose_name = 'пользователь'
         verbose_name_plural = 'пользователи'
