@@ -104,7 +104,6 @@ class EcoProject(models.Model):
     location_name = models.CharField(max_length=255, verbose_name="Manzil nomi")
     photo = models.ImageField(upload_to='projects/', null=True, blank=True, verbose_name="Rasm")
     is_active = models.BooleanField(default=True, verbose_name="Faolmi?")
-    secret_code = models.CharField(max_length=50, unique=True, verbose_name="Maxfiy kod")
 
     def __str__(self):
         return self.title
