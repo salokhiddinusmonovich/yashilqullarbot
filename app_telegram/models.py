@@ -116,26 +116,35 @@ class EcoProject(models.Model):
 
 class ProjectParticipation(models.Model):
     STATUS_CHOICES = [
-        ('pending', 'Kutilmoqda'),
-        ('registered', 'Qabul qilindi'),
-        ('attended', 'Ishtirok etdi'),
-        ('rejected', 'Rad etildi'),
+        ('attended', '✅ Keldi (Пришёл)'),
+        ('rejected', '❌ Kelmadi / Rad etildi (Отмена)'),
     ]
 
-    user = models.ForeignKey(TGUser, on_delete=models.CASCADE, related_name='participations')
+    user = models.ForeignKey(TGUser, on_user_delete=models.CASCADE, related_name='participations')
     project = models.ForeignKey(EcoProject, on_delete=models.CASCADE, related_name='participants')
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', verbose_name="Status")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, verbose_name="Status")
     applied_at = models.DateTimeField(auto_now_add=True)
 
-    def __str__(self):
-        # Исправил self.user.full_name на self.user.fullname
-        return f"{self.user.fullname} - {self.project.title}"
+    def save(self, *args, **kwargs):
+        # Если запись новая или статус изменился на "Пришёл"
+        if self.pk:
+            old_obj = ProjectParticipation.objects.get(pk=self.pk)
+            if old_obj.status != 'attended' and self.status == 'attended':
+                self.user.balance += 10 # Авто-балл
+                self.user.save()
+            elif old_obj.status == 'attended' and self.status != 'attended':
+                self.user.balance -= 10 # Забираем, если ошиблись
+                self.user.save()
+        elif self.status == 'attended':
+            self.user.balance += 10
+            self.user.save()
+            
+        super().save(*args, **kwargs)
 
     class Meta:
-        verbose_name = "Loyihada ishtiroк"
-        verbose_name_plural = "Loyihalarda ishtiroк"
         unique_together = ('user', 'project')
-
+        verbose_name = "Ishtirokchi"
+        verbose_name_plural = "Ishtirokchilar"
 
 class Partner(TimeBasedModel):
     name = models.CharField(max_length=255, verbose_name="Имя компании")
