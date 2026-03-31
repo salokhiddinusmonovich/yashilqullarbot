@@ -39,11 +39,7 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
     # 1. Порядок в таблице
     list_display = ('display_face', 'get_fullname', 'project', 'status', 'applied_at')
     
-    list_filter = (
-        ('project', admin.RelatedOnlyFieldListFilter), # Это заставит фильтр появиться
-        'status', 
-        'applied_at'
-    )
+    list_filter = ('project', 'status', 'applied_at')
     
     # 3. Поиск и действия
     search_fields = ('user__fullname', 'user__username', 'user__phone')
