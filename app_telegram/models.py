@@ -208,6 +208,15 @@ class ProjectParticipation(TimeBasedModel):
     )
     qr_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
 
+    def save(self, *args, **kwargs):
+        # Если статус изменился на "Keldi" (attended) впервые
+        if self.pk:
+            old_status = ProjectParticipation.objects.get(pk=self.pk).status
+            if old_status != 'attended' and self.status == 'attended':
+                self.user.balance += 10 # Добавляем баллы
+                self.user.save()
+        super().save(*args, **kwargs)
+
     class Meta:
         verbose_name = 'Loyiha ishtirokchisi'
         verbose_name_plural = 'Loyiha ishtirokchilari'
