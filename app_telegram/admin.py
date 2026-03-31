@@ -41,10 +41,10 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
     
     # 2. ЖЕСТКАЯ ФИЛЬТРАЦИЯ (Я добавил 'project__title' для надежности)
     list_filter = (
-        ('project', admin.RelatedOnlyFieldListFilter), # Покажет только те проекты, где есть участники
-        'status', 
-        'applied_at'
-    )
+    ('project', admin.RelatedOnlyFieldListFilter), 
+    'status', 
+    'applied_at'
+)
     
     # 3. Поиск и действия
     search_fields = ('user__fullname', 'user__username', 'user__phone')
