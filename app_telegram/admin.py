@@ -52,13 +52,17 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
 
     def display_face(self, obj):
         if obj.user and obj.user.photo:
-            # Выводим реальное фото из поля photo
-            return format_html(
-                '<img src="{}" width="50" height="50" style="border-radius:10px; object-fit:cover; border: 1px solid #444;"/>', 
-                obj.user.photo.url
-            )
+            try:
+                # Проверяем, есть ли url у фото
+                url = obj.user.photo.url
+                return format_html(
+                    '<img src="{}" width="65" height="65" style="border-radius:10px; object-fit:cover; border:2px solid #555;"/>', 
+                    url
+                )
+            except Exception:
+                return format_html('<b style="color:red;">Ошибка пути</b>')
         return "Нет фото"
-    display_face.short_description = 'Лицо'
+    display_face.short_description = 'ЛИЦО'
 
     def get_fullname(self, obj):
         return obj.user.fullname
