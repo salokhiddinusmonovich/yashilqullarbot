@@ -7,7 +7,7 @@ def hi_there():
         keyboard=[
             [KeyboardButton(text="👤 Mening profilim"), KeyboardButton(text="🎯 Loyiha yetakchilari")],
             [KeyboardButton(text="🌟 Biz haqimizda"), KeyboardButton(text="🚀 Loyihaga qo‘shilish")],
-            [KeyboardButton(text="🌱 Tadbirlar"), KeyboardButton(text="Hamkorlarimiz")],
+            [KeyboardButton(text="🌱 Tadbirlar")],
 
             
         ],
