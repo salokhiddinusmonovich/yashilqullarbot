@@ -120,7 +120,7 @@ class ProjectParticipation(models.Model):
         ('rejected', '❌ Kelmadi / Rad etildi (Отмена)'),
     ]
 
-    user = models.ForeignKey(TGUser, on_user_delete=models.CASCADE, related_name='participations')
+    user = models.ForeignKey(TGUser, on_delete=models.CASCADE, related_name='participations')
     project = models.ForeignKey(EcoProject, on_delete=models.CASCADE, related_name='participants')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, verbose_name="Status")
     applied_at = models.DateTimeField(auto_now_add=True)
