@@ -25,25 +25,33 @@ async def show_events_menu(message: types.Message, state: FSMContext):
     await state.finish()
     await message.answer("<b>Tadbirlar bo'limi</b> ✨", reply_markup=get_events_menu(), parse_mode="HTML")
 
-async def list_upcoming_events(message: types.Message, state: FSMContext):
+# Список ПРОШЕДШИХ эвентов
+async def list_past_events(message: types.Message):
+    # Убираем лишние фильтры, оставляем только проверку даты
+    # order_by('-date') — чтобы самые свежие из прошедших были вверху
     projects = await sync_to_async(list)(
-        EcoProject.objects.filter(is_active=True, date__gt=timezone.now())
+        EcoProject.objects.filter(date__lt=timezone.now()).order_by('-date')
     )
     
     if not projects:
-        await message.answer("Hozircha yangi tadbirlar yo'q. 😔", reply_markup=get_events_menu())
+        await message.answer("Tarixda hali tadbirlar yo'q. 🌳")
         return
 
     for p in projects:
         text = (
-            f"🚀 <b>{p.title}</b>\n\n"
-            f"📅 <b>Sana:</b> {p.date.strftime('%d.%m.%Y %H:%M')}\n"
-            f"📍 <b>Joy:</b> {p.location_name}\n\n"
-            f"📝 {p.description}\n\n"
-            f"<i>Pastdagi tugmani bosing 👇</i>"
+            f"✅ <b>{p.title}</b>\n"
+            f"📅 <b>Sana:</b> {p.date.strftime('%d.%m.%Y')}\n\n"
+            f"<i>Ushbu tadbir muvaffaqiyatli yakunlangan. Ishtirok etganingiz uchun rahmat!</i>"
         )
-        # ВАЖНО: Прикрепляем клавиатуру РЕГИСТРАЦИИ к каждому сообщению об эвенте
-        await message.answer(text, reply_markup=get_registration_kb(), parse_mode="HTML")
+        
+        # Если есть фото — шлем с фото, если нет — текстом
+        if p.photo:
+            try:
+                await message.answer_photo(types.InputFile(p.photo.path), caption=text, parse_mode="HTML")
+            except Exception:
+                await message.answer(text, parse_mode="HTML")
+        else:
+            await message.answer(text, parse_mode="HTML")
 
 async def process_registration(message: types.Message, state: FSMContext):
     user = await sync_to_async(TGUser.objects.get)(tg_id=message.from_user.id)
