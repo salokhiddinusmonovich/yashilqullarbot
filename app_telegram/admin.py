@@ -35,26 +35,22 @@ def make_rejected(modeladmin, request, queryset):
 @admin.register(ProjectParticipation)
 class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
     resource_class = ParticipationResource
-    
-    # Что видим в таблице
     list_display = ('display_face', 'get_fullname', 'project', 'status', 'applied_at')
     
-    # --- ВОТ ОНА, ФИЛЬТРАЦИЯ ПО ЭВЕНТУ (ПРОЕКТУ) ---
-    # Позволяет выбрать конкретный проект в правой колонке
+    # ПРОВЕРЬ: 'project' должен быть здесь первым!
     list_filter = ('project', 'status', 'applied_at') 
     
-    # Поиск для быстрого нахождения человека
     search_fields = ('user__fullname', 'user__username', 'user__phone')
-    
-    # Массовые действия
     actions = [make_attended, make_rejected]
-    
-    # Сколько людей показывать на одной странице (сразу 500, чтобы не листать)
     list_per_page = 500 
 
     def display_face(self, obj):
         if obj.user and obj.user.photo:
-            return format_html('<img src="{}" width="50" height="50" style="border-radius:50%; object-fit:cover;"/>', obj.user.photo.url)
+            # Добавляем onerror, чтобы если картинка не грузится, была иконка
+            return format_html(
+                '<img src="{}" width="50" height="50" style="border-radius:50%; object-fit:cover;" onerror="this.src=\'https://ui-avatars.com/api/?name=User\';"/>', 
+                obj.user.photo.url
+            )
         return "👤"
     display_face.short_description = 'Лицо'
 
