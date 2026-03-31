@@ -5,7 +5,7 @@ from asgiref.sync import sync_to_async
 from django.utils import timezone
 from app_telegram.models import TGUser, EcoProject, ProjectParticipation
 
-# --- КЛАВИАТУРЫ ---
+# --- ПРОСТЫЕ КЛАВИАТУРЫ ---
 
 def get_events_menu():
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
@@ -15,17 +15,19 @@ def get_events_menu():
 
 def get_registration_kb():
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(KeyboardButton("✅ Ro'yxatdan o'tish")) 
+    kb.add(KeyboardButton("✅ Ro'yxatdan o'tish"))
     kb.add(KeyboardButton("⬅️ Orqaga"))
     return kb
 
 # --- HANDLERS ---
 
+# Главное меню
 async def show_events_menu(message: types.Message, state: FSMContext):
     await state.finish()
-    await message.answer("<b>Tadbirlar bo'limi</b> ✨", reply_markup=get_events_menu(), parse_mode="HTML")
+    await message.answer("<b>Tadbirlar bo'limi</b> ✨\n\nBo'limni tanlang:", 
+                         reply_markup=get_events_menu(), parse_mode="HTML")
 
-# ВОТ ЭТА ФУНКЦИЯ БЫЛА УДАЛЕНА:
+# Список будущих мероприятий
 async def list_upcoming_events(message: types.Message, state: FSMContext):
     projects = await sync_to_async(list)(
         EcoProject.objects.filter(is_active=True, date__gt=timezone.now())
@@ -45,79 +47,61 @@ async def list_upcoming_events(message: types.Message, state: FSMContext):
         )
         await message.answer(text, reply_markup=get_registration_kb(), parse_mode="HTML")
 
-# Список ПРОШЕДШИХ эвентов
-async def list_past_events(message: types.Message):
-    projects = await sync_to_async(list)(
-        EcoProject.objects.filter(date__lt=timezone.now()).order_by('-date')
-    )
-    
-    if not projects:
-        await message.answer("Tarixda hali tadbirlar yo'q. 🌳")
-        return
-
-    for p in projects:
-        text = (
-            f"✅ <b>{p.title}</b>\n"
-            f"📅 <b>Sana:</b> {p.date.strftime('%d.%m.%Y')}\n\n"
-            f"<i>Ushbu tadbir muvaffaqiyatli yakunlangan.</i>"
-        )
-        
-        if p.photo:
-            try:
-                await message.answer_photo(types.InputFile(p.photo.path), caption=text, parse_mode="HTML")
-            except Exception:
-                await message.answer(text, parse_mode="HTML")
-        else:
-            await message.answer(text, parse_mode="HTML")
-
+# Регистрация (Простая логика: Записали в базу -> Ответили юзеру)
 async def process_registration(message: types.Message, state: FSMContext):
     user = await sync_to_async(TGUser.objects.get)(tg_id=message.from_user.id)
+    # Берем ближайший активный проект
     project = await sync_to_async(EcoProject.objects.filter(is_active=True, date__gt=timezone.now()).first)()
     
     if not project:
-        await message.answer("Loyihalar topilmadi. ❌", reply_markup=get_events_menu())
+        await message.answer("Xatolik: Faol loyihalar topilmadi. ❌", reply_markup=get_events_menu())
         return
 
+    # Создаем запись в базе (по умолчанию статус 'pending' в модели)
     part, created = await sync_to_async(ProjectParticipation.objects.get_or_create)(
         user=user, project=project
     )
     
     if created:
+        # Ответ на узбекском, как ты просил
         await message.answer(
             f"✅ <b>Arizangiz qabul qilindi!</b>\n\n"
             f"Loyiha: {project.title}\n"
-            f"Adminlar tasdiqlashini kuting. ✨",
+            f"Biz sizning profilingizni ko'rib chiqamiz va tez orada o'zimiz aloqaga chiqamiz. "
+            f"Iltimos, kuting! ✨",
             reply_markup=get_events_menu(),
             parse_mode="HTML"
         )
     else:
         await message.answer("Siz allaqachon ro'yxatdan o'tgansiz! 😊", reply_markup=get_events_menu())
 
-async def handle_everything(message: types.Message, state: FSMContext):
+# Прошедшие мероприятия
+async def list_past_events(message: types.Message):
+    projects = await sync_to_async(list)(
+        EcoProject.objects.filter(date__lt=timezone.now()).order_by('-date')
+    )
+    if not projects:
+        await message.answer("Tarixda hali tadbirlar yo'q. 🌳")
+        return
+
+    for p in projects:
+        text = f"✅ <b>{p.title}</b>\n📅 {p.date.strftime('%d.%m.%Y')}\n\nTadbir yakunlangan."
+        await message.answer(text, parse_mode="HTML")
+
+# Обработка "Назад" и прочего текста
+async def handle_eco_logic(message: types.Message, state: FSMContext):
     if "Orqaga" in message.text:
         await state.finish()
         from ..keyboards import reply
         await message.answer("Asosiy menyu", reply_markup=reply.hi_there())
-        return
-    
-    code = message.text.strip()
-    project = await sync_to_async(EcoProject.objects.filter(secret_code=code, is_active=True).first)()
-    if project:
-        user = await sync_to_async(TGUser.objects.get)(tg_id=message.from_user.id)
-        part = await sync_to_async(ProjectParticipation.objects.filter(user=user, project=project).first)()
-        if part and part.status == 'registered':
-            part.status = 'attended'
-            await sync_to_async(part.save)()
-            await message.answer("🎉 10 ball berildi!")
-        elif part and part.status == 'attended':
-            await message.answer("Ball olib bo'lingan. ✅")
-        else:
-            await message.answer("Siz hali tasdiqlanmagansiz. ❌")
+    else:
+        # Если юзер просто что-то пишет в этом меню, ничего не делаем или даем подсказку
+        pass
 
-# --- РЕГИСТРАЦИЯ ---
+# --- РЕГИСТРАЦИЯ ХЕНДЛЕРОВ ---
 def register_eco_clubs(dp: Dispatcher):
     dp.register_message_handler(show_events_menu, lambda m: "Tadbirlar" in m.text, state="*")
     dp.register_message_handler(list_upcoming_events, lambda m: "Kelgusi" in m.text, state="*")
-    dp.register_message_handler(list_past_events, lambda m: "O'tgan" in m.text, state="*") # Добавил сюда хендлер для прошедших
+    dp.register_message_handler(list_past_events, lambda m: "O'tgan" in m.text, state="*")
     dp.register_message_handler(process_registration, lambda m: "Ro'yxatdan o'tish" in m.text, state="*")
-    dp.register_message_handler(handle_everything, state="*")
+    dp.register_message_handler(handle_eco_logic, state="*")

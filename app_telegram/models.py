@@ -126,66 +126,45 @@ class TeamMemberYashilQullar(TimeBasedModel):
 
 
 
-
-class EcoProject(TimeBasedModel):
-    title = models.CharField(max_length=255, verbose_name='Nomi')
-    description = models.TextField(verbose_name='Tavsif')
-    date = models.DateTimeField(verbose_name='Sana va vaqt')
-    location_name = models.CharField(max_length=255, verbose_name='Joy nomi')
-    location_url = models.URLField(verbose_name='Google/Yandex Map linki', blank=True, null=True)
-    photo = models.ImageField(upload_to='projects/', verbose_name='Rasm', blank=True, null=True)
+class EcoProject(models.Model):
+    title = models.CharField(max_length=255, verbose_name="Loyiha nomi")
+    description = models.TextField(verbose_name="Tavsif")
+    date = models.DateTimeField(verbose_name="Sana va vaqt")
+    location_name = models.CharField(max_length=255, verbose_name="Manzil nomi")
+    photo = models.ImageField(upload_to='projects/', null=True, blank=True, verbose_name="Rasm")
+    is_active = models.BooleanField(default=True, verbose_name="Faolmi?")
     
-    # Секретный код для начисления баллов
-    secret_code = models.CharField(max_length=50, verbose_name='Maxfiy kod', blank=True, null=True)
-    
-    # Ссылка на спец. канал для этого эвента
-    channel_link = models.URLField(verbose_name='Telegram kanal linki', blank=True, null=True)
-    
-    is_active = models.BooleanField(default=True, verbose_name='Faolmi')
-    max_participants = models.PositiveIntegerField(blank=True, null=True, verbose_name='Maksimal ishtirokchilar')
-
-    class Meta:
-        verbose_name = 'Eco loyiha'
-        verbose_name_plural = 'Eco loyihalar'
+    # Секретный код оставляем, если вдруг захочешь давать его на месте
+    secret_code = models.CharField(max_length=50, unique=True, verbose_name="Maxfiy kod")
 
     def __str__(self):
         return self.title
 
-class ProjectParticipation(TimeBasedModel):
-    class Status(models.TextChoices):
-        PENDING = 'pending', 'Kutilmoqda' # Ожидает проверки
-        REGISTERED = 'registered', 'Qabul qilindi' # Принят
-        ATTENDED = 'attended', 'Keldi'
-        REJECTED = 'rejected', 'Rad etildi'
+    class Meta:
+        verbose_name = "Eco loyiha"
+        verbose_name_plural = "Eco loyihalar"
 
-    user = models.ForeignKey(TGUser, on_delete=models.CASCADE)
-    project = models.ForeignKey(EcoProject, on_delete=models.CASCADE)
-    status = models.CharField(
-        max_length=20, 
-        choices=Status.choices, 
-        default=Status.PENDING # По умолчанию — ожидание
-    )
 
-    def save(self, *args, **kwargs):
-        is_new = self.pk is None
-        old_status = None
-        if not is_new:
-            # Получаем старый статус из базы
-            old_status = ProjectParticipation.objects.get(pk=self.pk).status
+class ProjectParticipation(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Kutilmoqda'),
+        ('registered', 'Qabul qilindi'),
+        ('attended', 'Ishtirok etdi'),
+        ('rejected', 'Rad etildi'),
+    ]
 
-        super().save(*args, **kwargs)
+    user = models.ForeignKey(TGUser, on_delete=models.CASCADE, related_name='participations')
+    project = models.ForeignKey(EcoProject, on_delete=models.CASCADE, related_name='participants')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', verbose_name="Status")
+    applied_at = models.DateTimeField(auto_now_add=True)
 
-        # Если ты в админке поменял с 'pending' на 'registered'
-        if old_status == 'pending' and self.status == 'registered':
-            from tgbot.services.notifications import send_acceptance_msg
-            import asyncio
-            # Отправляем юзеру сообщение
-            try:
-                loop = asyncio.get_event_loop()
-                loop.create_task(send_acceptance_msg(self.user.tg_id, self.project))
-            except:
-                pass
+    def __str__(self):
+        return f"{self.user.full_name} - {self.project.title}"
 
+    class Meta:
+        verbose_name = "Loyihada ishtirok"
+        verbose_name_plural = "Loyihalarda ishtirok"
+        unique_together = ('user', 'project') # Чтобы нельзя было дважды на один и тот же ивент
 
 class Partner(TimeBasedModel):
     name = models.CharField(max_length=255, verbose_name="Имя компании")
