@@ -127,36 +127,22 @@ class TeamMemberYashilQullar(TimeBasedModel):
 
 
 
-
 class EcoProject(TimeBasedModel):
-    title = models.CharField(
-        max_length=255,
-        verbose_name='Nomi'
-    )
-
-    description = models.TextField(
-        verbose_name='Tavsif'
-    )
-
-    date = models.DateTimeField(
-        verbose_name='Sana va vaqt'
-    )
-
-    location = models.CharField(
-        max_length=255,
-        verbose_name='Joy'
-    )
-
-    is_active = models.BooleanField(
-        default=True,
-        verbose_name='Faolmi'
-    )
-
-    max_participants = models.PositiveIntegerField(
-        blank=True,
-        null=True,
-        verbose_name='Maksimal ishtirokchilar soni'
-    )
+    title = models.CharField(max_length=255, verbose_name='Nomi')
+    description = models.TextField(verbose_name='Tavsif')
+    date = models.DateTimeField(verbose_name='Sana va vaqt')
+    location_name = models.CharField(max_length=255, verbose_name='Joy nomi')
+    location_url = models.URLField(verbose_name='Google/Yandex Map linki', blank=True, null=True)
+    photo = models.ImageField(upload_to='projects/', verbose_name='Rasm', blank=True, null=True)
+    
+    # Секретный код для начисления баллов
+    secret_code = models.CharField(max_length=50, verbose_name='Maxfiy kod', blank=True, null=True)
+    
+    # Ссылка на спец. канал для этого эвента
+    channel_link = models.URLField(verbose_name='Telegram kanal linki', blank=True, null=True)
+    
+    is_active = models.BooleanField(default=True, verbose_name='Faolmi')
+    max_participants = models.PositiveIntegerField(blank=True, null=True, verbose_name='Maksimal ishtirokchilar')
 
     class Meta:
         verbose_name = 'Eco loyiha'
@@ -165,68 +151,36 @@ class EcoProject(TimeBasedModel):
     def __str__(self):
         return self.title
 
-
-
 class ProjectParticipation(TimeBasedModel):
     class Status(models.TextChoices):
-        REGISTERED = 'registered', 'Ro‘yxatdan o‘tdi'
+        PENDING = 'pending', 'Kutilmoqda' # Ожидает проверки
+        REGISTERED = 'registered', 'Qabul qilindi' # Принят
         ATTENDED = 'attended', 'Keldi'
-        CANCELED = 'canceled', 'Bekor qilindi'
+        REJECTED = 'rejected', 'Rad etildi'
 
-    user = models.ForeignKey(
-        TGUser,
-        on_delete=models.CASCADE,
-        related_name='participations',
-        verbose_name='Telegram foydalanuvchi'
-    )
-
-    project = models.ForeignKey(
-        EcoProject,
-        on_delete=models.CASCADE,
-        related_name='participants',
-        verbose_name='Loyiha'
-    )
-
-    qr_token = models.UUIDField(
-        default=uuid.uuid4,
-        unique=True,
-        editable=False,
-        verbose_name='QR token'
-    )
-
+    user = models.ForeignKey(TGUser, on_delete=models.CASCADE)
+    project = models.ForeignKey(EcoProject, on_delete=models.CASCADE)
     status = models.CharField(
-        max_length=20,
-        choices=Status.choices,
-        default=Status.REGISTERED,
-        verbose_name='Holat'
+        max_length=20, 
+        choices=Status.choices, 
+        default=Status.PENDING # По умолчанию — ожидание
     )
-
-    checked_in_at = models.DateTimeField(
-        blank=True,
-        null=True,
-        verbose_name='Keldi vaqti'
-    )
-    qr_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
 
     def save(self, *args, **kwargs):
-        # Если статус изменился на "Keldi" (attended) впервые
-        if self.pk:
+        is_new = self.pk is None
+        old_status = None
+        if not is_new:
             old_status = ProjectParticipation.objects.get(pk=self.pk).status
-            if old_status != 'attended' and self.status == 'attended':
-                self.user.balance += 10 # Добавляем баллы
-                self.user.save()
+
         super().save(*args, **kwargs)
 
-    class Meta:
-        verbose_name = 'Loyiha ishtirokchisi'
-        verbose_name_plural = 'Loyiha ishtirokchilari'
-        unique_together = ('user', 'project')
-
-    def __str__(self):
-        return f'{self.user.fullname} – {self.project.title}'
-
-
-
+        # ЛОГИКА АВТО-ОТВЕТА ОТ БОТА
+        # Если статус изменился на "Принят", бот пишет юзеру
+        if old_status == 'pending' and self.status == 'registered':
+            from tgbot.services.notifications import send_acceptance_msg
+            import asyncio
+            # Запускаем отправку сообщения
+            asyncio.run(send_acceptance_msg(self.user.tg_id, self.project))
 
 
 class Partner(TimeBasedModel):
