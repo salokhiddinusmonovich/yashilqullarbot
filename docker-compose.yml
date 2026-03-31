@@ -2,7 +2,7 @@ version: '3.9'
 
 services:
   db:
-    image: postgres:15.0-alpine
+    image: postgres:15-alpine
     container_name: yashilqollar-db
     restart: always
     environment:
@@ -11,8 +11,6 @@ services:
       - POSTGRES_PASSWORD=postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - 5433:5432
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -20,68 +18,49 @@ services:
       retries: 5
 
   redis:
+    image: redis:7-alpine
     container_name: yashilqollar-redis
-    image: redis:7.2-rc3-alpine
     restart: always
-    ports:
-      - 6379:6379
-    volumes:
-      - redis_data:/data
 
   web:
     container_name: yashilqollar-web
     build:
-      dockerfile: Dockerfile.web
       context: .
-    working_dir: "/usr/src/app/web"
+      dockerfile: Dockerfile.web
     volumes:
-      - .:/usr/src/app/web
+      - .:/usr/src/app
     environment:
-      - POSTGRES_DB=postgres
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - SECRET_KEY=123456qwerty
-      - DEBUG=True
-    # Добавили sleep 10, чтобы база точно успела подняться перед миграциями
-    command: sh -c "sleep 10 && python manage.py migrate && python manage.py collectstatic --noinput && python manage.py runserver 0.0.0.0:8000"
-    ports:
-      - 8000:8000
-    restart: always
+      - PYTHONPATH=/usr/src/app
+      - POSTGRES_HOST=db
+      - BOT_TOKEN=твои_токен_сюда
+      - ADMINS=твой_id
+    command: >
+      sh -c "python manage.py migrate && 
+             python manage.py collectstatic --noinput && 
+             python manage.py runserver 0.0.0.0:8000"
     depends_on:
       db:
         condition: service_healthy
-      redis:
-        condition: service_started
 
   bot:
     container_name: yashilqollar-bot
     build:
-      dockerfile: Dockerfile.bot
       context: .
-    working_dir: "/usr/src/app/tg_bot"
+      dockerfile: Dockerfile.bot
     volumes:
-      - .:/usr/src/app/tg_bot
+      - .:/usr/src/app
     environment:
-      - POSTGRES_DB=postgres
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-    # Бот тоже ждет базу
-    command: sh -c "sleep 15 && python bot.py"
-    restart: always
+      - PYTHONPATH=/usr/src/app
+      - BOT_TOKEN=твой_токен_сюда
+      - ADMINS=твой_id
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    command: python bot.py
     depends_on:
       db:
         condition: service_healthy
-      redis:
-        condition: service_started
       web:
         condition: service_started
 
-  adminer:
-    image: adminer
-    restart: always
-    ports:
-      - 8080:8080
-
 volumes:
   postgres_data:
-  redis_data:
