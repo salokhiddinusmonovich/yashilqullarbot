@@ -205,3 +205,24 @@ class ProjectParticipation(TimeBasedModel):
         return f'{self.user.fullname} – {self.project.title}'
 
 
+
+
+
+class Partner(TimeBasedModel):
+    name = models.CharField(max_length=255, verbose_name="Имя компании")
+    description = models.TextField(blank=True, null=True, verbose_name="Описание партнерства")
+    logo = models.ImageField(upload_to='partners_logos/', blank=True, null=True, verbose_name="Логотип")
+    
+    # Соцсети
+    instagram = models.URLField(blank=True, null=True, verbose_name="Instagram Link")
+    telegram = models.URLField(blank=True, null=True, verbose_name="Telegram Link")
+    linkedin = models.URLField(blank=True, null=True, verbose_name="LinkedIn Link")
+    
+    is_active = models.BooleanField(default=True, verbose_name="Показывать в боте")
+
+    class Meta:
+        verbose_name = 'Партнер'
+        verbose_name_plural = 'Партнеры'
+
+    def __str__(self):
+        return self.name
