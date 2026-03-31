@@ -59,13 +59,15 @@ services:
     environment:
       - PYTHONPATH=/usr/src/app
       - BOT_TOKEN=8597081931:AAHrLlthINCN8nIZp_zh3WEbzfc-5GhoHmw
-      - ADMINS=111,
+      - ADMINS=111
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - POSTGRES_HOST=db
       - POSTGRES_DB=postgres
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
+      - DJANGO_SETTINGS_MODULE=dj_ac.settings
+    # Мы запускаем bot.py прямо из корня /usr/src/app
     command: python bot.py
     restart: always
     depends_on:
