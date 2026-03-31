@@ -25,29 +25,44 @@ async def profile_menu(message: types.Message, state: FSMContext):
         parse_mode="HTML"
     )
 
-# --- 2. ПРОСМОТР ПРОФИЛЯ ---
 async def view_my_profile(message: types.Message):
+    # 1. Получаем юзера
     user = await sync_to_async(TGUser.objects.filter(tg_id=message.from_user.id).first)()
     
     if not user:
-        await message.answer("Ro'yxatdan o'ting: /start")
+        await message.answer("Siz hali ro'yxatdan o'tmagansiz. ❗")
         return
+
+    # 2. Получаем список посещенных ивентов (статус 'attended')
+    from app_telegram.models import ProjectParticipation
+    attended_projects = await sync_to_async(list)(
+        ProjectParticipation.objects.filter(user=user, status='attended').select_related('project')
+    )
+    
+    # Считаем количество
+    events_count = len(attended_projects)
+    
+    # Формируем список названий ивентов
+    projects_titles = "\n".join([f"✅ {p.project.title}" for p in attended_projects]) or "Hali tadbirlarda qatnashmadingiz 🌿"
 
     profile_text = (
         f"🌟 <b>SIZNING PROFILINGIZ</b>\n"
         f"━━━━━━━━━━━━━━\n"
         f"🏆 <b>Daraja:</b> {user.rank}\n"
         f"💰 <b>Balans:</b> {user.balance} eko-ball\n"
+        f"📅 <b>Tadbirlar:</b> {events_count} ta\n" # Сколько раз пришел
         f"━━━━━━━━━━━━━━\n"
         f"👤 <b>Ism:</b> {user.fullname}\n"
         f"📞 <b>Tel:</b> {user.phone}\n"
         f"📍 <b>Hudud:</b> {user.get_region_display()}\n\n"
-        f"🍀 <i>Yashil Qo'llar loyihasi</i>"
+        f"📜 <b>Ishtirok etgan tadbirlaringiz:</b>\n"
+        f"{projects_titles}\n\n"
+        f"🍀 <i>Yashil Qo'llar — birgalikda kuchmiz!</i>"
     )
 
+    # Вывод фото (как в прошлом коде)
     if user.photo:
         try:
-            # Отправляем через InputFile, это надежнее
             await message.answer_photo(photo=types.InputFile(user.photo.path), caption=profile_text, parse_mode="HTML")
         except:
             await message.answer(profile_text, parse_mode="HTML")
