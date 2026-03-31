@@ -4,14 +4,15 @@ from aiogram.dispatcher import FSMContext
 from asgiref.sync import sync_to_async
 from aiogram import Dispatcher
 from app_telegram.models import TGUser
+from ..keyboards import reply # Убедись, что путь к твоим главным кнопкам верный
 
 class ProfileUpdate(StatesGroup):
     waiting_for_name = State()
     waiting_for_photo = State()
 
-
 # --- 1. ГЛАВНОЕ МЕНЮ ПРОФИЛЯ ---
-async def profile_menu(message: types.Message):
+async def profile_menu(message: types.Message, state: FSMContext):
+    await state.finish() # Сбрасываем всё, чтобы кнопки работали сразу
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add("📄 Profilni ko'rish")
     kb.add("📸 Rasmni yangilash", "✍️ Ismni o'zgartirish")
@@ -46,47 +47,66 @@ async def view_my_profile(message: types.Message):
 
     if user.photo:
         try:
-            with open(user.photo.path, 'rb') as photo:
-                await message.answer_photo(photo=photo, caption=profile_text, parse_mode="HTML")
+            # Отправляем через InputFile, это надежнее
+            await message.answer_photo(photo=types.InputFile(user.photo.path), caption=profile_text, parse_mode="HTML")
         except:
             await message.answer(profile_text, parse_mode="HTML")
     else:
         await message.answer(profile_text, parse_mode="HTML")
 
-# --- 3. ИЗМЕНЕНИЕ ФОТО (ЛОГИКА) ---
+# --- 3. ИЗМЕНЕНИЕ ИМЕНИ ---
+async def ask_for_name(message: types.Message):
+    await message.answer("✍️ <b>Yangi ism va familiyangizni kiriting:</b>", parse_mode="HTML")
+    await ProfileUpdate.waiting_for_name.set()
+
+async def save_new_name(message: types.Message, state: FSMContext):
+    new_name = message.text
+    user = await sync_to_async(TGUser.objects.get)(tg_id=message.from_user.id)
+    user.fullname = new_name
+    await sync_to_async(user.save)()
+    
+    await message.answer(f"✅ <b>Ism muvaffaqiyatli o'zgartirildi:</b> {new_name}")
+    await profile_menu(message, state)
+
+# --- 4. ИЗМЕНЕНИЕ ФОТО ---
 async def ask_for_photo(message: types.Message):
     await message.answer("📸 <b>Yangi profilingiz uchun rasm yuboring:</b>", parse_mode="HTML")
     await ProfileUpdate.waiting_for_photo.set()
 
-async def save_new_photo(message: types.ContentType.PHOTO, state: FSMContext):
+async def save_new_photo(message: types.Message, state: FSMContext):
+    if not message.photo:
+        await message.answer("Iltimos, rasm yuboring! 📸")
+        return
+
     user = await sync_to_async(TGUser.objects.get)(tg_id=message.from_user.id)
-    
-    # Сохраняем фото на сервер
     photo = message.photo[-1]
-    photo_path = f"media/users_photos/user_{user.tg_id}.jpg"
-    await photo.download(destination_file=photo_path)
     
-    # Обновляем в базе
-    user.photo = f"users_photos/user_{user.tg_id}.jpg"
+    photo_name = f"users_photos/user_{user.tg_id}.jpg"
+    await photo.download(destination_file=f"media/{photo_name}")
+    
+    user.photo = photo_name
     await sync_to_async(user.save)()
     
-    await message.answer("✅ <b>Profilingiz rasmi muvaffaqiyatli yangilandi!</b>", parse_mode="HTML")
+    await message.answer("✅ <b>Profilingiz rasmi yangilandi!</b>")
+    await profile_menu(message, state)
+
+# --- 5. КНОПКА НАЗАД (ГЛАВНОЕ МЕНЮ) ---
+async def go_back_to_main(message: types.Message, state: FSMContext):
     await state.finish()
-    await profile_menu(message)
+    await message.answer(
+        "⬅️ Asosiy menyuga qaytdingiz", 
+        reply_markup=reply.hi_there() # Вызываем твоё главное меню
+    )
 
-# --- РЕГИСТРАЦИЯ ВСЕХ КНОПОК ---
+# --- РЕГИСТРАЦИЯ ХЕНДЛЕРОВ ---
 def register_profile(dp: Dispatcher):
-    # Основная кнопка
+    # Используем state="*", чтобы эти кнопки работали ВСЕГДА
     dp.register_message_handler(profile_menu, text="👤 Mening profilim", state="*")
-    
-    # Кнопка Просмотра
     dp.register_message_handler(view_my_profile, text="📄 Profilni ko'rish", state="*")
-    
-    # Кнопка Изменения фото
+    dp.register_message_handler(ask_for_name, text="✍️ Ismni o'zgartirish", state="*")
     dp.register_message_handler(ask_for_photo, text="📸 Rasmni yangilash", state="*")
+    dp.register_message_handler(go_back_to_main, text="⬅️ Orqaga", state="*")
     
-    # Хендлер, который ловит само ФОТО
+    # Состояния FSM
+    dp.register_message_handler(save_new_name, state=ProfileUpdate.waiting_for_name)
     dp.register_message_handler(save_new_photo, content_types=['photo'], state=ProfileUpdate.waiting_for_photo)
-
-    # Назад
-    dp.register_message_handler(lambda m: m.text == "⬅️ Orqaga", text="⬅️ Orqaga", state="*")
