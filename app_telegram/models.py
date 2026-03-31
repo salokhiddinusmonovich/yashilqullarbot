@@ -170,17 +170,21 @@ class ProjectParticipation(TimeBasedModel):
         is_new = self.pk is None
         old_status = None
         if not is_new:
+            # Получаем старый статус из базы
             old_status = ProjectParticipation.objects.get(pk=self.pk).status
 
         super().save(*args, **kwargs)
 
-        # ЛОГИКА АВТО-ОТВЕТА ОТ БОТА
-        # Если статус изменился на "Принят", бот пишет юзеру
+        # Если ты в админке поменял с 'pending' на 'registered'
         if old_status == 'pending' and self.status == 'registered':
             from tgbot.services.notifications import send_acceptance_msg
             import asyncio
-            # Запускаем отправку сообщения
-            asyncio.run(send_acceptance_msg(self.user.tg_id, self.project))
+            # Отправляем юзеру сообщение
+            try:
+                loop = asyncio.get_event_loop()
+                loop.create_task(send_acceptance_msg(self.user.tg_id, self.project))
+            except:
+                pass
 
 
 class Partner(TimeBasedModel):

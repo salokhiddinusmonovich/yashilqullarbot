@@ -15,15 +15,13 @@ def get_events_menu():
 
 # --- HANDLERS ---
 
-# Главное меню (кнопка 🌱 Tadbirlar)
 async def show_events_menu(message: types.Message, state: FSMContext):
-    await state.finish() # Сбрасываем старые состояния
+    await state.finish()
     await message.answer("<b>Tadbirlar bo'limi.</b> ✨\n\nMarhamat, bo'limni tanlang:", 
                          reply_markup=get_events_menu(), parse_mode="HTML")
 
-# Список БУДУЩИХ (Upcoming)
 async def list_upcoming_events(message: types.Message):
-    # Берем только те, где стоит галочка Faolmi (is_active=True)
+    # Показываем только активные будущие ивенты
     projects = await sync_to_async(list)(
         EcoProject.objects.filter(date__gte=timezone.now(), is_active=True)
     )
@@ -38,12 +36,12 @@ async def list_upcoming_events(message: types.Message):
             f"📅 <b>Sana:</b> {p.date.strftime('%d.%m.%Y %H:%M')}\n"
             f"📍 <b>Joy:</b> {p.location_name}\n\n"
             f"📝 {p.description}\n\n"
-            f"<i>Arizangizni qoldiring, biz uni ko'rib chiqamiz!</i>"
+            f"<i>Ro'yxatdan o'ting, biz arizangizni ko'rib chiqamiz.</i>"
         )
         
         kb = InlineKeyboardMarkup()
-        # Важно: callback_data должна быть короткой
-        kb.add(InlineKeyboardButton("✅ Ro'yxatdan o'tish", callback_data=f"join_p_{p.id}"))
+        # Короткий префикс 'ev_' чтобы избежать ошибок длины callback_data
+        kb.add(InlineKeyboardButton("✅ Ro'yxatdan o'tish", callback_data=f"ev_{p.id}"))
 
         if p.photo:
             try:
@@ -53,61 +51,35 @@ async def list_upcoming_events(message: types.Message):
         else:
             await message.answer(text, reply_markup=kb, parse_mode="HTML")
 
-# Список ПРОШЕДШИХ (Past)
-async def list_past_events(message: types.Message):
-    projects = await sync_to_async(list)(
-        EcoProject.objects.filter(date__lt=timezone.now()).order_by('-date')
+# ОБРАБОТКА НАЖАТИЯ КНОПКИ (ИСПРАВЛЕНО)
+async def process_event_registration(callback: types.CallbackQuery):
+    project_id = callback.data.replace("ev_", "")
+    
+    user = await sync_to_async(TGUser.objects.get)(tg_id=callback.from_user.id)
+    project = await sync_to_async(EcoProject.objects.get)(id=project_id)
+    
+    # Создаем запись со статусом 'pending' (кутилмокда)
+    participation, created = await sync_to_async(ProjectParticipation.objects.get_or_create)(
+        user=user, project=project
     )
     
-    if not projects:
-        await message.answer("Tarixda hali tadbirlar yo'q. 🌳")
-        return
-
-    for p in projects:
-        text = f"✅ <b>{p.title}</b>\n📅 {p.date.strftime('%d.%m.%Y')}\n\nUshbu tadbir yakunlandi."
-        if p.photo:
-            try:
-                await message.answer_photo(types.InputFile(p.photo.path), caption=text, parse_mode="HTML")
-            except:
-                await message.answer(text, parse_mode="HTML")
-        else:
-            await message.answer(text, parse_mode="HTML")
-
-# ОБРАБОТКА НАЖАТИЯ НА КНОПКУ РЕГИСТРАЦИИ (FIXED)
-async def process_join_event(callback: types.CallbackQuery):
-    # Получаем ID проекта из callback_data (например, join_p_5 -> 5)
-    project_id = callback.data.replace("join_p_", "")
-    
-    try:
-        user = await sync_to_async(TGUser.objects.get)(tg_id=callback.from_user.id)
-        project = await sync_to_async(EcoProject.objects.get)(id=project_id)
-        
-        # Проверяем, не подавал ли уже заявку
-        participation, created = await sync_to_async(ProjectParticipation.objects.get_or_create)(
-            user=user, project=project
+    if created:
+        await callback.message.answer(
+            f"✅ <b>Arizangiz qabul qilindi!</b>\n\n"
+            f"Tashkilotchilar profilingizni tekshirishmoqda. "
+            f"Tasdiqlangach, bot sizga kanal linkini va manzilni yuboradi. "
+            f"Iltimos, kuting! ⏳",
+            parse_mode="HTML"
         )
-        
-        if created:
-            # Ответ, если заявка новая
-            await callback.message.answer(
-                f"✅ <b>Arizangiz qabul qilindi!</b>\n\n"
-                f"Tashkilotchilar profilingizni ko'rib chiqishadi. "
-                f"Tasdiqlangach, bot sizga kanal linkini yuboradi. kuting! ✨",
-                parse_mode="HTML"
-            )
-        else:
-            await callback.answer("Siz allaqachon ariza topshirgansiz! 😊", show_alert=True)
-            
-    except Exception as e:
-        await callback.answer("Xatolik yuz berdi. ❌", show_alert=True)
-        print(f"Error in join: {e}")
+    else:
+        await callback.answer("Siz allaqachon ariza topshirgansiz! 😊", show_alert=True)
     
     await callback.answer()
 
-# СЕКРЕТНЫЙ КОД (Для начисления баллов)
+# ПРОВЕРКА КОДА (Начисление баллов)
 async def check_secret_code(message: types.Message):
     code = message.text.strip()
-    # Проверяем, есть ли проект с таким кодом
+    # Ищем проект, где этот код совпадает
     project = await sync_to_async(EcoProject.objects.filter(secret_code=code, is_active=True).first)()
     
     if project:
@@ -116,30 +88,38 @@ async def check_secret_code(message: types.Message):
         
         if part:
             if part.status == 'attended':
-                await message.answer("Siz bu tadbir uchun ball olib bo'lgansiz! 🌟")
-            elif part.status == 'registered':
+                await message.answer("Siz bu tadbir uchun ball olib bo'lgansiz! ✅")
+            elif part.status == 'registered': # Если он был одобрен
                 part.status = 'attended'
                 await sync_to_async(part.save)()
-                await message.answer(f"🎉 Tabriklaymiz! <b>{project.title}</b> uchun 10 ball berildi!", parse_mode="HTML")
+                await message.answer(f"🎉 <b>Ajoyib!</b>\n{project.title} uchun 10 ball berildi!", parse_mode="HTML")
             else:
-                await message.answer("Arizangiz hali tasdiqlanmagan. ⏳")
+                await message.answer("Arizangiz hali tasdiqlanmagan, shuning uchun ball berilmaydi. ❌")
         else:
             await message.answer("Siz bu tadbirga ro'yxatdan o'tmagansiz! ❗")
-    # Если это просто текст, бот ничего не пишет (чтобы не спамить)
+
+async def list_past_events(message: types.Message):
+    projects = await sync_to_async(list)(
+        EcoProject.objects.filter(date__lt=timezone.now()).order_by('-date')
+    )
+    if not projects:
+        await message.answer("Tarixda hali tadbirlar yo'q. 🌳")
+        return
+    for p in projects:
+        await message.answer(f"✅ <b>{p.title}</b>\n📅 {p.date.strftime('%d.%m.%Y')}\n\nUshbu tadbir yakunlandi.")
 
 async def back_to_main(message: types.Message, state: FSMContext):
     await state.finish()
     await message.answer("Asosiy menyu", reply_markup=reply.hi_there())
 
-# --- РЕГИСТРАЦИЯ ХЕНДЛЕРОВ ---
 def register_eco_clubs(dp: Dispatcher):
     dp.register_message_handler(show_events_menu, text="🌱 Tadbirlar", state="*")
     dp.register_message_handler(list_upcoming_events, text="📅 Kelgusi tadbirlar", state="*")
     dp.register_message_handler(list_past_events, text="📜 O'tgan tadbirlar", state="*")
     dp.register_message_handler(back_to_main, text="⬅️ Orqaga", state="*")
     
-    # Регистрация колбэка кнопки (ID проекта)
-    dp.register_callback_query_handler(process_join_event, lambda c: c.data.startswith('join_p_'), state="*")
+    # Самое важное: регистрация колбэка
+    dp.register_callback_query_handler(process_event_registration, lambda c: c.data.startswith('ev_'), state="*")
     
-    # Проверка текста (кода)
+    # Слушаем секретный код
     dp.register_message_handler(check_secret_code, state="*")
