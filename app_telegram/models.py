@@ -1,8 +1,4 @@
-from django.contrib.auth.models import User
 from django.db import models
-import uuid
-from django.db import models
-
 
 class TimeBasedModel(models.Model):
     class Meta:
@@ -36,18 +32,9 @@ class TGUser(TimeBasedModel):
     email = models.EmailField(max_length=255)
     phone = models.CharField(max_length=20)
     username = models.CharField(max_length=255, blank=True, null=True, verbose_name='Username')
-    experience = models.TextField(
-    blank=True, 
-    null=True, 
-    verbose_name='tajribasi'
-    )
+    experience = models.TextField(blank=True, null=True, verbose_name='tajribasi')
 
-    photo = models.ImageField(
-    upload_to='users_photos/', 
-    blank=True, 
-    null=True, 
-    verbose_name='Profil rasmi'
-    )
+    photo = models.ImageField(upload_to='users_photos/', blank=True, null=True, verbose_name='Profil rasmi')
 
     region = models.CharField(
         max_length=20,
@@ -64,9 +51,8 @@ class TGUser(TimeBasedModel):
         verbose_name='O‘qish joyi'
     )
 
-    balance = models.PositiveIntegerField(default=0, verbose_name="Эко-баллы") # Наши монетки
+    balance = models.PositiveIntegerField(default=0, verbose_name="Эко-баллы")
     
-    # Можно добавить метод для определения статуса прямо в модель
     @property
     def rank(self):
         if self.balance < 50:
@@ -92,18 +78,8 @@ class TeamMemberYashilQullar(TimeBasedModel):
         verbose_name='Telegram foydalanuvchi'
     )
 
-    # Faqat jamoaga xos qo'shimcha ma'lumotlar qoladi
-    skills = models.TextField(
-        blank=True, 
-        null=True, 
-        verbose_name='Ko‘nikmalar'
-    )
-    telegram_username = models.CharField(
-        max_length=100, 
-        blank=True, 
-        null=True, 
-        verbose_name='Telegram username'
-    )
+    skills = models.TextField(blank=True, null=True, verbose_name='Ko‘nikmalar')
+    telegram_username = models.CharField(max_length=100, blank=True, null=True, verbose_name='Telegram username')
     
     FOCUS_CHOICES = [
         ('founder', 'Founder'),
@@ -118,12 +94,7 @@ class TeamMemberYashilQullar(TimeBasedModel):
         verbose_name_plural = 'Team members (Yashil Qullar)'
 
     def __str__(self):
-        # Ismni asosiy TGUser modelidan olamiz
         return self.tg_user.fullname
-
-
-
-
 
 
 class EcoProject(models.Model):
@@ -133,8 +104,6 @@ class EcoProject(models.Model):
     location_name = models.CharField(max_length=255, verbose_name="Manzil nomi")
     photo = models.ImageField(upload_to='projects/', null=True, blank=True, verbose_name="Rasm")
     is_active = models.BooleanField(default=True, verbose_name="Faolmi?")
-    
-    # Секретный код оставляем, если вдруг захочешь давать его на месте
     secret_code = models.CharField(max_length=50, unique=True, verbose_name="Maxfiy kod")
 
     def __str__(self):
@@ -159,19 +128,20 @@ class ProjectParticipation(models.Model):
     applied_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.user.full_name} - {self.project.title}"
+        # Исправил self.user.full_name на self.user.fullname
+        return f"{self.user.fullname} - {self.project.title}"
 
     class Meta:
-        verbose_name = "Loyihada ishtirok"
-        verbose_name_plural = "Loyihalarda ishtirok"
-        unique_together = ('user', 'project') # Чтобы нельзя было дважды на один и тот же ивент
+        verbose_name = "Loyihada ishtiroк"
+        verbose_name_plural = "Loyihalarda ishtiroк"
+        unique_together = ('user', 'project')
+
 
 class Partner(TimeBasedModel):
     name = models.CharField(max_length=255, verbose_name="Имя компании")
     description = models.TextField(blank=True, null=True, verbose_name="Описание партнерства")
     logo = models.ImageField(upload_to='partners_logos/', blank=True, null=True, verbose_name="Логотип")
     
-    # Соцсети
     instagram = models.URLField(blank=True, null=True, verbose_name="Instagram Link")
     telegram = models.URLField(blank=True, null=True, verbose_name="Telegram Link")
     linkedin = models.URLField(blank=True, null=True, verbose_name="LinkedIn Link")
