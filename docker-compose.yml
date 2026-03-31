@@ -27,13 +27,19 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.web
+    working_dir: "/usr/src/app"
     volumes:
       - .:/usr/src/app
     environment:
       - PYTHONPATH=/usr/src/app
       - POSTGRES_HOST=db
-      - BOT_TOKEN=твои_токен_сюда
-      - ADMINS=твой_id
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - SECRET_KEY=123456qwerty
+      - DEBUG=True
+    ports:
+      - "8000:8000"
     command: >
       sh -c "python manage.py migrate && 
              python manage.py collectstatic --noinput && 
@@ -47,15 +53,21 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.bot
+    working_dir: "/usr/src/app"
     volumes:
       - .:/usr/src/app
     environment:
       - PYTHONPATH=/usr/src/app
-      - BOT_TOKEN=твой_токен_сюда
-      - ADMINS=твой_id
+      - BOT_TOKEN=8597081931:AAHrLlthINCN8nIZp_zh3WEbzfc-5GhoHmw
+      - ADMINS=111,
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - POSTGRES_HOST=db
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
     command: python bot.py
+    restart: always
     depends_on:
       db:
         condition: service_healthy
