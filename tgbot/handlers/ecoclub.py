@@ -15,7 +15,7 @@ def get_events_menu():
 
 def get_registration_kb():
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(KeyboardButton("✅ Ro'yxatdan o'tish")) # Вот эта кнопка должна появиться!
+    kb.add(KeyboardButton("✅ Ro'yxatdan o'tish")) 
     kb.add(KeyboardButton("⬅️ Orqaga"))
     return kb
 
@@ -25,10 +25,28 @@ async def show_events_menu(message: types.Message, state: FSMContext):
     await state.finish()
     await message.answer("<b>Tadbirlar bo'limi</b> ✨", reply_markup=get_events_menu(), parse_mode="HTML")
 
+# ВОТ ЭТА ФУНКЦИЯ БЫЛА УДАЛЕНА:
+async def list_upcoming_events(message: types.Message, state: FSMContext):
+    projects = await sync_to_async(list)(
+        EcoProject.objects.filter(is_active=True, date__gt=timezone.now())
+    )
+    
+    if not projects:
+        await message.answer("Hozircha yangi tadbirlar yo'q. 😔", reply_markup=get_events_menu())
+        return
+
+    for p in projects:
+        text = (
+            f"🚀 <b>{p.title}</b>\n\n"
+            f"📅 <b>Sana:</b> {p.date.strftime('%d.%m.%Y %H:%M')}\n"
+            f"📍 <b>Joy:</b> {p.location_name}\n\n"
+            f"📝 {p.description}\n\n"
+            f"<i>Ro'yxatdan o'tish uchun pastdagi tugmani bosing 👇</i>"
+        )
+        await message.answer(text, reply_markup=get_registration_kb(), parse_mode="HTML")
+
 # Список ПРОШЕДШИХ эвентов
 async def list_past_events(message: types.Message):
-    # Убираем лишние фильтры, оставляем только проверку даты
-    # order_by('-date') — чтобы самые свежие из прошедших были вверху
     projects = await sync_to_async(list)(
         EcoProject.objects.filter(date__lt=timezone.now()).order_by('-date')
     )
@@ -41,10 +59,9 @@ async def list_past_events(message: types.Message):
         text = (
             f"✅ <b>{p.title}</b>\n"
             f"📅 <b>Sana:</b> {p.date.strftime('%d.%m.%Y')}\n\n"
-            f"<i>Ushbu tadbir muvaffaqiyatli yakunlangan. Ishtirok etganingiz uchun rahmat!</i>"
+            f"<i>Ushbu tadbir muvaffaqiyatli yakunlangan.</i>"
         )
         
-        # Если есть фото — шлем с фото, если нет — текстом
         if p.photo:
             try:
                 await message.answer_photo(types.InputFile(p.photo.path), caption=text, parse_mode="HTML")
@@ -55,7 +72,6 @@ async def list_past_events(message: types.Message):
 
 async def process_registration(message: types.Message, state: FSMContext):
     user = await sync_to_async(TGUser.objects.get)(tg_id=message.from_user.id)
-    # Берем самый актуальный проект
     project = await sync_to_async(EcoProject.objects.filter(is_active=True, date__gt=timezone.now()).first)()
     
     if not project:
@@ -70,22 +86,20 @@ async def process_registration(message: types.Message, state: FSMContext):
         await message.answer(
             f"✅ <b>Arizangiz qabul qilindi!</b>\n\n"
             f"Loyiha: {project.title}\n"
-            f"Adminlar tasdiqlashini kuting. Tez orada javob beramiz! ✨",
-            reply_markup=get_events_menu(), # Возвращаем меню эвентов
+            f"Adminlar tasdiqlashini kuting. ✨",
+            reply_markup=get_events_menu(),
             parse_mode="HTML"
         )
     else:
         await message.answer("Siz allaqachon ro'yxatdan o'tgansiz! 😊", reply_markup=get_events_menu())
 
 async def handle_everything(message: types.Message, state: FSMContext):
-    # Назад
     if "Orqaga" in message.text:
         await state.finish()
         from ..keyboards import reply
         await message.answer("Asosiy menyu", reply_markup=reply.hi_there())
         return
     
-    # Секретный код
     code = message.text.strip()
     project = await sync_to_async(EcoProject.objects.filter(secret_code=code, is_active=True).first)()
     if project:
@@ -94,7 +108,7 @@ async def handle_everything(message: types.Message, state: FSMContext):
         if part and part.status == 'registered':
             part.status = 'attended'
             await sync_to_async(part.save)()
-            await message.answer("🎉 10 ball berildi! Baraka toping!")
+            await message.answer("🎉 10 ball berildi!")
         elif part and part.status == 'attended':
             await message.answer("Ball olib bo'lingan. ✅")
         else:
@@ -102,8 +116,8 @@ async def handle_everything(message: types.Message, state: FSMContext):
 
 # --- РЕГИСТРАЦИЯ ---
 def register_eco_clubs(dp: Dispatcher):
-    # Используем лямбды для жесткого перехвата текста
     dp.register_message_handler(show_events_menu, lambda m: "Tadbirlar" in m.text, state="*")
     dp.register_message_handler(list_upcoming_events, lambda m: "Kelgusi" in m.text, state="*")
+    dp.register_message_handler(list_past_events, lambda m: "O'tgan" in m.text, state="*") # Добавил сюда хендлер для прошедших
     dp.register_message_handler(process_registration, lambda m: "Ro'yxatdan o'tish" in m.text, state="*")
     dp.register_message_handler(handle_everything, state="*")
