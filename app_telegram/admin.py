@@ -8,7 +8,7 @@ from import_export.fields import Field
 
 from .models import (
     TGUser, TeamMemberYashilQullar, ProjectParticipation, 
-    EcoProject, Partner, Product
+    EcoProject, Partner
 )
 
 # --- НАСТРОЙКА БОТА ДЛЯ ОПОВЕЩЕНИЙ ---

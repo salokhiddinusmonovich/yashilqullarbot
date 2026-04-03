@@ -55,6 +55,30 @@ class TGUser(TimeBasedModel):
     def __str__(self):
         return f'{self.fullname} ({self.tg_id})'
 
+class TeamMemberYashilQullar(TimeBasedModel):
+    tg_user = models.OneToOneField(
+        TGUser,
+        on_delete=models.CASCADE,
+        related_name='team_member',
+        verbose_name='Telegram foydalanuvchi'
+    )
+    skills = models.TextField(blank=True, null=True, verbose_name='Ko‘nikmalar')
+    telegram_username = models.CharField(max_length=100, blank=True, null=True, verbose_name='Telegram username')
+    
+    FOCUS_CHOICES = [
+        ('founder', 'Founder'),
+        ('digital', 'Digital Lead'),
+        ('media', 'Media Lead'),
+        ('organization', 'Organization'),
+    ]
+    focus = models.CharField(max_length=255, choices=FOCUS_CHOICES)
+
+    class Meta:
+        verbose_name = 'Team member (Yashil Qullar)'
+        verbose_name_plural = 'Team members (Yashil Qullar)'
+
+    def __str__(self):
+        return self.tg_user.fullname
 
 class EcoProject(models.Model):
     title = models.CharField(max_length=255, verbose_name="Loyiha nomi")
@@ -73,6 +97,7 @@ class EcoProject(models.Model):
     class Meta:
         verbose_name = "Eco loyiha"
         verbose_name_plural = "Eco loyihalar"
+
 
 
 class ProjectParticipation(models.Model):
