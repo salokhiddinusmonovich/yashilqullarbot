@@ -29,13 +29,27 @@ class ParticipationResource(resources.ModelResource):
     username = Field(attribute='user__username', column_name='Telegram Username')
     fullname = Field(attribute='user__fullname', column_name='F.I.SH (Имя)')
     phone = Field(attribute='user__phone', column_name='Telefon')
+    experience = Field(attribute='user__experience', column_name='Tajribasi (Опыт)')
+    
+    # НОВОЕ: Ссылка на фото
+    photo_url = Field(column_name='Rasm (Ссылка на фото)')
+
     project_name = Field(attribute='project__title', column_name='Loyiha nomi')
 
     class Meta:
         model = ProjectParticipation
-        fields = ('username', 'fullname', 'phone', 'project_name', 'status')
+        # Добавляем photo_url в список полей
+        fields = ('username', 'fullname', 'phone', 'experience', 'photo_url', 'project_name', 'status')
         export_order = fields
 
+    # Логика для создания полной ссылки
+    def dehydrate_photo_url(self, obj):
+        if obj.user and obj.user.photo:
+            # Замени 'http://твой-ip-или-домен' на реальный URL твоего сервера
+            server_url = "http://173.249.19.32:8000" 
+            return f"{server_url}{obj.user.photo.url}"
+        return "Нет фото"
+        
 # --- 2. ГЛАВНАЯ АДМИНКА УЧАСТНИКОВ ---
 @admin.register(ProjectParticipation)
 class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
