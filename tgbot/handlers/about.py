@@ -14,7 +14,7 @@ async def about_us(message: types.Message):
     # 2. Базовый текст (Всегда есть)
     main_text = (
         "🌿 <b>Yashil Qo'llar</b> — barqaror kelajak harakati!\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
+        
         "Bizning maqsadimiz — shahrimizni yashilroq qilish va "
         "ekologik madaniyatni yuksaltirish. Hozirda bizda <b>300+</b> "
         "faol ko'ngillilar bor! 💪"
