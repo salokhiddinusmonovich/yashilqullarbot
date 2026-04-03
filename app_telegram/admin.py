@@ -128,10 +128,10 @@ class EcoProjectAdmin(admin.ModelAdmin):
     # Добавляем возможность редактировать ссылку прямо в списке
     list_editable = ('is_active',)
 
-@admin.register(Product)
-class ProductAdmin(admin.ModelAdmin):
-    list_display = ('name', 'price', 'stock')
-    list_editable = ('price', 'stock')
+# @admin.register(Product)
+# class ProductAdmin(admin.ModelAdmin):
+#     list_display = ('name', 'price', 'stock')
+#     list_editable = ('price', 'stock')
 
 admin.site.register(Partner)
 admin.site.register(TeamMemberYashilQullar)
