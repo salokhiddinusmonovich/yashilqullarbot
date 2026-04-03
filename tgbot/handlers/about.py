@@ -73,7 +73,6 @@ async def show_partners_list(message: types.Message):
         else:
             await message.answer(caption, parse_mode="HTML")
 
-# Твоя функция вывода членов команды (без изменений)
 async def show_team_members_by_focus(message: types.Message):
     focus_map = {
         "🌟 Project Lead": "founder",
@@ -81,26 +80,46 @@ async def show_team_members_by_focus(message: types.Message):
         "📸 Media Lead": "media",
         "📋 Organization": "organization"
     }
+    
     selected_focus = focus_map.get(message.text)
     if not selected_focus: return
 
-    members = await sync_to_async(lambda: list(TeamMemberYashilQullar.objects.filter(focus=selected_focus)))()
+    members = await sync_to_async(lambda: list(
+        TeamMemberYashilQullar.objects.filter(focus=selected_focus)
+    ))()
 
     if not members:
         await message.answer("Hozircha bu bo‘limda a’zolar mavjud emas.")
         return
 
     for member in members:
+        # Убираем эмодзи из кнопки (🌟, 💻 и т.д.), чтобы оставить только текст роли
         role_name = message.text.split(maxsplit=1)[-1] 
-        caption = f"<b>{member.fullname}</b>\n{role_name}\n\n"
-        if member.skills: caption += f"{member.skills}\n\n"
-        if member.telegram_username:
-            caption += f"Telegram: @{member.telegram_username.replace('@', '')}"
+        
+        # ФОРМАТИРОВАНИЕ:
+        # 👤 — человечек перед именем
+        # • — кружочек перед навыками
+        caption = f"👤 <b>{member.fullname}</b>\n"
+        caption += f"{message.text}\n\n" # Оставляем роль со стикером как на кнопке
+        
+        if member.skills:
+            # Добавляем маленький кружочек перед каждой строкой навыков
+            caption += f"• {member.skills}\n\n"
 
+        if member.telegram_username:
+            username = member.telegram_username.replace('@', '')
+            caption += f"Telegram: @{username}"
+
+        # Отправка фото
         if member.photo:
             try:
-                await message.answer_photo(photo=InputFile(member.photo.path), caption=caption, parse_mode="HTML")
-            except Exception:
+                await message.answer_photo(
+                    photo=InputFile(member.photo.path),
+                    caption=caption,
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                print(f"Ошибка фото: {e}")
                 await message.answer(caption, parse_mode="HTML")
         else:
             await message.answer(caption, parse_mode="HTML")
