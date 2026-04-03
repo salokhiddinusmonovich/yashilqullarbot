@@ -109,11 +109,18 @@ async def education_handler(message: Message, state: FSMContext):
         parse_mode="HTML"
     )
 
-# 2. Experience dan keyin foto so'rash
 async def experience_handler(message: Message, state: FSMContext):
+    # Сохраняем текст опыта
     await state.update_data(experience=message.text.strip())
+    
+    # Переходим к следующему состоянию
     await state.set_state(RegisterState.photo.state)
-    await message.answer("Profil rasmingizni yuklang 📸")
+    
+    # ИСПРАВЛЕНИЕ: Добавляем ReplyKeyboardRemove, чтобы кнопка исчезла
+    await message.answer(
+        "Profil rasmingizni yuklang 📸", 
+        reply_markup=types.ReplyKeyboardRemove()
+    )
 
 async def photo_handler(message: Message, state: FSMContext):
     if not message.photo:
