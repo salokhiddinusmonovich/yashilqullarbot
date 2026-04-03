@@ -1,4 +1,4 @@
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputFile
 from aiogram import types, Dispatcher
 from asgiref.sync import sync_to_async
 from app_telegram.models import TeamMemberYashilQullar
@@ -28,9 +28,9 @@ async def show_team_members_by_focus(message: types.Message):
     
     selected_focus = focus_map.get(message.text)
     
-    # Подгружаем tg_user сразу, чтобы не делать лишних запросов в цикле
+    # Теперь мы не ищем tg_user, а берем данные прямо из TeamMemberYashilQullar
     members = await sync_to_async(lambda: list(
-        TeamMemberYashilQullar.objects.filter(focus__iexact=selected_focus).select_related('tg_user')
+        TeamMemberYashilQullar.objects.filter(focus=selected_focus)
     ))()
 
     if not members:
@@ -38,39 +38,37 @@ async def show_team_members_by_focus(message: types.Message):
         return
 
     for member in members:
-        user = member.tg_user
-        
-        # Основная информация
+        # ТЕПЕРЬ ДАННЫЕ БЕРЕМ НАПРЯМУЮ ИЗ member
         caption = (
-            f"👤 <b>{user.fullname}</b>\n"
-            f"• Yosh: {user.age or '—'}\n"
+            f"👤 <b>{member.fullname}</b>\n"
+            f"• Rol: {message.text}\n"
         )
         
-        # Добавляем навыки (skills), если они заполнены
         if member.skills:
-            caption += f"{member.skills}\n"
+            caption += f"• Ko'nikmalar: {member.skills}\n"
 
-        # Контакты
-        contact = member.telegram_username or user.tg_id
-        contact_str = str(contact).replace('@', '')
-        caption += f"• Telegram: @{contact_str}\n"
+        if member.telegram_username:
+            username = member.telegram_username.replace('@', '')
+            caption += f"• Telegram: @{username}\n"
 
-        # Отправка фото или просто текста
-        if user.photo:
+        # Отправка фото
+        if member.photo:
             try:
-                # В aiogram 2.x лучше передавать открытый файл или путь
-                photo_file = types.InputFile(user.photo.path)
+                # Берем путь к фото прямо из поля member.photo
+                photo_file = InputFile(member.photo.path)
                 await message.answer_photo(
                     photo=photo_file,
                     caption=caption,
                     parse_mode="HTML"
                 )
-            except Exception:
+            except Exception as e:
+                print(f"Error sending photo: {e}")
                 await message.answer(caption, parse_mode="HTML")
         else:
             await message.answer(caption, parse_mode="HTML")
 
 def register_team(dp: Dispatcher):
+    # ПРОВЕРЬ ЭТОТ ТЕКСТ! Он должен быть таким же, как в главном меню
     dp.register_message_handler(show_team_categories, text="🎯 Loyiha yetakchilari", state="*")
     
     dp.register_message_handler(
