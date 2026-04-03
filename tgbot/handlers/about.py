@@ -84,7 +84,6 @@ async def show_team_members_by_focus(message: types.Message):
     selected_focus = focus_map.get(message.text)
     if not selected_focus: return
 
-    # Получаем список участников из базы
     members = await sync_to_async(lambda: list(
         TeamMemberYashilQullar.objects.filter(focus=selected_focus)
     ))()
@@ -97,16 +96,19 @@ async def show_team_members_by_focus(message: types.Message):
         # 1. Имя жирным с человечком
         caption = f"👤 <b>{member.fullname}</b>\n"
         
-        # 2. Описание (Skills) сразу под именем, без роли
+        # 2. Текст из Skills выводим КАК ЕСТЬ (со всеми твоими точками и переносами)
         if member.skills:
-            # Убираем лишние точки и пробелы, если они есть
-            clean_skills = member.skills.replace('•', '').strip()
-            caption += f"• {clean_skills}\n"
+            # Просто добавляем текст из базы, не удаляя никакие символы
+            caption += f"{member.skills}\n"
 
-        # 3. Контакт в Telegram
+        # 3. Контакт в Telegram (с новой строки)
         if member.telegram_username:
             username = member.telegram_username.replace('@', '')
-            caption += f"Telegram: @{username}"
+            # Если это ссылка t.me, оставляем как есть, если юзернейм — добавляем @
+            if "t.me" in username:
+                caption += f"Telegram: {username}"
+            else:
+                caption += f"Telegram: @{username}"
 
         # Отправка фото
         if member.photo:
@@ -116,12 +118,11 @@ async def show_team_members_by_focus(message: types.Message):
                     caption=caption,
                     parse_mode="HTML"
                 )
-            except Exception as e:
-                # Если фото не загрузилось, шлем текст
+            except Exception:
                 await message.answer(caption, parse_mode="HTML")
         else:
             await message.answer(caption, parse_mode="HTML")
-# --- РЕГИСТРАЦИЯ ---
+
 def register_about_and_team(dp: Dispatcher):
     # Главная кнопка "О нас"
     dp.register_message_handler(about_us, text="🌟 Biz haqimizda", state="*")
