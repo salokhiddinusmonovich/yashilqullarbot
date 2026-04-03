@@ -3,61 +3,54 @@ from aiogram.types import InputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram import Dispatcher
 from pathlib import Path
 from asgiref.sync import sync_to_async
-from app_telegram.models import Partner # Импортируем нашу новую модель
+from app_telegram.models import Partner
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 
 async def about_us(message: types.Message):
-    # 1. Основное фото и текст о проекте
-    poster_path = BASE_DIR / "idk" / "poster.png"
-    main_text = (
-        "🌱 <b>Yashil Qo'llar</b> — bu barqaror kelajak uchun harakat.\n\n"
-        "Bizning maqsadimiz — shahrimizni yashilroq qilish va "
-        "ekologik madaniyatni yuksaltirish."
-    )
-
-    try:
-        await message.answer_photo(
-            photo=InputFile(poster_path),
-            caption=main_text,
-            parse_mode="HTML"
-        )
-    except Exception:
-        await message.answer(main_text, parse_mode="HTML")
-
-    # 2. Вывод спонсоров
+    # 1. Загружаем активных партнеров заранее
     partners = await sync_to_async(list)(Partner.objects.filter(is_active=True))
 
+    # 2. Формируем текст "О нас"
+    main_text = (
+        "🌿 <b>Yashil Qo'llar</b> — barqaror kelajak harakati!\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "Bizning maqsadimiz — shahrimizni yashilroq qilish va "
+        "ekologik madaniyatni yuksaltirish. Hozirda bizda <b>300+</b> "
+        "faol ko'ngillilar bor! 💪\n\n"
+    )
+
+    # 3. Добавляем блок партнеров в это же сообщение
+    kb = InlineKeyboardMarkup(row_width=2)
+    
     if partners:
-        await message.answer("🤝 <b>Bizning hamkorlarimiz:</b>", parse_mode="HTML")
-        
-        for partner in partners:
-            # Формируем текст
-            partner_text = f"🔹 <b>{partner.name}</b>"
-            if partner.description:
-                partner_text += f"\n<i>{partner.description}</i>"
+        main_text += "🤝 <b>Bizning hamkorlarimiz:</b>\n"
+        for p in partners:
+            main_text += f"🔹 {p.name}\n"
+            # Добавляем кнопки в общую клавиатуру
+            if p.telegram:
+                kb.insert(InlineKeyboardButton(f"✈️ {p.name}", url=p.telegram))
+            elif p.instagram: # Если нет ТГ, пробуем Инсту
+                kb.insert(InlineKeyboardButton(f"📸 {p.name}", url=p.instagram))
 
-            # Создаем кнопки соцсетей (только если они заполнены)
-            kb = InlineKeyboardMarkup(row_width=2)
-            buttons = []
-            if partner.instagram:
-                buttons.append(InlineKeyboardButton("Instagram", url=partner.instagram))
-            if partner.telegram:
-                buttons.append(InlineKeyboardButton("Telegram", url=partner.telegram))
-            if partner.linkedin:
-                buttons.append(InlineKeyboardButton("LinkedIn", url=partner.linkedin))
-            
-            kb.add(*buttons)
+    # Добавляем общую кнопку соцсетей самого проекта (опционально)
+    kb.add(InlineKeyboardButton("🌐 Bizning saytimiz", url="https://yashilqollar.uz"))
 
-            # Если есть логотип — шлем фото, если нет — только текст
-            if partner.logo:
-                try:
-                    with open(partner.logo.path, 'rb') as photo:
-                        await message.answer_photo(photo=photo, caption=partner_text, reply_markup=kb, parse_mode="HTML")
-                except:
-                    await message.answer(partner_text, reply_markup=kb, parse_mode="HTML")
-            else:
-                await message.answer(partner_text, reply_markup=kb, parse_mode="HTML")
+    # 4. Отправляем ОДНИМ сообщением
+    poster_path = BASE_DIR / "idk" / "poster.png"
+    
+    try:
+        # Отправляем постер с общим текстом и всеми кнопками
+        with open(poster_path, 'rb') as photo:
+            await message.answer_photo(
+                photo=photo,
+                caption=main_text,
+                reply_markup=kb,
+                parse_mode="HTML"
+            )
+    except Exception as e:
+        # Если фото не нашлось, шлем просто текст
+        await message.answer(main_text, reply_markup=kb, parse_mode="HTML")
 
 def register_about_us(dp: Dispatcher):
     dp.register_message_handler(
