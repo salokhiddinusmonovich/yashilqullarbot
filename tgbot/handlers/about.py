@@ -1,5 +1,5 @@
 from aiogram import types, Dispatcher
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputFile
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from asgiref.sync import sync_to_async
 from pathlib import Path
 from app_telegram.models import TeamMemberYashilQullar, Partner
@@ -55,23 +55,57 @@ async def show_team_selection(message: types.Message):
         reply_markup=TEAM_MENU_KB
     )
 
-async def show_partners_list(message: types.Message):
+async def show_partners_list(callback: types.CallbackQuery):
+    # Загружаем только активных партнеров
     partners = await sync_to_async(lambda: list(Partner.objects.filter(is_active=True)))()
     
     if not partners:
-        await message.answer("Hozircha hamkorlar ro'yxati bo'sh.")
+        await callback.message.answer("Hozircha hamkorlar ro'yxati bo'sh.")
+        await callback.answer()
         return
 
+    # Сообщение-заголовок
+    await callback.message.answer("🤝 <b>Bizning hamkorlarimiz:</b>", parse_mode="HTML")
+
     for p in partners:
-        caption = f"<b>{p.name}</b>\n\n{p.description if p.description else ''}"
-        # Здесь можно оставить инлайн кнопки для ссылок, они не мешают кнопкам внизу
+        # Текст карточки партнера
+        caption = f"<b>{p.name}</b>\n"
+        if p.description:
+            caption += f"\n{p.description}\n"
+
+        # СОЗДАЕМ КНОПКИ (Inline)
+        kb = InlineKeyboardMarkup(row_width=2)
+        buttons = []
+        
+        if p.telegram:
+            buttons.append(InlineKeyboardButton("Telegram", url=p.telegram))
+        if p.instagram:
+            buttons.append(InlineKeyboardButton("Instagram", url=p.instagram))
+        if p.linkedin:
+            buttons.append(InlineKeyboardButton("LinkedIn", url=p.linkedin))
+        if p.website:
+            buttons.append(InlineKeyboardButton("Website", url=p.website))
+            
+        if buttons:
+            kb.add(*buttons)
+
+        # Отправка логотипа с кнопками
         if p.logo:
             try:
-                await message.answer_photo(InputFile(p.logo.path), caption=caption, parse_mode="HTML")
-            except Exception:
-                await message.answer(caption, parse_mode="HTML")
+                await callback.message.answer_photo(
+                    photo=InputFile(p.logo.path),
+                    caption=caption,
+                    reply_markup=kb,
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                print(f"Partner photo error: {e}")
+                await callback.message.answer(caption, reply_markup=kb, parse_mode="HTML")
         else:
-            await message.answer(caption, parse_mode="HTML")
+            # Если логотипа нет, просто текст с кнопками
+            await callback.message.answer(caption, reply_markup=kb, parse_mode="HTML")
+    
+    await callback.answer()
 
 async def show_team_members_by_focus(message: types.Message):
     focus_map = {
