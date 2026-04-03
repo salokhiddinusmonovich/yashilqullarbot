@@ -35,7 +35,6 @@ def register_all_handlers(dp):
     register_user(dp)
     register_register(dp)   
     register_profile(dp)
-    register_team(dp)
     register_about_us(dp)
     register_eco_clubs(dp)
     register_project_handlers(dp)
