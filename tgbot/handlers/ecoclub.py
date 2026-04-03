@@ -25,25 +25,39 @@ async def show_events_menu(message: types.Message, state: FSMContext):
     await state.finish()
     await message.answer("<b>Tadbirlar bo'limi</b> ✨", reply_markup=get_events_menu(), parse_mode="HTML")
 
-async def list_upcoming_events(message: types.Message, state: FSMContext):
-    projects = await sync_to_async(list)(
-        EcoProject.objects.filter(is_active=True, date__gt=timezone.now())
-    )
-    
-    if not projects:
-        await message.answer("Hozircha yangi tadbirlar yo'q. 😊", reply_markup=get_events_menu())
+async def list_past_events(message: types.Message):
+    # Мы берем ВСЕ проекты, у которых is_past=True, независимо от их активности
+    past_events = await sync_to_async(lambda: list(
+        EcoProject.objects.filter(is_past=True).order_by('-date') 
+    ))()
+
+    if not past_events:
+        await message.answer("📜 O'tgan tadbirlar arxivi hozircha bo'sh.")
         return
 
-    for p in projects:
-        text = (
-            f"🚀 <b>{p.title}</b>\n\n"
-            f"📅 <b>Sana:</b> {p.date.strftime('%d.%m.%Y %H:%M')}\n"
-            f"📍 <b>Joy:</b> {p.location_name}\n\n"
-            f"📝 {p.description}\n\n"
-            f"<i>Ro'yxatdan o'tish uchun pastdagi tugmani bosing 👇</i>"
-        )
-        await message.answer(text, reply_markup=get_registration_kb(), parse_mode="HTML")
+    for event in past_events:
+        # Убираем число, оставляем только имя (как ты просил)
+        caption = f"<b>{event.title}</b>"
+        
+        # Описание опционально
+        if event.description:
+            caption += f"\n\n{event.description}"
 
+        if event.photo:
+            try:
+                # Проверь, что путь к фото корректный
+                await message.answer_photo(
+                    photo=InputFile(event.photo.path),
+                    caption=caption,
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                # Если фото не грузится (например, удалено с сервера), шлем текст
+                print(f"Ошибка фото: {e}")
+                await message.answer(caption, parse_mode="HTML")
+        else:
+            await message.answer(caption, parse_mode="HTML")
+    
 async def process_registration(message: types.Message, state: FSMContext):
     try:
         user = await sync_to_async(TGUser.objects.get)(tg_id=message.from_user.id)
