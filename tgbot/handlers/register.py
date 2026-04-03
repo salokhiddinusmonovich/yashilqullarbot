@@ -79,9 +79,21 @@ async def region_handler(message: Message, state: FSMContext):
 # 2. Education handlerdan keyin ishlaydigan yangi funksiya
 async def education_handler(message: Message, state: FSMContext):
     await state.update_data(education_place=message.text.strip())
-    await state.set_state(RegisterState.experience.state) # Tajribaga o'tish
+    await state.set_state(RegisterState.experience.state)
+    
+    # Кнопка для тех, у кого нет опыта
+    kb = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="Tajribaga ega emasman")]],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+    
     await message.answer(
-        "Volontyorlik tajribangiz haqida yozing 👇"
+        "<b>Volontyorlik tajribangiz haqida batafsil ma'lumot bering:</b>\n\n"
+        "Qaysi tashkilotlarda bo'lgansiz va nima ishlar qilgansiz? "
+        "Bu biz uchun juda muhim! 👇",
+        reply_markup=kb,
+        parse_mode="HTML"
     )
 
 # 2. Experience dan keyin foto so'rash
