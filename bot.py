@@ -10,7 +10,6 @@ from tgbot.handlers.admin import register_admin
 from tgbot.handlers.start import register_user
 from tgbot.handlers.profile import register_profile
 from tgbot.handlers.register import register_register
-from tgbot.handlers.team import register_team
 from tgbot.handlers.about import register_about_us
 from tgbot.handlers.ecoclub import register_eco_clubs
 from tgbot.handlers.contact_with_team import register_project_handlers
