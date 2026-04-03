@@ -14,17 +14,17 @@ async def about_us(message: types.Message):
     # 2. Базовый текст (Всегда есть)
     main_text = (
         "🌿 <b>Yashil Qo'llar</b> — barqaror kelajak harakati!\n"
-        
-        "Bizning maqsadimiz — shahrimizni yashilroq qilish va "
-        "ekologik madaniyatni yuksaltirish. Hozirda bizda <b>300+</b> "
-        "faol ko'ngillilar bor! 💪"
+        '\n'
+        "Bizning maqsadimiz — shahrimizni yashilroq qilish va ekologik"
+        "madaniyatni yuksaltirish. Hozirda bizda <b>300+</b>"
+        "faol ko'ngillilar bor!  💪"
     )
 
     kb = InlineKeyboardMarkup(row_width=2)
 
     # 3. Условие: Добавляем блок партнеров только если они СУЩЕСТВУЮТ
     if partners:
-        main_text += "\n\n🤝 <b>Bizning hamkorlarimiz:</b>\n"
+        main_text += "\n\n🤝 <b>Hamkorlarimiz:</b>\n"
         for p in partners:
             main_text += f"🔹 {p.name}\n"
             # Добавляем кнопку ссылки партнера (Telegram приоритетнее Instagram)
