@@ -10,7 +10,7 @@ from tgbot.handlers.admin import register_admin
 from tgbot.handlers.start import register_user
 from tgbot.handlers.profile import register_profile
 from tgbot.handlers.register import register_register
-from tgbot.handlers.about import register_about_us
+from tgbot.handlers.about import register_about_and_team
 from tgbot.handlers.ecoclub import register_eco_clubs
 from tgbot.handlers.contact_with_team import register_project_handlers
 
@@ -34,7 +34,7 @@ def register_all_handlers(dp):
     register_user(dp)
     register_register(dp)   
     register_profile(dp)
-    register_about_us(dp)
+    register_about_and_team(dp)
     register_eco_clubs(dp)
     register_project_handlers(dp)
     print("Handlers registered!")
