@@ -30,7 +30,7 @@ services:
     working_dir: "/usr/src/app"
     volumes:
       - .:/usr/src/app
-      - ./media:/usr/src/app/media  # <--- ЭТА СТРОКА ДОЛЖНА БЫТЬ!
+      - ./media:/usr/src/app/media  
     environment:
       - PYTHONPATH=/usr/src/app
       - POSTGRES_HOST=db
