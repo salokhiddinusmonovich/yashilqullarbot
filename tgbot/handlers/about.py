@@ -84,6 +84,7 @@ async def show_team_members_by_focus(message: types.Message):
     selected_focus = focus_map.get(message.text)
     if not selected_focus: return
 
+    # Получаем список участников из базы
     members = await sync_to_async(lambda: list(
         TeamMemberYashilQullar.objects.filter(focus=selected_focus)
     ))()
@@ -93,22 +94,21 @@ async def show_team_members_by_focus(message: types.Message):
         return
 
     for member in members:
-        # Очищаем роль от эмодзи и лишних пробелов
-        role_name = message.text.split(maxsplit=1)[-1].strip()
-        
-        # Собираем текст БЕЗ двойных \n\n (чтобы не было пустых строк)
+        # 1. Имя жирным с человечком
         caption = f"👤 <b>{member.fullname}</b>\n"
-        caption += f"• {role_name}\n"
         
+        # 2. Описание (Skills) сразу под именем, без роли
         if member.skills:
-            # Очищаем навыки от лишних точек и пробелов
+            # Убираем лишние точки и пробелы, если они есть
             clean_skills = member.skills.replace('•', '').strip()
             caption += f"• {clean_skills}\n"
 
+        # 3. Контакт в Telegram
         if member.telegram_username:
             username = member.telegram_username.replace('@', '')
             caption += f"Telegram: @{username}"
 
+        # Отправка фото
         if member.photo:
             try:
                 await message.answer_photo(
@@ -116,11 +116,11 @@ async def show_team_members_by_focus(message: types.Message):
                     caption=caption,
                     parse_mode="HTML"
                 )
-            except Exception:
+            except Exception as e:
+                # Если фото не загрузилось, шлем текст
                 await message.answer(caption, parse_mode="HTML")
         else:
             await message.answer(caption, parse_mode="HTML")
-
 # --- РЕГИСТРАЦИЯ ---
 def register_about_and_team(dp: Dispatcher):
     # Главная кнопка "О нас"
