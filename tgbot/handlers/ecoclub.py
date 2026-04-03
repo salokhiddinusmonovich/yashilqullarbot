@@ -5,7 +5,7 @@ from asgiref.sync import sync_to_async
 from django.utils import timezone
 from app_telegram.models import TGUser, EcoProject, ProjectParticipation
 
-# --- КНОПКИ ---
+# --- КЛАВИАТУРЫ ---
 
 def get_events_menu():
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
@@ -14,6 +14,7 @@ def get_events_menu():
     return kb
 
 def get_registration_kb():
+    # one_time_keyboard=True чтобы кнопка исчезала после нажатия
     kb = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     kb.add(KeyboardButton("✅ Ro'yxatdan o'tish"))
     kb.add(KeyboardButton("⬅️ Orqaga"))
@@ -21,14 +22,37 @@ def get_registration_kb():
 
 # --- ЛОГИКА ---
 
+# Главное меню раздела
 async def show_events_menu(message: types.Message, state: FSMContext):
     await state.finish()
     await message.answer("<b>Tadbirlar bo'limi</b> ✨", reply_markup=get_events_menu(), parse_mode="HTML")
 
+# БУДУЩИЕ СОБЫТИЯ (С датой и регистрацией)
+async def list_upcoming_events(message: types.Message, state: FSMContext):
+    # Берем проекты, которые еще не наступили (date > сейчас)
+    projects = await sync_to_async(list)(
+        EcoProject.objects.filter(is_active=True, date__gt=timezone.now()).order_by('date')
+    )
+    
+    if not projects:
+        await message.answer("Hozircha yangi tadbirlar yo'q. 😊", reply_markup=get_events_menu())
+        return
+
+    for p in projects:
+        text = (
+            f"🚀 <b>{p.title}</b>\n\n"
+            f"📅 <b>Sana:</b> {p.date.strftime('%d.%m.%Y %H:%M')}\n"
+            f"📍 <b>Joy:</b> {p.location_name}\n\n"
+            f"{f'📝 {p.description}' if p.description else ''}\n\n"
+            f"<i>Ro'yxatdan o'tish uchun pastdagi tugmani bosing 👇</i>"
+        )
+        await message.answer(text, reply_markup=get_registration_kb(), parse_mode="HTML")
+
+# ПРОШЕДШИЕ СОБЫТИЯ (Только фото и название, БЕЗ ДАТЫ)
 async def list_past_events(message: types.Message):
-    # Мы берем ВСЕ проекты, у которых is_past=True, независимо от их активности
+    # Автоматически берем те, что уже прошли (date < сейчас)
     past_events = await sync_to_async(lambda: list(
-        EcoProject.objects.filter(is_past=True).order_by('-date') 
+        EcoProject.objects.filter(date__lt=timezone.now()).order_by('-date')
     ))()
 
     if not past_events:
@@ -36,28 +60,27 @@ async def list_past_events(message: types.Message):
         return
 
     for event in past_events:
-        # Убираем число, оставляем только имя (как ты просил)
+        # УБРАНО ЧИСЛО. Только заголовок жирным.
         caption = f"<b>{event.title}</b>"
         
-        # Описание опционально
+        # Описание выводится только если оно есть
         if event.description:
             caption += f"\n\n{event.description}"
 
         if event.photo:
             try:
-                # Проверь, что путь к фото корректный
                 await message.answer_photo(
                     photo=InputFile(event.photo.path),
                     caption=caption,
                     parse_mode="HTML"
                 )
             except Exception as e:
-                # Если фото не грузится (например, удалено с сервера), шлем текст
-                print(f"Ошибка фото: {e}")
+                print(f"Photo error: {e}")
                 await message.answer(caption, parse_mode="HTML")
         else:
             await message.answer(caption, parse_mode="HTML")
-    
+
+# РЕГИСТРАЦИЯ НА ПРОЕКТ
 async def process_registration(message: types.Message, state: FSMContext):
     try:
         user = await sync_to_async(TGUser.objects.get)(tg_id=message.from_user.id)
@@ -65,10 +88,11 @@ async def process_registration(message: types.Message, state: FSMContext):
         await message.answer("Avval ro'yxatdan o'ting! ❌")
         return
 
+    # Берем ближайший будущий проект
     project = await sync_to_async(EcoProject.objects.filter(is_active=True, date__gt=timezone.now()).first)()
     
     if not project:
-        await message.answer("Xatolik: Loyiha topilmadi. ❌", reply_markup=get_events_menu())
+        await message.answer("Hozircha ro'yxatdan o'tish uchun faol loyihalar yo'q.", reply_markup=get_events_menu())
         return
 
     part, created = await sync_to_async(ProjectParticipation.objects.get_or_create)(
@@ -85,44 +109,13 @@ async def process_registration(message: types.Message, state: FSMContext):
     else:
         await message.answer("Siz ushbu loyihaga allaqachon ariza topshirgansiz. 👍", reply_markup=get_events_menu())
 
-# ИСПРАВЛЕННАЯ ФУНКЦИЯ (убрано event_date)
-async def list_past_events(message: types.Message):
-    # ВАЖНО: убедись, что поле в модели называется 'date' или исправь на свое
-    past_events = await sync_to_async(lambda: list(
-        EcoProject.objects.filter(is_past=True).order_by('-date') # Было event_date
-    ))()
-
-    if not past_events:
-        await message.answer("Hozircha o'tgan tadbirlar mavjud emas.")
-        return
-
-    for event in past_events:
-        caption = f"<b>{event.title}</b>"
-        
-        # Описание теперь опциональное (как ты просил)
-        if event.description:
-            caption += f"\n\n{event.description}"
-
-        if event.photo:
-            try:
-                # Отправляем фото по пути из медиа-папки
-                await message.answer_photo(
-                    photo=InputFile(event.photo.path),
-                    caption=caption,
-                    parse_mode="HTML"
-                )
-            except Exception as e:
-                print(f"Photo error: {e}")
-                await message.answer(caption, parse_mode="HTML")
-        else:
-            await message.answer(caption, parse_mode="HTML")
-
+# Кнопка назад
 async def handle_back(message: types.Message, state: FSMContext):
     await state.finish()
-    from ..keyboards import reply
+    from ..keyboards import reply # Твоя главная клавиатура
     await message.answer("Asosiy menyu", reply_markup=reply.hi_there())
 
-# --- РЕГИСТРАЦИЯ ---
+# --- РЕГИСТРАЦИЯ МОДУЛЯ ---
 
 def register_eco_clubs(dp: Dispatcher):
     dp.register_message_handler(show_events_menu, lambda m: "Tadbirlar" in m.text, state="*")
