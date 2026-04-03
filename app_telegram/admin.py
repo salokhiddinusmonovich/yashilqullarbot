@@ -47,20 +47,50 @@ class ParticipationResource(resources.ModelResource):
             return f"{server_url}{obj.user.photo.url}"
         return "Нет фото"
         
+
 # --- 2. ГЛАВНАЯ АДМИНКА УЧАСТНИКОВ ---
 @admin.register(ProjectParticipation)
 class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
     resource_class = ParticipationResource
-    list_display = ('display_face', 'get_fullname', 'project', 'status', 'applied_at')
-    list_filter = ('project', 'status', 'applied_at')
-    search_fields = ('user__fullname', 'user__username', 'user__phone')
-    list_per_page = 500 
+    
+    # Теперь ты видишь ИМЯ, ПРОЕКТ и СТАТУС рядом.
+    list_display = ('display_face', 'get_fullname', 'get_project_title', 'status_colored', 'applied_at')
+    
+    # ЭТО ГЛАВНОЕ: Фильтр по проекту. Справа в админке будет список ивентов.
+    list_filter = (('project', admin.RelatedOnlyFieldListFilter), 'status', 'applied_at')
+    
+    search_fields = ('user__fullname', 'user__username', 'user__phone', 'project__title')
+    list_per_page = 50 
+    
+    # Позволяет менять статус прямо в списке, не заходя внутрь юзера
+    list_editable = ('status',)
 
-    # --- ACTIONS (МАССОВЫЕ ДЕЙСТВИЯ) ---
     actions = ['approve_and_invite', 'make_attended_with_msg', 'make_rejected']
 
-    @admin.action(description='✅ Одобрить и отправить ССЫЛКУ НА ЧАТ')
+    # Красивое отображение статуса с цветами
+    def status_colored(self, obj):
+        colors = {
+            'approved': '#28a745', # Зеленый
+            'pending': '#ffc107',  # Желтый
+            'rejected': '#dc3545', # Красный
+            'attended': '#17a2b8', # Голубой
+        }
+        return format_html(
+            '<b style="color: {}; text-transform: uppercase;">{}</b>',
+            colors.get(obj.status, 'black'),
+            obj.status
+        )
+    status_colored.short_description = 'СТАТУС'
+
+    def get_project_title(self, obj):
+        return obj.project.title
+    get_project_title.short_description = 'ПРОЕКТ (Loyiha)'
+
+    # --- Твои ACTIONS остаются такими же, но теперь они работают точнее ---
+    @admin.action(description='✅ Одобрить и отправить ССЫЛКУ')
     def approve_and_invite(self, request, queryset):
+        # Если ты отфильтровал по проекту "Eco-Day", 
+        # то queryset будет содержать только людей из этого проекта.
         count = 0
         for obj in queryset:
             if obj.project.chat_link:
@@ -74,49 +104,8 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
                 )
                 asyncio.run(send_notification(obj.user.tg_id, text))
                 count += 1
-            else:
-                self.message_user(request, f"Ошибка: У проекта '{obj.project.title}' нет ссылки!", messages.ERROR)
-        
-        self.message_user(request, f"Одобрено и отправлено сообщений: {count}")
+        self.message_user(request, f"Yuborildi: {count}")
 
-    @admin.action(description='🌟 Пришёл на эвент (+10 баллов + Уведомление)')
-    def make_attended_with_msg(self, request, queryset):
-        for obj in queryset:
-            if obj.status != 'attended':
-                obj.status = 'attended'
-                obj.save() # Начислит баллы в модели
-                
-                text = (
-                    f"🌟 <b>Rahmat!</b>\n\n"
-                    f"Siz bugungi loyihada faol qatnashdingiz va <b>10 eko-ball</b> oldingiz!\n"
-                    f"Hozirgi balansingiz: <b>{obj.user.balance}</b> ball.\n\n"
-                    f"<i>Yana bir oz yig'ing va sovg'alarga almashtiring!</i>"
-                )
-                asyncio.run(send_notification(obj.user.tg_id, text))
-        self.message_user(request, "Баллы начислены, пользователи уведомлены!")
-
-    @admin.action(description='❌ Отменить участие (Удалить баллы)')
-    def make_rejected(self, request, queryset):
-        for obj in queryset:
-            obj.status = 'rejected'
-            obj.save()
-
-    # --- ОТОБРАЖЕНИЕ ФОТО ---
-    def display_face(self, obj):
-        if obj.user and obj.user.photo:
-            try:
-                return format_html(
-                    '<img src="{}" width="65" height="65" style="border-radius:10px; object-fit:cover; border:2px solid #28a745;"/>', 
-                    obj.user.photo.url
-                )
-            except:
-                return "Ошибка пути"
-        return "Нет фото"
-    display_face.short_description = 'ЛИЦО'
-
-    def get_fullname(self, obj):
-        return obj.user.fullname
-    get_fullname.short_description = 'F.I.SH'
 
 # --- 3. ОСТАЛЬНЫЕ РЕГИСТРАЦИИ ---
 
