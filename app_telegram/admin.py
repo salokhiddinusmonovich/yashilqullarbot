@@ -11,8 +11,6 @@ from .models import (
     EcoProject, Partner
 )
 
-# --- НАСТРОЙКА БОТА ДЛЯ ОПОВЕЩЕНИЙ ---
-# Вставь сюда свой токен
 BOT_TOKEN = "8597081931:AAHrLlthINCN8nIZp_zh3WEbzfc-5GhoHmw"
 
 async def send_notification(user_id, text):
@@ -24,7 +22,6 @@ async def send_notification(user_id, text):
     finally:
         await bot.close()
 
-# --- 1. РЕСУРС ДЛЯ ЭКСПОРТА ---
 class ParticipationResource(resources.ModelResource):
     username = Field(attribute='user__username', column_name='Telegram Username')
     fullname = Field(attribute='user__fullname', column_name='F.I.SH (Имя)')
@@ -142,10 +139,22 @@ class EcoProjectAdmin(admin.ModelAdmin):
     # Добавляем возможность редактировать ссылку прямо в списке
     list_editable = ('is_active',)
 
+@admin.register(TeamMemberYashilQullar)
+class TeamMemberAdmin(admin.ModelAdmin):
+    list_display = ('display_photo', 'fullname', 'focus', 'telegram_username')
+    list_filter = ('focus',)
+    search_fields = ('fullname', 'telegram_username')
+
+    def display_photo(self, obj):
+        if obj.photo:
+            return format_html('<img src="{}" width="50" height="50" style="border-radius:50%; object-fit:cover;"/>', obj.photo.url)
+        return "Нет фото"
+    display_photo.short_description = "Фото"
+
+
 # @admin.register(Product)
 # class ProductAdmin(admin.ModelAdmin):
 #     list_display = ('name', 'price', 'stock')
 #     list_editable = ('price', 'stock')
 
 admin.site.register(Partner)
-admin.site.register(TeamMemberYashilQullar)

@@ -56,14 +56,11 @@ class TGUser(TimeBasedModel):
         return f'{self.fullname} ({self.tg_id})'
 
 class TeamMemberYashilQullar(TimeBasedModel):
-    tg_user = models.OneToOneField(
-        TGUser,
-        on_delete=models.CASCADE,
-        related_name='team_member',
-        verbose_name='Telegram foydalanuvchi'
-    )
-    skills = models.TextField(blank=True, null=True, verbose_name='Ko‘nikmalar')
-    telegram_username = models.CharField(max_length=100, blank=True, null=True, verbose_name='Telegram username')
+    # Убрали OneToOneField к TGUser. Теперь это самостоятельная модель.
+    fullname = models.CharField(max_length=255, verbose_name="F.I.SH (Имя)")
+    photo = models.ImageField(upload_to='team_photos/', verbose_name="Rasm (Фото)")
+    telegram_username = models.CharField(max_length=100, blank=True, null=True, verbose_name="Telegram Username (@...)")
+    skills = models.TextField(blank=True, null=True, verbose_name='Ko‘nikmalar (Навыки)')
     
     FOCUS_CHOICES = [
         ('founder', 'Founder'),
@@ -71,14 +68,14 @@ class TeamMemberYashilQullar(TimeBasedModel):
         ('media', 'Media Lead'),
         ('organization', 'Organization'),
     ]
-    focus = models.CharField(max_length=255, choices=FOCUS_CHOICES)
+    focus = models.CharField(max_length=255, choices=FOCUS_CHOICES, verbose_name="Yo'nalishi (Роль)")
 
     class Meta:
         verbose_name = 'Team member (Yashil Qullar)'
         verbose_name_plural = 'Team members (Yashil Qullar)'
 
     def __str__(self):
-        return self.tg_user.fullname
+        return self.fullname
 
 class EcoProject(models.Model):
     title = models.CharField(max_length=255, verbose_name="Loyiha nomi")
