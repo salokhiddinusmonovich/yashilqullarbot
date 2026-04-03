@@ -16,7 +16,7 @@ async def about_us(message: types.Message):
         "🌿 <b>Yashil Qo'llar</b> — barqaror kelajak harakati!\n"
         '\n'
         "Bizning maqsadimiz — shahrimizni yashilroq qilish va ekologik"
-        "madaniyatni yuksaltirish. Hozirda bizda <b>300+</b>"
+        "madaniyatni yuksaltirish. Hozirda bizda <b>300+</b> "
         "faol ko'ngillilar bor!  💪"
     )
 
