@@ -5,17 +5,11 @@ async def shop_pass(message: types.Message):
     text = (
         "<b>🙃 Sahifa tayyorlanmoqda</b>"
     )
-    
-    # Добавляем инлайн-кнопку, чтобы юзер мог вернуться или перейти в канал
-    kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton(text="🔄 Asosiy menyu", callback_data="start_menu")) 
-    # Если есть канал проекта, можно добавить ссылку на него:
-    # kb.add(InlineKeyboardButton(text="📢 Yangiliklar", url="https://t.me/your_channel"))
+  
 
     await message.answer(
         text, 
         parse_mode="HTML", 
-        reply_markup=kb
     )
 
 
