@@ -41,7 +41,7 @@ async def show_team_members_by_focus(message: types.Message):
         # ТЕПЕРЬ ДАННЫЕ БЕРЕМ НАПРЯМУЮ ИЗ member
         caption = (
             f"👤 <b>{member.fullname}</b>\n"
-            f"• {message.text}\n"
+            f"{message.text}\n"
         )
         
         if member.skills:
