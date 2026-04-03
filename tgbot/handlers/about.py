@@ -33,10 +33,11 @@ async def about_us(message: types.Message):
                 kb.insert(InlineKeyboardButton(f"🔗 {p.name}", url=link))
         
         # Добавляем разделитель в клавиатуру, если есть партнеры
-        kb.add(InlineKeyboardButton("🌐 Loyiha sayti", url="https://yashilqollar.uz"))
+        # kb.add(InlineKeyboardButton("🌐 Loyiha sayti", url="https://yashilqollar.uz"))
     else:
         # Если партнеров нет — просто одна кнопка сайта (или вообще без кнопок)
-        kb.add(InlineKeyboardButton("🌐 Batafsil ma'lumot", url="https://yashilqollar.uz"))
+        # kb.add(InlineKeyboardButton("🌐 Batafsil ma'lumot", url="https://yashilqollar.uz"))
+        pass 
 
     # 4. Отправка
     poster_path = BASE_DIR / "idk" / "poster.png"
