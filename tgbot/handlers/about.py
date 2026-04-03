@@ -1,14 +1,21 @@
 from aiogram import types, Dispatcher
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputFile, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputFile
 from asgiref.sync import sync_to_async
 from pathlib import Path
 from app_telegram.models import TeamMemberYashilQullar, Partner
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 
-# --- КЛАВИАТУРЫ ---
+# 1. Главная клавиатура раздела "О нас" (Внизу вместо основной)
+ABOUT_REPLY_KB = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="👥 Jamoamiz"), KeyboardButton(text="🤝 Hamkorlarimiz")],
+        [KeyboardButton(text="⬅️ Orqaga")]
+    ],
+    resize_keyboard=True
+)
 
-# Клавиатура выбора категории команды (Обычные кнопки)
+# 2. Клавиатура выбора роли в команде
 TEAM_MENU_KB = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="🌟 Project Lead"), KeyboardButton(text="💻 Digital Lead")],
@@ -18,78 +25,55 @@ TEAM_MENU_KB = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
-# Инлайн-кнопки для раздела "About"
-ABOUT_INLINE_KB = InlineKeyboardMarkup(row_width=1).add(
-    InlineKeyboardButton("👥 Jamoamiz", callback_data="show_team_menu"),
-    InlineKeyboardButton("🤝 Hamkorlarimiz", callback_data="show_partners")
-)
-
 # --- ХЕНДЛЕРЫ ---
 
-# 1. Главное меню "О нас"
 async def about_us(message: types.Message):
     main_text = (
         "🌿 <b>Yashil Qo'llar</b> — barqaror kelajak harakati!\n\n"
         "Bizning maqsadimiz — shahrimizni yashilroq qilish va ekologik "
-        "madaniyatni yuksaltirish. Hozirda bizda <b>300+</b> faol ko'ngillilar bor! 💪\n\n"
+        "madaniyatni yuksaltirish.\n\n"
         "Quyidagilardan birini tanlang: 👇"
     )
     
     poster_path = BASE_DIR / "idk" / "poster.png"
     
+    # Отправляем постер и МЕНЯЕМ кнопки внизу телефона
     try:
         with open(poster_path, 'rb') as photo:
             await message.answer_photo(
                 photo=photo,
                 caption=main_text,
-                reply_markup=ABOUT_INLINE_KB,
+                reply_markup=ABOUT_REPLY_KB, # Кнопки появятся внизу
                 parse_mode="HTML"
             )
     except Exception:
-        await message.answer(main_text, reply_markup=ABOUT_INLINE_KB, parse_mode="HTML")
+        await message.answer(main_text, reply_markup=ABOUT_REPLY_KB, parse_mode="HTML")
 
-# 2. Переход к меню команды (через Callback)
-async def call_show_team_menu(callback: types.CallbackQuery):
-    await callback.message.answer(
-        "Yashil Qo‘llar jamoasining yo‘nalishini tanlang: 👇",
+async def show_team_selection(message: types.Message):
+    await message.answer(
+        "Jamoamiz yo'nalishini tanlang: 👇",
         reply_markup=TEAM_MENU_KB
     )
-    await callback.answer()
 
-# 3. Вывод ПАРТНЕРОВ с фото
-async def call_show_partners(callback: types.CallbackQuery):
+async def show_partners_list(message: types.Message):
     partners = await sync_to_async(lambda: list(Partner.objects.filter(is_active=True)))()
     
     if not partners:
-        await callback.message.answer("Hozircha hamkorlar ro'yxati bo'sh.")
-        await callback.answer()
+        await message.answer("Hozircha hamkorlar ro'yxati bo'sh.")
         return
-
-    await callback.message.answer("<b>Bizning hamkorlarimiz:</b>", parse_mode="HTML")
 
     for p in partners:
         caption = f"<b>{p.name}</b>\n\n{p.description if p.description else ''}"
-        
-        kb = InlineKeyboardMarkup()
-        if p.telegram: kb.add(InlineKeyboardButton("Telegram", url=p.telegram))
-        if p.instagram: kb.add(InlineKeyboardButton("Instagram", url=p.instagram))
-
+        # Здесь можно оставить инлайн кнопки для ссылок, они не мешают кнопкам внизу
         if p.logo:
             try:
-                await callback.message.answer_photo(
-                    photo=InputFile(p.logo.path),
-                    caption=caption,
-                    reply_markup=kb,
-                    parse_mode="HTML"
-                )
+                await message.answer_photo(InputFile(p.logo.path), caption=caption, parse_mode="HTML")
             except Exception:
-                await callback.message.answer(caption, reply_markup=kb, parse_mode="HTML")
+                await message.answer(caption, parse_mode="HTML")
         else:
-            await callback.message.answer(caption, reply_markup=kb, parse_mode="HTML")
-    
-    await callback.answer()
+            await message.answer(caption, parse_mode="HTML")
 
-# 4. Вывод ЧЛЕНОВ КОМАНДЫ (твоя логика без VIP и стикеров)
+# Твоя функция вывода членов команды (без изменений)
 async def show_team_members_by_focus(message: types.Message):
     focus_map = {
         "🌟 Project Lead": "founder",
@@ -97,13 +81,10 @@ async def show_team_members_by_focus(message: types.Message):
         "📸 Media Lead": "media",
         "📋 Organization": "organization"
     }
-    
     selected_focus = focus_map.get(message.text)
     if not selected_focus: return
 
-    members = await sync_to_async(lambda: list(
-        TeamMemberYashilQullar.objects.filter(focus=selected_focus)
-    ))()
+    members = await sync_to_async(lambda: list(TeamMemberYashilQullar.objects.filter(focus=selected_focus)))()
 
     if not members:
         await message.answer("Hozircha bu bo‘limda a’zolar mavjud emas.")
@@ -126,14 +107,14 @@ async def show_team_members_by_focus(message: types.Message):
 
 # --- РЕГИСТРАЦИЯ ---
 def register_about_and_team(dp: Dispatcher):
-    # Главная кнопка
-    dp.register_message_handler(about_us, lambda m: m.text == "🌟 Biz haqimizda", state="*")
+    # Главная кнопка "О нас"
+    dp.register_message_handler(about_us, text="🌟 Biz haqimizda", state="*")
     
-    # Callback-кнопки под постером
-    dp.register_callback_query_handler(call_show_team_menu, text="show_team_menu", state="*")
-    dp.register_callback_query_handler(call_show_partners, text="show_partners", state="*")
+    # Кнопки под телефоном (Reply)
+    dp.register_message_handler(show_team_selection, text="👥 Jamoamiz", state="*")
+    dp.register_message_handler(show_partners_list, text="🤝 Hamkorlarimiz", state="*")
     
-    # Кнопки категорий команды
+    # Кнопки выбора роли
     dp.register_message_handler(
         show_team_members_by_focus, 
         lambda m: m.text in ["🌟 Project Lead", "💻 Digital Lead", "📸 Media Lead", "📋 Organization"],
