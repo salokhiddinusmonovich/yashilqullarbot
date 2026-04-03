@@ -32,7 +32,7 @@ async def list_upcoming_events(message: types.Message, state: FSMContext):
     )
     
     if not projects:
-        await message.answer("Hozircha yangi tadbirlar yo'q. 😔", reply_markup=get_events_menu())
+        await message.answer("Hozircha yangi tadbirlar yo'q. 😊", reply_markup=get_events_menu())
         return
 
     for p in projects:
