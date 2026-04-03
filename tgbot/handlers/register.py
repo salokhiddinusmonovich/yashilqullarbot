@@ -1,9 +1,10 @@
-from aiogram import Dispatcher
+from aiogram import Dispatcher, types
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from asgiref.sync import sync_to_async
 import re
+
 
 from ..keyboards.text import register_text
 from ..keyboards.reply import contact_btn
@@ -71,9 +72,21 @@ async def email_handler(message: Message, state: FSMContext):
 
 # Step 4: Region text handler
 async def region_handler(message: Message, state: FSMContext):
-    await state.update_data(region=message.text.strip())
+    selected_label = message.text.strip()
+    
+    # Ищем ключ (value) по тексту кнопки (label)
+    region_value = None
+    for value, label in TGUser.Region.choices:
+        if selected_label == label:
+            region_value = value
+            break
+    
+    # Если нажали кнопку, сохраняем ключ. Если просто написали текст - сохраняем текст.
+    final_region = region_value if region_value else selected_label
+    
+    await state.update_data(region=final_region)
     await state.set_state(RegisterState.education.state)
-    await message.answer("O‘qish joyingizni kiriting 👇", reply_markup=None)
+    await message.answer("O‘qish joyingizni kiriting 👇", reply_markup=types.ReplyKeyboardRemove())
 
 
 # 2. Education handlerdan keyin ishlaydigan yangi funksiya
