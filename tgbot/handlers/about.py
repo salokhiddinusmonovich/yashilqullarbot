@@ -93,24 +93,22 @@ async def show_team_members_by_focus(message: types.Message):
         return
 
     for member in members:
-        # Убираем эмодзи из кнопки (🌟, 💻 и т.д.), чтобы оставить только текст роли
-        role_name = message.text.split(maxsplit=1)[-1] 
+        # Очищаем роль от эмодзи и лишних пробелов
+        role_name = message.text.split(maxsplit=1)[-1].strip()
         
-        # ФОРМАТИРОВАНИЕ:
-        # 👤 — человечек перед именем
-        # • — кружочек перед навыками
+        # Собираем текст БЕЗ двойных \n\n (чтобы не было пустых строк)
         caption = f"👤 <b>{member.fullname}</b>\n"
-        caption += f"{message.text}\n\n" # Оставляем роль со стикером как на кнопке
+        caption += f"• {role_name}\n"
         
         if member.skills:
-            # Добавляем маленький кружочек перед каждой строкой навыков
-            caption += f"• {member.skills}\n\n"
+            # Очищаем навыки от лишних точек и пробелов
+            clean_skills = member.skills.replace('•', '').strip()
+            caption += f"• {clean_skills}\n"
 
         if member.telegram_username:
             username = member.telegram_username.replace('@', '')
             caption += f"Telegram: @{username}"
 
-        # Отправка фото
         if member.photo:
             try:
                 await message.answer_photo(
@@ -118,8 +116,7 @@ async def show_team_members_by_focus(message: types.Message):
                     caption=caption,
                     parse_mode="HTML"
                 )
-            except Exception as e:
-                print(f"Ошибка фото: {e}")
+            except Exception:
                 await message.answer(caption, parse_mode="HTML")
         else:
             await message.answer(caption, parse_mode="HTML")
