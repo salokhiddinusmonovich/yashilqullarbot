@@ -33,24 +33,10 @@ class TGUser(TimeBasedModel):
     phone = models.CharField(max_length=20)
     username = models.CharField(max_length=255, blank=True, null=True, verbose_name='Username')
     experience = models.TextField(blank=True, null=True, verbose_name='tajribasi')
-
     photo = models.ImageField(upload_to='users_photos/', blank=True, null=True, verbose_name='Profil rasmi')
-
-    region = models.CharField(
-        max_length=20,
-        choices=Region.choices,
-        blank=True,
-        null=True,
-        verbose_name='Hudud'
-    )
-
-    education_place = models.CharField(
-        max_length=255,
-        blank=True,
-        null=True,
-        verbose_name='O‘qish joyi'
-    )
-
+    region = models.CharField(max_length=20, choices=Region.choices, blank=True, null=True, verbose_name='Hudud')
+    education_place = models.CharField(max_length=255, blank=True, null=True, verbose_name='O‘qish joyi')
+    
     balance = models.PositiveIntegerField(default=0, verbose_name="Эко-баллы")
     
     @property
@@ -70,33 +56,6 @@ class TGUser(TimeBasedModel):
         return f'{self.fullname} ({self.tg_id})'
 
 
-class TeamMemberYashilQullar(TimeBasedModel):
-    tg_user = models.OneToOneField(
-        TGUser,
-        on_delete=models.CASCADE,
-        related_name='team_member',
-        verbose_name='Telegram foydalanuvchi'
-    )
-
-    skills = models.TextField(blank=True, null=True, verbose_name='Ko‘nikmalar')
-    telegram_username = models.CharField(max_length=100, blank=True, null=True, verbose_name='Telegram username')
-    
-    FOCUS_CHOICES = [
-        ('founder', 'Founder'),
-        ('digital', 'Digital Lead'),
-        ('media', 'Media Lead'),
-        ('organization', 'Organization'),
-    ]
-    focus = models.CharField(max_length=255, choices=FOCUS_CHOICES)
-
-    class Meta:
-        verbose_name = 'Team member (Yashil Qullar)'
-        verbose_name_plural = 'Team members (Yashil Qullar)'
-
-    def __str__(self):
-        return self.tg_user.fullname
-
-
 class EcoProject(models.Model):
     title = models.CharField(max_length=255, verbose_name="Loyiha nomi")
     description = models.TextField(verbose_name="Tavsif")
@@ -104,6 +63,9 @@ class EcoProject(models.Model):
     location_name = models.CharField(max_length=255, verbose_name="Manzil nomi")
     photo = models.ImageField(upload_to='projects/', null=True, blank=True, verbose_name="Rasm")
     is_active = models.BooleanField(default=True, verbose_name="Faolmi?")
+    
+    # НОВОЕ: Ссылка на чат для этого проекта
+    chat_link = models.URLField(blank=True, null=True, verbose_name="Ссылка на чат (для принятых)")
 
     def __str__(self):
         return self.title
@@ -115,25 +77,29 @@ class EcoProject(models.Model):
 
 class ProjectParticipation(models.Model):
     STATUS_CHOICES = [
-        ('attended', '✅ Keldi (Пришёл)'),
-        ('rejected', '❌ Kelmadi / Rad etildi (Отмена)'),
+        ('pending', '⏳ Кутиш (Ожидание)'), 
+        ('approved', '✅ Қабул қилинди (Принят)'),
+        ('attended', '🌟 Келди (Пришел +10 баллов)'),
+        ('rejected', '❌ Рад этилди (Отклонен)'),
     ]
 
     user = models.ForeignKey(TGUser, on_delete=models.CASCADE, related_name='participations')
     project = models.ForeignKey(EcoProject, on_delete=models.CASCADE, related_name='participants')
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, verbose_name="Status")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', verbose_name="Status")
     applied_at = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):
-        # Если запись новая или статус изменился на "Пришёл"
         if self.pk:
             old_obj = ProjectParticipation.objects.get(pk=self.pk)
+            # Если статус изменился на "Пришёл" — даем монеты
             if old_obj.status != 'attended' and self.status == 'attended':
-                self.user.balance += 10 # Авто-балл
+                self.user.balance += 10
                 self.user.save()
+            # Если статус был "Пришёл", но изменили на другой — забираем монеты
             elif old_obj.status == 'attended' and self.status != 'attended':
-                self.user.balance -= 10 # Забираем, если ошиблись
-                self.user.save()
+                if self.user.balance >= 10:
+                    self.user.balance -= 10
+                    self.user.save()
         elif self.status == 'attended':
             self.user.balance += 10
             self.user.save()
@@ -145,15 +111,29 @@ class ProjectParticipation(models.Model):
         verbose_name = "Ishtirokchi"
         verbose_name_plural = "Ishtirokchilar"
 
+
+# # НОВОЕ: Модели для Магазина (Shop)
+# class Product(TimeBasedModel):
+#     name = models.CharField(max_length=255, verbose_name="Название товара")
+#     description = models.TextField(verbose_name="Описание")
+#     price = models.PositiveIntegerField(verbose_name="Цена в монетах")
+#     image = models.ImageField(upload_to='shop/', verbose_name="Фото товара")
+#     stock = models.PositiveIntegerField(default=0, verbose_name="Количество в наличии")
+
+#     class Meta:
+#         verbose_name = "Товар"
+#         verbose_name_plural = "Товары"
+
+#     def __str__(self):
+#         return self.name
+
 class Partner(TimeBasedModel):
     name = models.CharField(max_length=255, verbose_name="Имя компании")
     description = models.TextField(blank=True, null=True, verbose_name="Описание партнерства")
     logo = models.ImageField(upload_to='partners_logos/', blank=True, null=True, verbose_name="Логотип")
-    
     instagram = models.URLField(blank=True, null=True, verbose_name="Instagram Link")
     telegram = models.URLField(blank=True, null=True, verbose_name="Telegram Link")
     linkedin = models.URLField(blank=True, null=True, verbose_name="LinkedIn Link")
-    
     is_active = models.BooleanField(default=True, verbose_name="Показывать в боте")
 
     class Meta:

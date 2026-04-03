@@ -65,8 +65,7 @@ async def process_registration(message: types.Message, state: FSMContext):
         # ТОТ САМЫЙ ОТВЕТ, КОТОРЫЙ ТЫ ПРОСИЛ:
         await message.answer(
             "✅ <b>Siz muvaffaqiyatli ro'yxatdan o'tdingiz!</b>\n\n"
-            "Biz arizangizni ko'rib chiqamiz va tez orada o'zimiz siz bilan bog'lanamiz. "
-            "Hozircha kutib turing. 😊",
+            "Arizangiz ko'rib chiqilmoqda, tez orada sizga xabar beramiz 😊 ",
             reply_markup=get_events_menu(),
             parse_mode="HTML"
         )
