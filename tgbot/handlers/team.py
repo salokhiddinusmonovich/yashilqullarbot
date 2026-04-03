@@ -1,24 +1,5 @@
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputFile
-from aiogram import types, Dispatcher
-from asgiref.sync import sync_to_async
-from app_telegram.models import TeamMemberYashilQullar
-
-TEAM_MENU_KB = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="🌟 Project Lead"), KeyboardButton(text="💻 Digital Lead")],
-        [KeyboardButton(text="📸 Media Lead"), KeyboardButton(text="📋 Organization")],
-        [KeyboardButton(text="⬅️ Orqaga")]
-    ],
-    resize_keyboard=True
-)
-
-async def show_team_categories(message: types.Message):
-    await message.answer(
-        "Yashil Qo‘llar jamoasining yo‘nalishini tanlang: 👇",
-        reply_markup=TEAM_MENU_KB
-    )
-
 async def show_team_members_by_focus(message: types.Message):
+    # Убираем стикеры из маппинга, чтобы в базу уходил чистый текст
     focus_map = {
         "🌟 Project Lead": "founder",
         "💻 Digital Lead": "digital",
@@ -28,7 +9,6 @@ async def show_team_members_by_focus(message: types.Message):
     
     selected_focus = focus_map.get(message.text)
     
-    # Теперь мы не ищем tg_user, а берем данные прямо из TeamMemberYashilQullar
     members = await sync_to_async(lambda: list(
         TeamMemberYashilQullar.objects.filter(focus=selected_focus)
     ))()
@@ -38,23 +18,24 @@ async def show_team_members_by_focus(message: types.Message):
         return
 
     for member in members:
-        # ТЕПЕРЬ ДАННЫЕ БЕРЕМ НАПРЯМУЮ ИЗ member
-        caption = (
-            f"👤 <b>{member.fullname}</b>\n"
-            f"{message.text}\n"
-        )
+        # 1. Имя жирным
+        # 2. Роль чистым текстом (берем из кнопки, убирая эмодзи)
+        role_name = message.text.split(maxsplit=1)[-1] # Убирает первый эмодзи
         
+        caption = f"<b>{member.fullname}</b>\n"
+        caption += f"{role_name}\n\n"
+        
+        # Навыки/Описание без лишних символов
         if member.skills:
-            caption += f"• {member.skills}\n"
+            caption += f"{member.skills}\n\n"
 
+        # Контакт
         if member.telegram_username:
             username = member.telegram_username.replace('@', '')
-            caption += f"• Telegram: @{username}\n"
+            caption += f"Telegram: @{username}"
 
-        # Отправка фото
         if member.photo:
             try:
-                # Берем путь к фото прямо из поля member.photo
                 photo_file = InputFile(member.photo.path)
                 await message.answer_photo(
                     photo=photo_file,
@@ -62,17 +43,7 @@ async def show_team_members_by_focus(message: types.Message):
                     parse_mode="HTML"
                 )
             except Exception as e:
-                print(f"Error sending photo: {e}")
+                print(f"Photo error: {e}")
                 await message.answer(caption, parse_mode="HTML")
         else:
             await message.answer(caption, parse_mode="HTML")
-
-def register_team(dp: Dispatcher):
-    # ПРОВЕРЬ ЭТОТ ТЕКСТ! Он должен быть таким же, как в главном меню
-    dp.register_message_handler(show_team_categories, text="🎯 Loyiha yetakchilari", state="*")
-    
-    dp.register_message_handler(
-        show_team_members_by_focus, 
-        lambda m: m.text in ["🌟 Project Lead", "💻 Digital Lead", "📸 Media Lead", "📋 Organization"],
-        state="*"
-    )
