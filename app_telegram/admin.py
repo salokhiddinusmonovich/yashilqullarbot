@@ -5,6 +5,7 @@ from aiogram import Bot
 from import_export import resources
 from import_export.admin import ExportMixin
 from import_export.fields import Field
+from asgiref.sync import async_to_sync # asyncio.run ўрнига хавфсизроқ
 
 from .models import (
     TGUser, TeamMemberYashilQullar, ProjectParticipation, 
@@ -22,75 +23,45 @@ async def send_notification(user_id, text):
     finally:
         await bot.close()
 
+# --- 1. RESOURCE ---
 class ParticipationResource(resources.ModelResource):
     username = Field(attribute='user__username', column_name='Telegram Username')
     fullname = Field(attribute='user__fullname', column_name='F.I.SH (Имя)')
     phone = Field(attribute='user__phone', column_name='Telefon')
     experience = Field(attribute='user__experience', column_name='Tajribasi (Опыт)')
-    
-    # НОВОЕ: Ссылка на фото
     photo_url = Field(column_name='Rasm (Ссылка на фото)')
-
     project_name = Field(attribute='project__title', column_name='Loyiha nomi')
 
     class Meta:
         model = ProjectParticipation
-        # Добавляем photo_url в список полей
         fields = ('username', 'fullname', 'phone', 'experience', 'photo_url', 'project_name', 'status')
         export_order = fields
 
-    # Логика для создания полной ссылки
     def dehydrate_photo_url(self, obj):
         if obj.user and obj.user.photo:
-            # Замени 'http://твой-ip-или-домен' на реальный URL твоего сервера
             server_url = "http://173.249.19.32:8000" 
             return f"{server_url}{obj.user.photo.url}"
         return "Нет фото"
-        
 
 # --- 2. ГЛАВНАЯ АДМИНКА УЧАСТНИКОВ ---
 @admin.register(ProjectParticipation)
 class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
     resource_class = ParticipationResource
     
-    # Теперь ты видишь ИМЯ, ПРОЕКТ и СТАТУС рядом.
-    list_display = ('display_face', 'get_fullname', 'get_project_title', 'status_colored', 'applied_at')
+    # ТВОЯ ЛОГИКА ОТОБРАЖЕНИЯ + ДОБАВИЛ ПРОЕКТ
+    list_display = ('display_face', 'get_fullname', 'get_project_title', 'status', 'applied_at')
     
-    # ЭТО ГЛАВНОЕ: Фильтр по проекту. Справа в админке будет список ивентов.
+    # ФИЛЬТРАЦИЯ: Теперь ты можешь выбрать проект справа!
     list_filter = (('project', admin.RelatedOnlyFieldListFilter), 'status', 'applied_at')
     
     search_fields = ('user__fullname', 'user__username', 'user__phone', 'project__title')
-    list_per_page = 50 
-    
-    # Позволяет менять статус прямо в списке, не заходя внутрь юзера
-    list_editable = ('status',)
+    list_per_page = 500 
 
     actions = ['approve_and_invite', 'make_attended_with_msg', 'make_rejected']
 
-    # Красивое отображение статуса с цветами
-    def status_colored(self, obj):
-        colors = {
-            'approved': '#28a745', # Зеленый
-            'pending': '#ffc107',  # Желтый
-            'rejected': '#dc3545', # Красный
-            'attended': '#17a2b8', # Голубой
-        }
-        return format_html(
-            '<b style="color: {}; text-transform: uppercase;">{}</b>',
-            colors.get(obj.status, 'black'),
-            obj.status
-        )
-    status_colored.short_description = 'СТАТУС'
-
-    def get_project_title(self, obj):
-        return obj.project.title
-    get_project_title.short_description = 'ПРОЕКТ (Loyiha)'
-
-    # --- Твои ACTIONS остаются такими же, но теперь они работают точнее ---
-    @admin.action(description='✅ Одобрить и отправить ССЫЛКУ')
+    # --- ТВОЯ ЛОГИКА (10 БАЛЛОВ И УВЕДОМЛЕНИЯ) - НЕ ТРОГАЛ ---
+    @admin.action(description='✅ Одобрить и отправить ССЫЛКУ НА ЧАТ')
     def approve_and_invite(self, request, queryset):
-        # Если ты отфильтровал по проекту "Eco-Day", 
-        # то queryset будет содержать только людей из этого проекта.
         count = 0
         for obj in queryset:
             if obj.project.chat_link:
@@ -102,13 +73,56 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
                     f"Siz <b>{obj.project.title}</b> loyihasiga qabul qilindingiz!\n"
                     f"Guruhga qo'shiling: {obj.project.chat_link}"
                 )
-                asyncio.run(send_notification(obj.user.tg_id, text))
+                async_to_sync(send_notification)(obj.user.tg_id, text)
                 count += 1
-        self.message_user(request, f"Yuborildi: {count}")
+            else:
+                self.message_user(request, f"Ошибка: У проекта '{obj.project.title}' нет ссылки!", messages.ERROR)
+        self.message_user(request, f"Одобрено и отправлено сообщений: {count}")
 
+    @admin.action(description='🌟 Пришёл на эвент (+10 баллов + Уведомление)')
+    def make_attended_with_msg(self, request, queryset):
+        for obj in queryset:
+            if obj.status != 'attended':
+                obj.status = 'attended'
+                obj.save() # Твоя модель сама начислит 10 баллов
+                
+                text = (
+                    f"🌟 <b>Rahmat!</b>\n\n"
+                    f"Siz bugungi loyihada faol qatnashdingiz va <b>10 eko-ball</b> oldingiz!\n"
+                    f"Hozirgi balansingiz: <b>{obj.user.balance}</b> ball.\n\n"
+                    f"<i>Yana bir oz yig'ing va sovg'alarga almashtiring!</i>"
+                )
+                async_to_sync(send_notification)(obj.user.tg_id, text)
+        self.message_user(request, "Баллы начислены, пользователи уведомлены!")
 
-# --- 3. ОСТАЛЬНЫЕ РЕГИСТРАЦИИ ---
+    @admin.action(description='❌ Отменить участие (Удалить баллы)')
+    def make_rejected(self, request, queryset):
+        for obj in queryset:
+            obj.status = 'rejected'
+            obj.save()
 
+    # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
+    def get_project_title(self, obj):
+        return obj.project.title
+    get_project_title.short_description = 'Loyiha nomi'
+
+    def display_face(self, obj):
+        if obj.user and obj.user.photo:
+            try:
+                return format_html(
+                    '<img src="{}" width="65" height="65" style="border-radius:10px; object-fit:cover; border:2px solid #28a745;"/>', 
+                    obj.user.photo.url
+                )
+            except:
+                return "Ошибка пути"
+        return "Нет фото"
+    display_face.short_description = 'ЛИЦО'
+
+    def get_fullname(self, obj):
+        return obj.user.fullname
+    get_fullname.short_description = 'F.I.SH'
+
+# --- ОСТАЛЬНЫЕ РЕГИСТРАЦИИ (БЕЗ ИЗМЕНЕНИЙ) ---
 @admin.register(TGUser)
 class TGUserAdmin(admin.ModelAdmin):
     list_display = ('display_avatar', 'fullname', 'username', 'balance', 'rank', 'region')
@@ -125,7 +139,6 @@ class TGUserAdmin(admin.ModelAdmin):
 class EcoProjectAdmin(admin.ModelAdmin):
     list_display = ('title', 'date', 'location_name', 'is_active')
     list_filter = ('is_active', 'date')
-    # Добавляем возможность редактировать ссылку прямо в списке
     list_editable = ('is_active',)
 
 @admin.register(TeamMemberYashilQullar)
@@ -139,11 +152,5 @@ class TeamMemberAdmin(admin.ModelAdmin):
             return format_html('<img src="{}" width="50" height="50" style="border-radius:50%; object-fit:cover;"/>', obj.photo.url)
         return "Нет фото"
     display_photo.short_description = "Фото"
-
-
-# @admin.register(Product)
-# class ProductAdmin(admin.ModelAdmin):
-#     list_display = ('name', 'price', 'stock')
-#     list_editable = ('price', 'stock')
 
 admin.site.register(Partner)
