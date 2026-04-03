@@ -79,7 +79,7 @@ class TeamMemberYashilQullar(TimeBasedModel):
 
 class EcoProject(models.Model):
     title = models.CharField(max_length=255, verbose_name="Loyiha nomi")
-    description = models.TextField(verbose_name="Tavsif")
+    description = models.TextField(verbose_name="Tavsif", blank=True, null=True)
     date = models.DateTimeField(verbose_name="Sana va vaqt")
     location_name = models.CharField(max_length=255, verbose_name="Manzil nomi")
     photo = models.ImageField(upload_to='projects/', null=True, blank=True, verbose_name="Rasm")

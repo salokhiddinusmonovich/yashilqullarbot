@@ -1,6 +1,6 @@
 from aiogram import types, Dispatcher
 from aiogram.dispatcher import FSMContext
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton,InputFile
 from asgiref.sync import sync_to_async
 from django.utils import timezone
 from app_telegram.models import TGUser, EcoProject, ProjectParticipation
@@ -73,15 +73,34 @@ async def process_registration(message: types.Message, state: FSMContext):
         await message.answer("Siz ushbu loyihaga allaqachon ariza topshirgansiz. 👍", reply_markup=get_events_menu())
 
 async def list_past_events(message: types.Message):
-    projects = await sync_to_async(list)(
-        EcoProject.objects.filter(date__lt=timezone.now()).order_by('-date')
-    )
-    if not projects:
-        await message.answer("Tarixda hali tadbirlar yo'q. 🌳")
+    # Получаем только прошедшие события
+    past_events = await sync_to_async(lambda: list(
+        EcoProject.objects.filter(is_past=True).order_by('-event_date')
+    ))()
+
+    if not past_events:
+        await message.answer("Hozircha o'tgan tadbirlar mavjud emas.")
         return
 
-    for p in projects:
-        await message.answer(f"✅ <b>{p.title}</b>\n📅 {p.date.strftime('%d.%m.%Y')}\n\nTadbir yakunlangan.")
+    for event in past_events:
+        # Только заголовок, БЕЗ даты
+        caption = f"<b>{event.title}</b>"
+        
+        # Если описание всё-таки заполнено, можем его добавить (опционально)
+        if event.description:
+            caption += f"\n\n{event.description}"
+
+        if event.photo:
+            try:
+                await message.answer_photo(
+                    photo=InputFile(event.photo.path),
+                    caption=caption,
+                    parse_mode="HTML"
+                )
+            except Exception:
+                await message.answer(caption, parse_mode="HTML")
+        else:
+            await message.answer(caption, parse_mode="HTML")
 
 async def handle_back(message: types.Message, state: FSMContext):
     if "Orqaga" in message.text:
