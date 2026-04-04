@@ -29,10 +29,9 @@ TEAM_MENU_KB = ReplyKeyboardMarkup(
 
 async def about_us(message: types.Message):
     main_text = (
-        "🌿 <b>Yashil Qo'llar</b> — barqaror kelajak harakati!\n\n"
-        "Bizning maqsadimiz — shahrimizni yashilroq qilish va ekologik "
-        "madaniyatni yuksaltirish.\n\n"
-        "Quyidagilardan birini tanlang: 👇"
+        "🌿 <b>Yashil Qo'llar</b> — barqaror kelajak sari!\n\n"
+        "Maqsadimiz — yoshlar orasida ekologik madaniyatni rivojnatirish.  "
+        "Safimizda 300+ faol ko'ngillilar bor! 💪\n\n"
     )
     poster_path = BASE_DIR / "idk" / "poster.png"
     try:
@@ -51,7 +50,7 @@ async def show_partners_list(message: types.Message):
         await message.answer("Hozircha hamkorlar ro'yxati bo'sh.")
         return
 
-    await message.answer("🤝 <b>Bizning hamkorlarimiz:</b>", parse_mode="HTML")
+    await message.answer("🤝 <b>Hamkorlarimiz: </b>", parse_mode="HTML")
     for p in partners:
         caption = f"<b>{p.name}</b>\n"
         if p.description: caption += f"\n{p.description}\n"
