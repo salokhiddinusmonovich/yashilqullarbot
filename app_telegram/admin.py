@@ -81,19 +81,37 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
 
     @admin.action(description='🌟 Пришёл на эвент (+10 баллов + Уведомление)')
     def make_attended_with_msg(self, request, queryset):
+        success_count = 0
+        error_count = 0
+        
         for obj in queryset:
-            if obj.status != 'attended':
-                obj.status = 'attended'
-                obj.save() # Твоя модель сама начислит 10 баллов
-                
-                text = (
-                    f"🌟 <b>Rahmat!</b>\n\n"
-                    f"Siz bugungi loyihada faol qatnashdingiz va <b>10 eko-ball</b> oldingiz!\n"
-                    f"Hozirgi balansingiz: <b>{obj.user.balance}</b> ball.\n\n"
-                    f"<i>Yana bir oz yig'ing va sovg'alarga almashtiring!</i>"
-                )
-                async_to_sync(send_notification)(obj.user.tg_id, text)
-        self.message_user(request, "Баллы начислены, пользователи уведомлены!")
+            try:
+                if obj.status != 'attended':
+                    # 1. Сначала меняем статус и сохраняем (начисляем баллы)
+                    obj.status = 'attended'
+                    obj.save() 
+                    
+                    # 2. Обновляем данные из базы, чтобы получить актуальный баланс
+                    obj.user.refresh_from_db()
+                    
+                    # 3. Отправляем уведомление
+                    if obj.user.tg_id:
+                        text = (
+                            f"🌟 <b>Rahmat!</b>\n\n"
+                            f"Siz bugungi loyihada faol qatnashdingiz va <b>10 eko-ball</b> oldingiz!\n"
+                            f"Hozirgi balansingiz: <b>{obj.user.balance}</b> ball.\n\n"
+                            f"<i>Yana bir oz yig'ing va sovg'alarga almashtiring!</i>"
+                        )
+                        # Используем async_to_sync правильно
+                        async_to_sync(send_notification)(obj.user.tg_id, text)
+                        success_count += 1
+                else:
+                    self.message_user(request, f"Пользователь {obj.user.fullname} уже отмечен.", messages.WARNING)
+            except Exception as e:
+                error_count += 1
+                self.message_user(request, f"Ошибка у {obj.user.fullname}: {str(e)}", messages.ERROR)
+
+        self.message_user(request, f"Успешно: {success_count}. Ошибок: {error_count}")
 
     @admin.action(description='❌ Отменить участие (Удалить баллы)')
     def make_rejected(self, request, queryset):
