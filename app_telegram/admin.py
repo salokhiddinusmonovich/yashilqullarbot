@@ -100,7 +100,7 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
                             f"🌟 <b>Rahmat!</b>\n\n"
                             f"Siz bugungi loyihada faol qatnashdingiz va <b>10 eko-ball</b> oldingiz!\n"
                             f"Hozirgi balansingiz: <b>{obj.user.balance}</b> ball.\n\n"
-                            f"<i>Yana bir oz yig'ing va sovg'alarga almashtiring!</i>"
+                            # f"<i>Yana bir oz yig'ing va sovg'alarga almashtiring!</i>"
                         )
                         # Используем async_to_sync правильно
                         async_to_sync(send_notification)(obj.user.tg_id, text)
