@@ -27,7 +27,7 @@ async def show_events_menu(message: types.Message, state: FSMContext):
     await state.finish()
     await message.answer("<b>Tadbirlar bo'limi</b> ✨", reply_markup=get_events_menu(), parse_mode="HTML")
 
-# БУДУЩИЕ СОБЫТИЯ (С датой и регистрацией)
+# БУДУЩИЕ СОБЫТИЯ (Теперь тоже только название и описание)
 async def list_upcoming_events(message: types.Message, state: FSMContext):
     # Берем проекты, которые еще не наступили (date > сейчас)
     projects = await sync_to_async(list)(
@@ -39,13 +39,14 @@ async def list_upcoming_events(message: types.Message, state: FSMContext):
         return
 
     for p in projects:
-        text = (
-            f"🚀 <b>{p.title}</b>\n\n"
-            f"📅 <b>Sana:</b> {p.date.strftime('%d.%m.%Y %H:%M')}\n"
-            f"📍 <b>Joy:</b> {p.location_name}\n\n"
-            f"{f'📝 {p.description}' if p.description else ''}\n\n"
-            f"<i>Ro'yxatdan o'tish uchun pastdagi tugmani bosing 👇</i>"
-        )
+        # Убрали дату и место. Оставляем только заголовок и описание.
+        text = f"🚀 <b>{p.title}</b>\n\n"
+        
+        if p.description:
+            text += f"{p.description}\n\n"
+            
+        text += f"<i>Ro'yxatdan o'tish uchun pastdagi tugmani bosing 👇</i>"
+        
         await message.answer(text, reply_markup=get_registration_kb(), parse_mode="HTML")
 
 # ПРОШЕДШИЕ СОБЫТИЯ (Только фото и название, БЕЗ ДАТЫ)
