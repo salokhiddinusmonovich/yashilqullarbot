@@ -57,7 +57,7 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
     search_fields = ('user__fullname', 'user__username', 'user__phone', 'project__title')
     list_per_page = 500 
 
-    actions = ['approve_and_invite', 'make_attended_with_msg', 'make_rejected', 'send_reminder_to_unregistered']
+    actions = ['approve_and_invite', 'make_attended_with_msg', 'make_rejected']
 
     # --- ТВОЯ ЛОГИКА (10 БАЛЛОВ И УВЕДОМЛЕНИЯ) - НЕ ТРОГАЛ ---
     @admin.action(description='✅ Одобрить и отправить ССЫЛКУ НА ЧАТ')
@@ -78,49 +78,6 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
             else:
                 self.message_user(request, f"Ошибка: У проекта '{obj.project.title}' нет ссылки!", messages.ERROR)
         self.message_user(request, f"Одобрено и отправлено сообщений: {count}")
-
-
-    @admin.action(description='🔔 Пнуть тех, кто в Боте, но не в Проекте (по региону)')
-    def send_reminder_to_unregistered(self, request, queryset):
-        # 1. Берем проект из первой выделенной записи (или можно взять самый свежий активный)
-        if not queryset.exists():
-            return
-        
-        project = queryset.first().project 
-        project_region = getattr(project, 'region', 'tashkent_s') # Регион проекта
-
-        # 2. Находим ID тех, кто УЖЕ подал заявку на этот проект (чтобы не спамить им)
-        registered_user_ids = ProjectParticipation.objects.filter(
-            project=project
-        ).values_list('user__id', flat=True)
-
-        # 3. Находим юзеров, которые: 
-        # а) Из того же региона б) Их нет в списке зарегистрированных
-        from app_telegram.models import TGUser # Импортируй свою модель юзера
-        potential_volunteers = TGUser.objects.filter(
-            region=project_region
-        ).exclude(id__in=registered_user_ids)
-
-        count = 0
-        for user in potential_volunteers:
-            if user.tg_id:
-                # ИНСТРУКЦИЯ ДЛЯ ЮЗЕРА
-                text = (
-                    f"👋 <b>Salom, {user.fullname}!</b>\n\n"
-                    f"Siz botimizdan ro'yxatdan o'tgansiz, lekin hali <b>{project.title}</b> loyihasiga ariza topshirmabsiz! 😊\n\n"
-                    f"<b>Qanday ro'yxatdan o'tish mumkin?</b>\n"
-                    f"1️⃣ Pastdagi <b>«Tadbirlar»</b> tugmasini bosing.\n"
-                    f"2️⃣ <b>«Kelgusi tadbirlar»</b> bo'limiga kiring.\n"
-                    f"3️⃣ Loyihani tanlab, <b>«✅ Ro'yxatdan o'tish»</b> tugmasini bosing.\n\n"
-                    f"Sizni kutib qolamiz! 🌱"
-                )
-                try:
-                    async_to_sync(send_notification)(user.tg_id, text)
-                    count += 1
-                except Exception as e:
-                    print(f"Ошибка отправки для {user.tg_id}: {e}")
-
-        self.message_user(request, f"Напоминание отправлено {count} пользователям из региона {project_region}.")
 
     @admin.action(description='🌟 Пришёл на эвент (+10 баллов + Уведомление)')
     def make_attended_with_msg(self, request, queryset):
@@ -201,6 +158,52 @@ class EcoProjectAdmin(admin.ModelAdmin):
     list_display = ('title', 'date', 'location_name', 'is_active')
     list_filter = ('is_active', 'date')
     list_editable = ('is_active',)
+
+    actions = ['remind_local_users']
+
+    @admin.action(description='🔔 Рассылка: "Вы забыли зарегистрироваться" (для этого региона)')
+    def remind_local_users(self, request, queryset):
+        for project in queryset:
+            # 1. Получаем регион проекта
+            # Если в модели EcoProject еще нет поля region, добавь его. 
+            # Пока используем 'tashkent_s' как заглушку или проверку.
+            project_region = getattr(project, 'region', 'tashkent_s') 
+
+            # 2. Находим ID тех, кто УЖЕ зарегистрирован именно на ЭТОТ проект
+            registered_ids = ProjectParticipation.objects.filter(
+                project=project
+            ).values_list('user__id', flat=True)
+
+            # 3. Находим всех TGUser, кто:
+            # - Из того же региона, что и проект
+            # - Кого НЕТ в списке зарегистрированных на этот проект
+            unregistered_users = TGUser.objects.filter(
+                region=project_region
+            ).exclude(id__in=registered_ids)
+
+            count = 0
+            for user in unregistered_users:
+                if user.tg_id:
+                    text = (
+                        f"👋 <b>Salom, {user.fullname}!</b>\n\n"
+                        f"Toshkentda <b>{project.title}</b> loyihasi rejalashtirilgan! ✨\n"
+                        f"Lekin siz hali ro'yxatdan o'tmabsiz. Safimizga qo'shiling! 👇\n\n"
+                        f"<b>Qanday ro'yxatdan o'tish mumkin?</b>\n"
+                        f"1️⃣ Bot menyusidan <b>«Tadbirlar»</b> bo'limiga kiring.\n"
+                        f"2️⃣ <b>«Kelgusi tadbirlar»</b> tugmasini bosing.\n"
+                        f"3️⃣ Loyihani tanlang va <b>«✅ Ro'yxatdan o'tish»</b> tugmasini bosing.\n\n"
+                        f"Sizni kutib qolamiz! 🌿"
+                    )
+                    try:
+                        async_to_sync(send_notification)(user.tg_id, text)
+                        count += 1
+                    except Exception as e:
+                        print(f"Ошибка отправки пользователю {user.tg_id}: {e}")
+
+            self.message_user(
+                request, 
+                f"Напоминание о проекте '{project.title}' отправлено {count} пользователям из региона {project_region}."
+            )
 
 @admin.register(TeamMemberYashilQullar)
 class TeamMemberAdmin(admin.ModelAdmin):
