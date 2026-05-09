@@ -1,9 +1,24 @@
-import asyncio, django, logging, os
+import asyncio
+import django
+import logging
+import os
 
 from aiogram import Bot, Dispatcher
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.contrib.fsm_storage.redis import RedisStorage2
 
+# --- 1. ИНИЦИАЛИЗАЦИЯ DJANGO (ДО ИМПОРТА ХЕНДЛЕРОВ) ---
+def setup_django():
+    os.environ.setdefault(
+        "DJANGO_SETTINGS_MODULE",
+        "dj_ac.settings"
+    )
+    os.environ.update({'DJANGO_ALLOW_ASYNC_UNSAFE': "true"})
+    django.setup()
+
+setup_django() 
+
+# --- 2. ТЕПЕРЬ ИМПОРТЫ ХЕНДЛЕРОВ (ОНИ ТЕПЕРЬ НЕ УПАДУТ) ---
 from tgbot.config import load_config
 from tgbot.filters.admin import AdminFilter
 from tgbot.handlers.admin import register_admin
@@ -16,20 +31,16 @@ from tgbot.handlers.shop import register_shop
 from tgbot.handlers.qr_handler import register_qr_handlers
 from tgbot.handlers.contact_with_team import register_project_handlers
 
-
 from tgbot.middlewares.environment import EnvironmentMiddleware
-from aiogram.contrib.fsm_storage.redis import RedisStorage2
 
 logger = logging.getLogger(__name__)
 
-
+# --- 3. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
 def register_all_middlewares(dp, config):
     dp.setup_middleware(EnvironmentMiddleware(config=config))
 
-
 def register_all_filters(dp):
     dp.filters_factory.bind(AdminFilter)
-
 
 def register_all_handlers(dp):
     register_admin(dp)
@@ -42,40 +53,40 @@ def register_all_handlers(dp):
     register_shop(dp)
     register_qr_handlers(dp)
     print("Handlers registered!")
-    
 
-
-def setup_django():
-    os.environ.setdefault(
-        "DJANGO_SETTINGS_MODULE",
-        "dj_ac.settings"
-    )
-    os.environ.update({'DJANGO_ALLOW_ASYNC_UNSAFE': "true"})
-    django.setup()
-
-
+# --- 4. ОСНОВНАЯ ЛОГИКА ЗАПУСКА ---
 async def main():
     logging.basicConfig(
         level=logging.INFO,
         format=u'%(filename)s:%(lineno)d #%(levelname)-8s [%(asctime)s] - %(name)s - %(message)s',
     )
     logger.info("Starting bot")
-    setup_django()
+    
     config = load_config(".env")
 
-    storage = RedisStorage2(config.redis.host, config.redis.port, db=5, pool_size=10, prefix='bot_fsm') \
-        if config.redis.use_redis else MemoryStorage()
+    # Настройка хранилища (Redis или Memory)
+    if config.redis.use_redis:
+        storage = RedisStorage2(
+            host=config.redis.host, 
+            port=config.redis.port, 
+            db=5, 
+            pool_size=10, 
+            prefix='bot_fsm'
+        )
+    else:
+        storage = MemoryStorage()
 
     bot = Bot(token=config.tg_bot.token, parse_mode='HTML')
     dp = Dispatcher(bot, storage=storage)
 
     bot['config'] = config
 
+    # Регистрация всего
     register_all_middlewares(dp, config)
     register_all_filters(dp)
     register_all_handlers(dp)
 
-    # start
+    # Запуск polling
     try:
         await dp.start_polling()
     finally:
@@ -83,7 +94,6 @@ async def main():
         await dp.storage.wait_closed()
         session = await bot.get_session()
         await session.close()
-
 
 if __name__ == '__main__':
     try:
