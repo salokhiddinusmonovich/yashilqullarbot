@@ -4,11 +4,13 @@ from aiogram.types import Message
 from aiogram.utils.markdown import hbold
 from asgiref.sync import sync_to_async
 
-from app_telegram.models import TGUser
+# from app_telegram.models import TGUser
 from ..keyboards import reply
 from .qr_handler import process_qr_logic
 
 async def user_start(message: Message, state: FSMContext):
+    from app_telegram.models import TGUser
+    
     await state.finish()
 
     # --- ПРОВЕРКА НА СКАНЕР (Deep Link) ---
