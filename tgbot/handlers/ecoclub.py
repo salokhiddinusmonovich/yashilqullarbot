@@ -37,20 +37,29 @@ async def list_upcoming_events(message: types.Message, state: FSMContext):
         return
 
     for p in projects:
-        # Считаем текущее количество участников (те, кто не отклонен)
         current_count = await sync_to_async(p.participants.exclude(status='rejected').count)()
         
         text = f"🚀 <b>{p.title}</b>\n\n"
         if p.description:
             text += f"{p.description}\n\n"
         
-        # Инфо о местах для красоты
         text += f"👥 <b>Joylar:</b> {current_count}/{p.max_participants}\n"
 
         project_region = getattr(p, 'region', 'tashkent_s')
 
-        # 1. Сначала проверяем регион
-        if user.region != project_region:
+        # --- ЛОГИКА ОБЪЕДИНЕНИЯ ТАШКЕНТА ---
+        tashkent_regions = ['tashkent_s', 'tashkent_v']
+        
+        # Если проект в Ташкенте (город или область)
+        if project_region in tashkent_regions:
+            # Разрешаем, если юзер тоже из любой части Ташкента
+            region_allowed = user.region in tashkent_regions
+        else:
+            # Для других областей оставляем строгую проверку
+            region_allowed = user.region == project_region
+
+        # 1. Проверка региона (с учетом Ташкента)
+        if not region_allowed:
             user_reg_name = dict(TGUser.Region.choices).get(user.region, user.region)
             text += (
                 f"\n⚠️ <b>Diqqat:</b> Siz <b>{user_reg_name}</b> hududidansiz.\n"
@@ -58,7 +67,7 @@ async def list_upcoming_events(message: types.Message, state: FSMContext):
             )
             kb = get_events_menu()
         
-        # 2. Если регион совпадает, проверяем наличие мест
+        # 2. Если регион Ок, проверяем места
         elif current_count >= p.max_participants:
             text += f"\n❌ <b>Afsuski, joylar tugadi.</b> Keyingi tadbirlarni kuzatib boring! 🌱"
             kb = get_events_menu()
@@ -67,7 +76,7 @@ async def list_upcoming_events(message: types.Message, state: FSMContext):
             text += f"\n<i>Ro'yxatdan o'tish uchun pastdagi tugmani bosing 👇</i>"
             kb = get_registration_kb()
 
-        # Отправка
+        # Отправка (с фото или без)
         if p.photo:
             try:
                 await message.answer_photo(photo=InputFile(p.photo.path), caption=text, reply_markup=kb, parse_mode="HTML")
