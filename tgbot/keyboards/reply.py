@@ -1,6 +1,6 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from .text import register_text, phone_text
-from app_telegram.models import TGUser
+# from app_telegram.models import TGUser
 
 def hi_there():
     return ReplyKeyboardMarkup(
