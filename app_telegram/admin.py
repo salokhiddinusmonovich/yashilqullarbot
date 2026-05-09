@@ -48,18 +48,35 @@ class ParticipationResource(resources.ModelResource):
 class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
     resource_class = ParticipationResource
     
-    # ТВОЯ ЛОГИКА ОТОБРАЖЕНИЯ + ДОБАВИЛ ПРОЕКТ
-    list_display = ('display_face', 'get_fullname', 'get_project_title', 'status', 'applied_at')
+    # Заменил 'status' на 'colored_status'
+    list_display = ('display_face', 'get_fullname', 'get_project_title', 'colored_status', 'applied_at')
     
-    # ФИЛЬТРАЦИЯ: Теперь ты можешь выбрать проект справа!
     list_filter = (('project', admin.RelatedOnlyFieldListFilter), 'status', 'applied_at')
-    
     search_fields = ('user__fullname', 'user__username', 'user__phone', 'project__title')
     list_per_page = 500 
 
     actions = ['approve_and_invite', 'make_attended_with_msg', 'make_rejected']
 
-    # --- ТВОЯ ЛОГИКА (10 БАЛЛОВ И УВЕДОМЛЕНИЯ) - НЕ ТРОГАЛ ---
+    # --- ФУНКЦИЯ ДЛЯ ЦВЕТНОГО СТАТУСА ---
+    def colored_status(self, obj):
+        colors = {
+            'pending': '#ffc107',  # Желтый (Ожидание)
+            'approved': '#17a2b8', # Бирюзовый (Одобрен)
+            'attended': '#28a745', # Зеленый (Пришел)
+            'rejected': '#dc3545', # Красный (Отказ)
+        }
+        color = colors.get(obj.status, '#6c757d') # Серый по умолчанию
+        
+        return format_html(
+            '<span style="background-color: {}; color: white; padding: 5px 12px; '
+            'border-radius: 20px; font-weight: bold; font-size: 11px; text-transform: uppercase;">'
+            '{}</span>',
+            color,
+            obj.get_status_display()
+        )
+    colored_status.short_description = 'Status'
+
+    # --- ТВОИ ACTIONS (approve_and_invite и т.д. без изменений) ---
     @admin.action(description='✅ Одобрить и отправить ССЫЛКУ НА ЧАТ')
     def approve_and_invite(self, request, queryset):
         count = 0
@@ -83,26 +100,18 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
     def make_attended_with_msg(self, request, queryset):
         success_count = 0
         error_count = 0
-        
         for obj in queryset:
             try:
                 if obj.status != 'attended':
-                    # 1. Сначала меняем статус и сохраняем (начисляем баллы)
                     obj.status = 'attended'
                     obj.save() 
-                    
-                    # 2. Обновляем данные из базы, чтобы получить актуальный баланс
                     obj.user.refresh_from_db()
-                    
-                    # 3. Отправляем уведомление
                     if obj.user.tg_id:
                         text = (
                             f"🌟 <b>Rahmat!</b>\n\n"
                             f"Siz bugungi loyihada faol qatnashdingiz va <b>10 eko-ball</b> oldingiz!\n"
                             f"Hozirgi balansingiz: <b>{obj.user.balance}</b> ball.\n\n"
-                            # f"<i>Yana bir oz yig'ing va sovg'alarga almashtiring!</i>"
                         )
-                        # Используем async_to_sync правильно
                         async_to_sync(send_notification)(obj.user.tg_id, text)
                         success_count += 1
                 else:
@@ -110,7 +119,6 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
             except Exception as e:
                 error_count += 1
                 self.message_user(request, f"Ошибка у {obj.user.fullname}: {str(e)}", messages.ERROR)
-
         self.message_user(request, f"Успешно: {success_count}. Ошибок: {error_count}")
 
     @admin.action(description='❌ Отменить участие (Удалить баллы)')
