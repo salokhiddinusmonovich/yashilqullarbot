@@ -27,9 +27,12 @@ async def show_events_menu(message: types.Message, state: FSMContext):
     await state.finish()
     await message.answer("<b>Tadbirlar bo'limi</b> ✨", reply_markup=get_events_menu(), parse_mode="HTML")
 
-# БУДУЩИЕ СОБЫТИЯ (Теперь тоже только название и описание)
+
 async def list_upcoming_events(message: types.Message, state: FSMContext):
-    # Берем проекты, которые еще не наступили (date > сейчас)
+    # 1. Получаем пользователя, чтобы знать его регион
+    user = await sync_to_async(TGUser.objects.get)(tg_id=message.from_user.id)
+    
+    # 2. Берем все активные будущие проекты
     projects = await sync_to_async(list)(
         EcoProject.objects.filter(is_active=True, date__gt=timezone.now()).order_by('date')
     )
@@ -39,17 +42,46 @@ async def list_upcoming_events(message: types.Message, state: FSMContext):
         return
 
     for p in projects:
-        # Убрали дату и место. Оставляем только заголовок и описание.
+        # ЗАГОЛОВОК И ОПИСАНИЕ (Показываем всем!)
         text = f"🚀 <b>{p.title}</b>\n\n"
         
         if p.description:
             text += f"{p.description}\n\n"
-            
-        text += f"<i>Ro'yxatdan o'tish uchun pastdagi tugmani bosing 👇</i>"
         
-        await message.answer(text, reply_markup=get_registration_kb(), parse_mode="HTML")
+        # 3. ПРОВЕРКА РЕГИОНА
+        # Предполагаем, что в EcoProject есть поле region. 
+        # Если его нет, добавь его в models.py (как мы обсуждали выше)
+        
+        project_region = getattr(p, 'region', 'tashkent_s') # по умолчанию Ташкент
 
-# ПРОШЕДШИЕ СОБЫТИЯ (Только фото и название, БЕЗ ДАТЫ)
+        if user.region == project_region:
+            # ЕСЛИ РЕГИОН СОВПАДАЕТ: Показываем кнопку регистрации
+            text += f"<i>Ro'yxatdan o'tish uchun pastdagi tugmani bosing 👇</i>"
+            kb = get_registration_kb()
+        else:
+            # ЕСЛИ РЕГИОН ДРУГОЙ: Пишем предупреждение и НЕ ДАЕМ кнопку регистрации
+            user_reg_name = dict(TGUser.Region.choices).get(user.region, user.region)
+            text += (
+                f"⚠️ <b>Diqqat:</b> Siz <b>{user_reg_name}</b> hududidansiz.\n"
+                f"Ushbu tadbirda faqat mahalliy ko'ngillilar qatnasha oladi. "
+                f"Tez orada sizning hududingizda ham tadbir o'tkazamiz! 🌱"
+            )
+            kb = get_events_menu() # Просто возвращаем обычное меню (без кнопки регистрации)
+
+        # Отправка (с фото или без)
+        if p.photo:
+            try:
+                await message.answer_photo(
+                    photo=InputFile(p.photo.path),
+                    caption=text,
+                    reply_markup=kb,
+                    parse_mode="HTML"
+                )
+            except Exception:
+                await message.answer(text, reply_markup=kb, parse_mode="HTML")
+        else:
+            await message.answer(text, reply_markup=kb, parse_mode="HTML")
+
 async def list_past_events(message: types.Message):
     # Автоматически берем те, что уже прошли (date < сейчас)
     past_events = await sync_to_async(lambda: list(

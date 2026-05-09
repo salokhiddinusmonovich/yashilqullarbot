@@ -87,6 +87,12 @@ class EcoProject(models.Model):
     
     # НОВОЕ: Ссылка на чат для этого проекта
     chat_link = models.URLField(blank=True, null=True, verbose_name="Ссылка на чат (для принятых)")
+    region = models.CharField(
+    max_length=20, 
+    choices=TGUser.Region.choices, 
+    default='tashkent_s', 
+    verbose_name="Qaysi viloyat uchun?"
+    )
 
     def __str__(self):
         return self.title

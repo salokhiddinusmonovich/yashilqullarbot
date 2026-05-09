@@ -6,7 +6,7 @@ from app_telegram.models import TeamMemberYashilQullar, Partner
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 
-# 1. ОБНОВЛЕННАЯ ГЛАВНАЯ КЛАВИАТУРА
+
 ABOUT_REPLY_KB = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="🎯 Loyiha yetakchilari"), KeyboardButton(text="🤝 Hamkorlarimiz")],
@@ -15,7 +15,7 @@ ABOUT_REPLY_KB = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
-# 2. КЛАВИАТУРА ВЫБОРА РОЛИ (без изменений)
+
 TEAM_MENU_KB = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="🌟 Project Lead"), KeyboardButton(text="💻 Digital Lead")],
@@ -24,8 +24,6 @@ TEAM_MENU_KB = ReplyKeyboardMarkup(
     ],
     resize_keyboard=True
 )
-
-# --- ХЕНДЛЕРЫ ---
 
 async def about_us(message: types.Message):
     main_text = (
