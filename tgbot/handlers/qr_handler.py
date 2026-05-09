@@ -81,7 +81,8 @@ def process_qr_logic(admin_id, target_tg_id):
     volunteer.refresh_from_db()
     
     success_text = (
-        f"✅ <b>Tayyor!</b>\n{volunteer.fullname} kelgani tasdiqlandi.\n"
+        f"✅ <b>Tayyor!</b>\n"
+        f"Foydalanuvchi: {volunteer.fullname}\n" # Используем поле .fullname
         f"💰 <b>Yangi balans:</b> {volunteer.balance} ball"
     )
     return success_text, volunteer
