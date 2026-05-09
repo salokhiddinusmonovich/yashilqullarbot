@@ -93,9 +93,14 @@ async def show_qr_handler(message: types.Message):
     """По кнопке 'Mening QR-kodim'"""
     await send_user_qr(message)
 
-async def scan_qr_handler(message: types.Message, command: types.Command):
-    """Когда админ сканирует QR (start с аргументом qr_...)"""
-    target_id = command.args.replace('qr_', '')
+async def scan_qr_handler(message: types.Message): # Убрал command: types.Command
+    """Вызывается при сканировании QR (через /start qr_...)"""
+    # В aiogram 2.x аргументы достаются так:
+    args = message.get_args() 
+    if not args: 
+        return
+    
+    target_id = args.replace('qr_', '')
     
     # Запускаем логику
     result_text, volunteer = await process_qr_logic(message.from_user.id, target_id)
@@ -103,7 +108,7 @@ async def scan_qr_handler(message: types.Message, command: types.Command):
     # Ответ админу
     await message.answer(result_text, parse_mode="HTML")
     
-    # ОТПРАВКА СООБЩЕНИЯ САМОМУ ВОЛОНТЕРУ (Тот самый пункт про "30 баллов")
+    # Отправка сообщения волонтеру
     if volunteer and "✅" in result_text:
         try:
             await message.bot.send_message(
@@ -116,8 +121,7 @@ async def scan_qr_handler(message: types.Message, command: types.Command):
                 parse_mode="HTML"
             )
         except Exception as e:
-            print(f"Не удалось отправить сообщение юзеру {volunteer.tg_id}: {e}")
-
+            print(f"Xatolik: {e}")
 # --- 4. РЕГИСТРАЦИЯ ХЕНДЛЕРОВ ---
 def register_qr_handlers(dp: Dispatcher):
     # Хендлер сканера (срабатывает на /start qr_...)
