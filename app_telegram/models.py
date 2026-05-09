@@ -39,6 +39,7 @@ class TGUser(TimeBasedModel):
     
     balance = models.PositiveIntegerField(default=0, verbose_name="Эко-баллы")
     
+    is_tester = models.BooleanField(default=False, verbose_name="Тестировщик")
     @property
     def rank(self):
         if self.balance < 50:
@@ -85,7 +86,7 @@ class EcoProject(models.Model):
     photo = models.ImageField(upload_to='projects/', null=True, blank=True, verbose_name="Rasm")
     is_active = models.BooleanField(default=True, verbose_name="Faolmi?")
     max_participants = models.PositiveIntegerField(default=100, verbose_name="Макс. участников")
-    
+
     # НОВОЕ: Ссылка на чат для этого проекта
     chat_link = models.URLField(blank=True, null=True, verbose_name="Ссылка на чат (для принятых)")
     region = models.CharField(
