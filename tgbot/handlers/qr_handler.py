@@ -3,10 +3,10 @@ from io import BytesIO
 from aiogram import types, Dispatcher
 from asgiref.sync import sync_to_async
 from django.utils import timezone
-# Проверь, чтобы путь к моделям был именно таким
+# Импорты по твоей структуре моделей
 from app_telegram.models import TGUser, ProjectParticipation, EcoProject 
 
-# ТВОЙ СПИСОК АДМИНОВ (ID)
+# ТВОИ АДМИНЫ (ID)
 ADMIN_IDS = [7336334074, 998920105472, 998998951002, 998904815816, 998908291932]
 
 # --- ГЕНЕРАЦИЯ QR ---
@@ -28,37 +28,32 @@ async def send_user_qr(message: types.Message):
         caption="🌿 <b>Sizning shaxsiy eko-kodingiz!</b>\n\nTadbirga kelganingizda adminga ko'rsating."
     )
 
-# --- ЛОГИКА ПРОВЕРКИ (BACKEND) ---
+# --- ЛОГИКА ПРОВЕРКИ ---
 @sync_to_async
 def process_qr_logic(admin_id, target_tg_id):
-    # 1. Проверка прав админа
     if admin_id not in ADMIN_IDS:
         return "❌ Sizda adminlik huquqi yo'q!"
 
-    # 2. Поиск волонтера
     volunteer = TGUser.objects.filter(tg_id=target_tg_id).first()
     if not volunteer:
         return "❌ Foydalanuvchi topilmadi!"
 
-    # 3. УМНЫЙ ПОИСК ПРОЕКТА (С учетом Ташкент город/область)
+    # УМНЫЙ ПОИСК ПРОЕКТА
+    # В моделях у тебя TASHKENT_V и TASHKENT_S. Объединяем их для поиска.
+    search_regions = [volunteer.region]
+    if volunteer.region in ['tashkent_s', 'tashkent_v']:
+        search_regions = ['tashkent_s', 'tashkent_v']
+
+    # Так как в модели DateTimeField, мы ищем проекты, которые начинаются сегодня
     today = timezone.now().date()
     
-    # Список регионов для поиска (объединяем Ташкент город и область)
-    # ВАЖНО: Проверь, чтобы эти ключи ('tashkent_s', 'tashkent_v') совпадали с твоим choices в моделях!
-    search_regions = [volunteer.region]
-    tashkent_variants = ['tashkent_s', 'tashkent_v'] 
-    
-    if volunteer.region in tashkent_variants:
-        search_regions = tashkent_variants
-
-    # Ищем проект: Активный + Сегодня + Регион входит в список
     project = EcoProject.objects.filter(
         is_active=True, 
-        date=today, 
+        date__date=today, # __date вытаскивает только дату из DateTimeField
         region__in=search_regions
     ).first()
 
-    # Если по дате не нашли, ищем любой активный в этом регионе (на всякий случай)
+    # Если на сегодня нет, берем ЛЮБОЙ активный проект в этом регионе (для страховки)
     if not project:
         project = EcoProject.objects.filter(
             is_active=True, 
@@ -66,31 +61,30 @@ def process_qr_logic(admin_id, target_tg_id):
         ).first()
 
     if not project:
-        return f"❌ {volunteer.get_region_display()}da hozir faol loyiha topilmadi!"
+        region_name = volunteer.get_region_display()
+        return f"❌ {region_name}da hozir faol loyiha topilmadi!"
 
-    # 4. Проверка регистрации волонтера на этот проект
+    # Проверка участия
     participation = ProjectParticipation.objects.filter(project=project, user=volunteer).first()
     
     if not participation:
-        return f"❌ Bu foydalanuvchi '{project.title}' loyihasiga ro'yxatdan o'tmagan!"
+        return f"❌ Foydalanuvchi '{project.title}' loyihasiga ro'yxatdan o'tmagan!"
 
     if participation.status == 'attended':
         return f"⚠️ {volunteer.fullname} allaqachon tasdiqlangan!"
 
-    # 5. УСПЕХ: Начисляем баллы
+    # МЕНЯЕМ СТАТУС
+    # В твоей модели ProjectParticipation.save() уже прописана логика начисления баллов!
     participation.status = 'attended'
-    participation.save() # Твой save() в моделях сам начислит баллы
+    participation.save() 
     
-    return f"✅ <b>Tayyor!</b>\n{volunteer.fullname} kelgani tasdiqlandi.\nLoyiha: {project.title}"
+    return f"✅ <b>Tayyor!</b>\n{volunteer.fullname} kelgani tasdiqlandi.\nБаланс: {volunteer.balance} ball"
 
-# --- ХЕНДЛЕРЫ (ИНТЕРФЕЙС) ---
-
+# --- ХЕНДЛЕРЫ ---
 async def show_qr_handler(message: types.Message):
-    """Вызывается при нажатии на кнопку в меню"""
     await send_user_qr(message)
 
 async def scan_qr_handler(message: types.Message):
-    """Вызывается при сканировании QR (через /start qr_...)"""
     args = message.get_args()
     if not args: return
     
@@ -98,27 +92,22 @@ async def scan_qr_handler(message: types.Message):
     result_text = await process_qr_logic(message.from_user.id, target_id)
     await message.answer(result_text, parse_mode="HTML")
     
-    # Уведомление волонтеру
     if "✅" in result_text:
         try:
             await message.bot.send_message(
                 target_id, 
-                "🌟 <b>Rahmat!</b>\nTadbirga kelganingiz tasdiqlandi. Ballar hisobingizga qo'shildi! 🌿",
+                "🌟 <b>Rahmat!</b>\nTadbirga kelganingiz tasdiqlandi. 10 ball qo'shildi! 🌿",
                 parse_mode="HTML"
             )
-        except:
-            pass
+        except: pass
 
-# --- РЕГИСТРАЦИЯ ---
 def register_qr_handlers(dp: Dispatcher):
-    # Хендлер сканера (обязательно ПЕРВЫМ)
     dp.register_message_handler(
         scan_qr_handler, 
         lambda m: m.get_args() and m.get_args().startswith('qr_'), 
         commands=["start"], 
         state="*"
     )
-    # Хендлер кнопки
     dp.register_message_handler(
         show_qr_handler, 
         text="🌿 Mening QR-kodim", 
