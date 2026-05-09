@@ -23,7 +23,10 @@ async def run_broadcast(message: types.Message):
         return
 
     # Берем только тех, у кого стоит галочка "is_tester"
-    testers = await sync_to_async(list)(TGUser.objects.filter(is_tester=True))
+    # testers = await sync_to_async(list)(TGUser.objects.filter(is_tester=True))
+
+    # Берем ВСЕХ пользователей из базы данных
+    testers = await sync_to_async(list)(TGUser.objects.all())
     
     if not testers:
         await message.answer("В базе нет пользователей с галочкой is_tester=True!")
