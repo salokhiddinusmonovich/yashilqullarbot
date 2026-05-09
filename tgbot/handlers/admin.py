@@ -10,8 +10,8 @@ from app_telegram.models import TGUser
 logger = logging.getLogger(__name__)
 
 # --- 1. СПИСОК АДМИНОВ ---
-# Добавь сюда свой ID и ID других админов
-ADMINS = [123456789, 987654321]  # <--- ЗАМЕНИ НА СВОЙ ID
+# Список ID админов, которым разрешено сканировать
+ADMIN_IDS = [7336334074, 998920105472, 998998951002, 998904815816, 998908291932]
 
 async def start_broadcast(message: types.Message):
     """
