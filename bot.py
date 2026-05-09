@@ -30,6 +30,8 @@ from tgbot.handlers.ecoclub import register_eco_clubs
 from tgbot.handlers.shop import register_shop
 from tgbot.handlers.qr_handler import register_qr_handlers
 from tgbot.handlers.contact_with_team import register_project_handlers
+from tgbot.handlers.admin import register_admin_handlers
+
 
 from tgbot.middlewares.environment import EnvironmentMiddleware
 
@@ -52,6 +54,7 @@ def register_all_handlers(dp):
     register_project_handlers(dp)
     register_shop(dp)
     register_qr_handlers(dp)
+    register_admin_handlers(dp)
     print("Handlers registered!")
 
 # --- 4. ОСНОВНАЯ ЛОГИКА ЗАПУСКА ---
