@@ -5,6 +5,7 @@ from app_telegram.models import TGUser
 def hi_there():
     return ReplyKeyboardMarkup(
         keyboard=[
+            [KeyboardButton(text="🌿 Mening QR-kodim")],
             [KeyboardButton(text="👤 Mening profilim"), KeyboardButton(text="🛍️ Eko-Shop")],
             [KeyboardButton(text="🌟 Biz haqimizda"), KeyboardButton(text="🚀 Loyihaga qo‘shilish")],
             [KeyboardButton(text="🌱 Tadbirlar")],

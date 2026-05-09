@@ -30,3 +30,5 @@ qrcode
 django-import-export
 tablib[xlsx]
 openpyxl
+qrcode==7.4.2
+Pillow==10.2.0

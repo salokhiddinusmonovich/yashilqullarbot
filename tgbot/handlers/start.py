@@ -6,22 +6,30 @@ from  ..keyboards import reply
 from aiogram.utils.markdown import hbold
 from app_telegram.models import TGUser
 from asgiref.sync import sync_to_async
-
+from .qr_handler import process_qr_logic, send_user_qr
 
 async def user_start(message: Message, state: FSMContext):
-    await state.finish()  # Har doim holatni tozalaymiz
+    await state.finish()
 
-    # Foydalanuvchini bazadan qidiramiz
+    # --- ПРОВЕРКА НА СКАНЕР (Deep Link) ---
+    args = message.get_args() # В aiogram 2.x аргументы берутся так
+    if args and args.startswith('qr_'):
+        target_id = args.replace('qr_', '')
+        # Здесь вызываем логику проверки (process_qr_logic)
+        # ВАЖНО: импортируй process_qr_logic из qr_handler.py
+        result_text = await process_qr_logic(message.from_user.id, target_id)
+        await message.answer(result_text, parse_mode="HTML")
+        return # Выходим, чтобы не показывать приветствие
+
+    # --- ТВОЯ ОБЫЧНАЯ ЛОГИКА ---
     user = await sync_to_async(TGUser.objects.filter(tg_id=message.from_user.id).first)()
 
     if user:
-        # Ro'yxatdan o'tgan bo'lsa, bazadagi fullname ni ko'rsatamiz
         await message.answer(
             f"👋 Salom, {hbold(user.fullname)}! @YashilQollar oilasiga xush kelibsiz.", 
             reply_markup=reply.hi_there()
         )
     else:
-        # Ro'yxatdan o'tmagan bo'lsa, Telegramdagi ismini ko'rsatamiz
         await message.answer(
             f"👋 Salom, {hbold(message.from_user.full_name)}! @YashilQollar oilasiga xush kelibsiz.", 
             reply_markup=reply.auth_btn()
