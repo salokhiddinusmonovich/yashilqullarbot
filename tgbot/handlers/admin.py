@@ -147,7 +147,50 @@ async def target_broadcast(message: types.Message):
 
     await message.answer(f"✅ Доставлено: {count} из {len(found_users)} выбранных.")
 
+
+async def region_broadcast(message: types.Message):
+    """
+    Рассылка по конкретному региону.
+    Пример: ответ на пост + /regionsend samarkand
+    """
+    # 1. Проверка прав (админ ли ты в БД)
+    user_in_db = await sync_to_async(TGUser.objects.filter(tg_id=message.from_user.id).first)()
+    if not user_in_db or not getattr(user_in_db, 'is_admin', False):
+        return
+
+    # 2. Проверка на Reply
+    if not message.reply_to_message:
+        await message.answer("⚠️ Ответь на сообщение и напиши код региона!\nПример: <code>/regionsend tashkent_s</code>")
+        return
+
+    # 3. Получаем код региона из команды
+    args = message.get_args().strip().lower()
+    if not args:
+        await message.answer("⚠️ Укажите код региона. Например: <code>tashkent_s, samarkand, bukhara</code>")
+        return
+
+    # 4. Ищем волонтеров только в этом регионе
+    region_users = await sync_to_async(list)(TGUser.objects.filter(region=args))
+    
+    if not region_users:
+        await message.answer(f"❌ В регионе <b>{args}</b> пока нет волонтеров.")
+        return
+
+    await message.answer(f"📍 Начинаю рассылку для <b>{len(region_users)}</b> волонтеров в регионе <b>{args}</b>...")
+
+    count = 0
+    for user in region_users:
+        try:
+            await message.reply_to_message.copy_to(chat_id=user.tg_id)
+            count += 1
+            await asyncio.sleep(0.05) # Защита от бана
+        except Exception as e:
+            logger.error(f"Ошибка отправки {user.tg_id}: {e}")
+
+    await message.answer(f"✅ Готово! Регион <b>{args}</b> оповещен. Доставлено: {count}.")
+
 def register_admin(dp: Dispatcher):
     dp.register_message_handler(run_broadcast, commands=['send'], state="*")
     dp.register_message_handler(send_to_admins, commands=['adminsend'], state="*") # <-- Новая строка
     dp.register_message_handler(target_broadcast, commands=['targetsend'], state="*")
+    dp.register_message_handler(region_broadcast, commands=['regionsend'], state="*")
