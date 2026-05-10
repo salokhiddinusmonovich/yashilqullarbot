@@ -6,15 +6,17 @@ from django.utils import timezone
 # from app_telegram.models import TGUser, ProjectParticipation, EcoProject
 
 # Список ID админов, которым разрешено сканировать
-ADMIN_IDS = [7336334074, 998920105472, 998998951002, 998904815816, 998908291932]
+
 
 @sync_to_async
 def process_qr_logic(admin_id, target_tg_id):
 
     from app_telegram.models import TGUser, ProjectParticipation, EcoProject
-    
+
+    admin_user = TGUser.objects.filter(tg_id=admin_id).first()
+
     # 1. Проверка прав
-    if admin_id not in ADMIN_IDS:
+    if not admin_user or not admin_user.is_admin:
         return "❌ Sizda adminlik huquqi yo'q!", None
 
     # 2. Поиск волонтера

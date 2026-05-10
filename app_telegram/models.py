@@ -36,7 +36,7 @@ class TGUser(TimeBasedModel):
     photo = models.ImageField(upload_to='users_photos/', blank=True, null=True, verbose_name='Profil rasmi')
     region = models.CharField(max_length=20, choices=Region.choices, blank=True, null=True, verbose_name='Hudud')
     education_place = models.CharField(max_length=255, blank=True, null=True, verbose_name='O‘qish joyi')
-    
+    is_admin = models.BooleanField(default=False)
     balance = models.PositiveIntegerField(default=0, verbose_name="Эко-баллы")
     
     is_tester = models.BooleanField(default=False, verbose_name="Тестировщик")
