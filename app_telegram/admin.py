@@ -148,18 +148,50 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
         return obj.user.fullname
     get_fullname.short_description = 'F.I.SH'
 
-# --- ОСТАЛЬНЫЕ РЕГИСТРАЦИИ (БЕЗ ИЗМЕНЕНИЙ) ---
 @admin.register(TGUser)
 class TGUserAdmin(admin.ModelAdmin):
-    list_display = ('display_avatar', 'fullname', 'username', 'balance', 'rank', 'region')
-    list_filter = ('region', 'balance')
-    search_fields = ('fullname', 'username')
+    # Что отображаем в списке
+    list_display = ('display_name', 'tg_id', 'region', 'balance', 'colored_status')
+    
+    # По каким полям можно фильтровать (справа)
+    list_filter = ('is_admin', 'is_tester', 'region')
+    
+    # По каким полям работает поиск
+    search_fields = ('fullname', 'tg_id', 'phone', 'username')
+    
+    # Редактирование прямо из списка (удобно для быстрой выдачи прав)
+    list_editable = ('is_admin', 'is_tester')
 
-    def display_avatar(self, obj):
-        if obj.photo:
-            return format_html('<img src="{}" width="40" height="40" style="border-radius:50%;"/>', obj.photo.url)
-        return "—"
-    display_avatar.short_description = "Avatar"
+    # 1. Делаем админов красными и заметными
+    def display_name(self, obj):
+        if obj.is_admin:
+            return format_html('<strong style="color: #d9534f;">⭐ [ADMIN] {}</strong>', obj.fullname)
+        if obj.is_tester:
+            return format_html('<span style="color: #5bc0de;">🧪 {}</span>', obj.fullname)
+        return obj.fullname
+    display_name.short_description = 'ФИО пользователя'
+
+    # 2. Добавляем красивый статус (балл + ранг)
+    def colored_status(self, obj):
+        rank = obj.rank # Используем твой @property из модели
+        color = "#5cb85c" if obj.balance >= 150 else "#f0ad4e"
+        if obj.balance < 50:
+            color = "#777"
+        return format_html('<b style="color: {};">{}</b>', color, rank)
+    colored_status.short_description = 'Статус / Ранг'
+
+    # Настройка полей внутри формы редактирования
+    fieldsets = (
+        ('Личные данные', {
+            'fields': ('fullname', 'photo', 'age', 'phone', 'email', 'education_place', 'region')
+        }),
+        ('Технические данные', {
+            'fields': ('tg_id', 'username', 'experience')
+        }),
+        ('Статус и Бонусы', {
+            'fields': ('is_admin', 'is_tester', 'balance')
+        }),
+    )
 
 @admin.register(EcoProject)
 class EcoProjectAdmin(admin.ModelAdmin):

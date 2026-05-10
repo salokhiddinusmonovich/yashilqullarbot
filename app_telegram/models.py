@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils.html import format_html
 
 class TimeBasedModel(models.Model):
     class Meta:
