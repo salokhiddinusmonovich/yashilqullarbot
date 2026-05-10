@@ -61,5 +61,40 @@ async def run_broadcast(message: types.Message):
         parse_mode="HTML"
     )
 
+async def send_to_admins(message: types.Message):
+    """
+    Рассылка сообщений ТОЛЬКО администраторам проекта.
+    Использование: Ответ (Reply) на сообщение + /adminsend
+    """
+    # 1. Проверка, что отправитель сам является админом
+    user_in_db = await sync_to_async(TGUser.objects.filter(tg_id=message.from_user.id).first)()
+    if not user_in_db or not getattr(user_in_db, 'is_admin', False):
+        return
+
+    # 2. Проверка на Reply
+    if not message.reply_to_message:
+        await message.answer("⚠️ Ответь командой <code>/adminsend</code> на сообщение для админов!")
+        return
+
+    # 3. Фильтруем только админов
+    admin_list = await sync_to_async(list)(TGUser.objects.filter(is_admin=True))
+    
+    await message.answer(f"⚡️ Отправляю сообщение команде админов ({len(admin_list)} чел.)...")
+
+    count = 0
+    for admin in admin_list:
+        try:
+            # Пересылаем сообщение
+            await message.reply_to_message.copy_to(chat_id=admin.tg_id)
+            count += 1
+            await asyncio.sleep(0.05)
+        except Exception as e:
+            logger.error(f"Не удалось отправить админу {admin.tg_id}: {e}")
+
+    await message.answer(f"✅ Команда оповещена! Доставлено: {count} админам.")
+
+
 def register_admin(dp: Dispatcher):
     dp.register_message_handler(run_broadcast, commands=['send'], state="*")
+    dp.register_message_handler(send_to_admins, commands=['adminsend'], state="*") # <-- Новая строка
+    
