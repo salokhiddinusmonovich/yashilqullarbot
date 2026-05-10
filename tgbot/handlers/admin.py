@@ -4,6 +4,7 @@ from aiogram import types, Dispatcher
 from aiogram.utils import exceptions
 from asgiref.sync import sync_to_async
 from app_telegram.models import TGUser
+from django.db.models import Q
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +95,59 @@ async def send_to_admins(message: types.Message):
     await message.answer(f"✅ Команда оповещена! Доставлено: {count} админам.")
 
 
+
+async def target_broadcast(message: types.Message):
+    """
+    Рассылка конкретным людям по username или ФИО.
+    Пример: /targetsend @shaxzod @admin_eco
+    
+    /targetsend @username — отправит одному.
+
+    /targetsend @user1 @user2 @user3 — отправит нескольким.
+
+    /targetsend Ivan_Ivanov — отправит по ФИО (если совпадет)
+    """
+
+    # 1. Проверка прав (как в прошлых функциях)
+    user_in_db = await sync_to_async(TGUser.objects.filter(tg_id=message.from_user.id).first)()
+    if not user_in_db or not getattr(user_in_db, 'is_admin', False):
+        return
+
+    # 2. Проверка на Reply и наличие аргументов
+    if not message.reply_to_message:
+        await message.answer("⚠️ Ответь на сообщение и напиши юзернеймы через пробел!")
+        return
+
+    args = message.get_args().split()
+    if not args:
+        await message.answer("⚠️ Введи юзернеймы после команды. Пример:\n<code>/targetsend @nick1 @nick2</code>")
+        return
+
+    # 3. Чистим юзернеймы от значка @
+    targets = [a.replace('@', '') for a in args]
+
+    # 4. Ищем юзеров в базе (по username ИЛИ по fullname)
+    query = Q(username__in=targets) | Q(fullname__in=targets)
+    found_users = await sync_to_async(list)(TGUser.objects.filter(query))
+
+    if not found_users:
+        await message.answer("❌ Юзеры с такими никами не найдены в базе.")
+        return
+
+    await message.answer(f"🎯 Найдено {len(found_users)} чел. Начинаю отправку...")
+
+    count = 0
+    for user in found_users:
+        try:
+            await message.reply_to_message.copy_to(chat_id=user.tg_id)
+            count += 1
+            await asyncio.sleep(0.05)
+        except Exception as e:
+            logger.error(f"Ошибка на {user.tg_id}: {e}")
+
+    await message.answer(f"✅ Доставлено: {count} из {len(found_users)} выбранных.")
+
 def register_admin(dp: Dispatcher):
     dp.register_message_handler(run_broadcast, commands=['send'], state="*")
     dp.register_message_handler(send_to_admins, commands=['adminsend'], state="*") # <-- Новая строка
-    
+    dp.register_message_handler(target_broadcast, commands=['targetsend'], state="*")
