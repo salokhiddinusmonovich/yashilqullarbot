@@ -5,16 +5,14 @@ from .text import register_text, phone_text
 def hi_there():
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="🌟 Biz haqimizda"), KeyboardButton(text="🚀 Loyihaga qo‘shilish")]
+            # Запятая в конце каждой строки ряда обязательна!
+            [KeyboardButton(text="🌟 Biz haqimizda"), KeyboardButton(text="🚀 Loyihaga qo‘shilish")], 
             [KeyboardButton(text="🌿 Mening QR-kodim")],
             [KeyboardButton(text="👤 Mening profilim")],
-            [KeyboardButton(text="🌱 Tadbirlar")],
-
-            
+            [KeyboardButton(text="🌱 Tadbirlar")]
         ],
-        resize_keyboard=True  # чтобы кнопки были компактные
+        resize_keyboard=True
     )
-
 
 def auth_btn():
     register_btn = KeyboardButton(text=register_text)
