@@ -5,9 +5,9 @@ from .text import register_text, phone_text
 def hi_there():
     return ReplyKeyboardMarkup(
         keyboard=[
+            [KeyboardButton(text="🌟 Biz haqimizda"), KeyboardButton(text="🚀 Loyihaga qo‘shilish")]
             [KeyboardButton(text="🌿 Mening QR-kodim")],
-            [KeyboardButton(text="👤 Mening profilim"), KeyboardButton(text="🛍️ Eko-Shop")],
-            [KeyboardButton(text="🌟 Biz haqimizda"), KeyboardButton(text="🚀 Loyihaga qo‘shilish")],
+            [KeyboardButton(text="👤 Mening profilim")],
             [KeyboardButton(text="🌱 Tadbirlar")],
 
             
