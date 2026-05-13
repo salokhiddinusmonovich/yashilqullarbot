@@ -43,9 +43,9 @@ class TGUser(TimeBasedModel):
     is_tester = models.BooleanField(default=False, verbose_name="Тестировщик")
     @property
     def rank(self):
-        if self.balance < 50:
+        if self.balance < 150:
             return "🌱 Nihol (Росток)"
-        elif self.balance < 150:
+        elif self.balance < 300:
             return "🌳 Daraxt (Дерево)"
         else:
             return "🛡 Tabiat Himoyachisi (Защитник)"
