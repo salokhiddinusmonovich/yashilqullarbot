@@ -89,7 +89,7 @@ async def list_upcoming_events(message: types.Message, state: FSMContext):
         elif not is_subscribed:
             text += (
                 f"\n⚠️ <b>Ro'yxatdan o'tish uchun avval kanalimizga a'zo bo'ling!</b>\n"
-                f"Kanalga a'zo bo'lib, ushbu bo'limga qaytadan kiring. (🌱 Tadbirlar)"
+                f"Kanalga a'zo bo'lib, ushbu bo'limga qaytadan kiring. (📅 Kelgusi tadbirlar)"
             )
             kb = InlineKeyboardMarkup().add(
                 InlineKeyboardButton(text="📢 Kanalga a'zo bo'lish", url=f"https://t.me/{CHANNEL_ID.replace('@', '')}")
