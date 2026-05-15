@@ -191,49 +191,58 @@ class EcoProjectAdmin(admin.ModelAdmin):
 
     actions = ['remind_local_users']
 
-    @admin.action(description='🔔 Рассылка: "Вы забыли зарегистрироваться" (для этого региона)')
+    @admin.action(description='🔔 Рассылка: "Вы забыли зарегистрироваться" (Ташкент + Область)')
     def remind_local_users(self, request, queryset):
-        for project in queryset:
-            # 1. Получаем регион проекта
-            # Если в модели EcoProject еще нет поля region, добавь его. 
-            # Пока используем 'tashkent_s' как заглушку или проверку.
-            project_region = getattr(project, 'region', 'tashkent_s') 
+        # Список кодов регионов, которые мы считаем "Ташкентом"
+        # Убедитесь, что эти строки совпадают с теми, что записаны у вас в базе (напр. 'tashkent_c', 'tashkent_s')
+        tashkent_group = ['tashkent_v', 'tashkent_s'] 
 
-            # 2. Находим ID тех, кто УЖЕ зарегистрирован именно на ЭТОТ проект
+        for project in queryset:
+            project_region = getattr(project, 'region', 'tashkent_s')
+
+            # 1. Определяем, кого искать
+            if project_region in tashkent_group:
+                # Если проект в Ташкенте, ищем пользователей и из города, и из области
+                target_regions = tashkent_group
+            else:
+                # Если проект в другом регионе (напр. Самарканд), ищем только там
+                target_regions = [project_region]
+
+            # 2. Находим тех, кто уже зарегистрирован
             registered_ids = ProjectParticipation.objects.filter(
                 project=project
             ).values_list('user__id', flat=True)
 
-            # 3. Находим всех TGUser, кто:
-            # - Из того же региона, что и проект
-            # - Кого НЕТ в списке зарегистрированных на этот проект
+            # 3. Фильтруем пользователей:
+            # region__in — это поиск по списку (если регион входит в список target_regions)
             unregistered_users = TGUser.objects.filter(
-                region=project_region
+                region__in=target_regions
             ).exclude(id__in=registered_ids)
 
             count = 0
             for user in unregistered_users:
                 if user.tg_id:
                     text = (
-                        f"👋 <b>Salom, {user.fullname}!</b>\n\n"
-                        f"Toshkentda <b>{project.title}</b> loyihasi rejalashtirilgan! ✨\n"
+                        f"👋 Salom, {user.fullname}!\n\n"
+                        f"Toshkent va Toshkent viloyati bo'ylab {project.title} loyihasi rejalashtirilgan! ✨\n"
                         f"Lekin siz hali ro'yxatdan o'tmabsiz. Safimizga qo'shiling! 👇\n\n"
-                        f"<b>Qanday ro'yxatdan o'tish mumkin?</b>\n"
-                        f"1️⃣ Bot menyusidan <b>«Tadbirlar»</b> bo'limiga kiring.\n"
-                        f"2️⃣ <b>«Kelgusi tadbirlar»</b> tugmasini bosing.\n"
-                        f"3️⃣ Loyihani tanlang va <b>«✅ Ro'yxatdan o'tish»</b> tugmasini bosing.\n\n"
+                        f"Qanday ro'yxatdan o'tish mumkin?\n"
+                        f"1️⃣ Bot menyusidan «Tadbirlar» bo'limiga kiring.\n"
+                        f"2️⃣ «Kelgusi tadbirlar» tugmasini bosing.\n"
+                        f"3️⃣ Loyihani tanlang va «✅ Ro'yxatdan o'tish» tugmasini bosing.\n\n"
                         f"Sizni kutib qolamiz! 🌿"
                     )
                     try:
                         async_to_sync(send_notification)(user.tg_id, text)
                         count += 1
                     except Exception as e:
-                        print(f"Ошибка отправки пользователю {user.tg_id}: {e}")
+                        print(f"Ошибка отправки {user.tg_id}: {e}")
 
             self.message_user(
                 request, 
-                f"Напоминание о проекте '{project.title}' отправлено {count} пользователям из региона {project_region}."
+                f"Проект '{project.title}': отправлено {count} уведомлений для региона(ов) {target_regions}."
             )
+
 
 @admin.register(TeamMemberYashilQullar)
 class TeamMemberAdmin(admin.ModelAdmin):
