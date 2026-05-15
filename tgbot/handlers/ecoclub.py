@@ -1,9 +1,12 @@
 from aiogram import types, Dispatcher
 from aiogram.dispatcher import FSMContext
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputFile
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from asgiref.sync import sync_to_async
 from django.utils import timezone
 from app_telegram.models import TGUser, EcoProject, ProjectParticipation
+
+# Юзернейм твоего канала (обязательно с @)
+CHANNEL_ID = "@yashil_qollar" 
 
 # --- КЛАВИАТУРЫ ---
 
@@ -35,6 +38,16 @@ async def list_upcoming_events(message: types.Message, state: FSMContext):
     if not projects:
         await message.answer("Hozircha yangi tadbirlar yo'q. 😊", reply_markup=get_events_menu())
         return
+
+    # Проверяем подписку один раз перед циклом, чтобы не спамить Telegram API
+    is_subscribed = True
+    try:
+        member = await message.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=message.from_user.id)
+        if member.status not in ['creator', 'administrator', 'member']:
+            is_subscribed = False
+    except Exception as e:
+        print(f"Subscription check error: {e}")
+        is_subscribed = True  # Если ошибка бота, пропускаем юзера, чтобы код не лёг
 
     for p in projects:
         current_count = await sync_to_async(p.participants.exclude(status='rejected').count)()
@@ -72,6 +85,16 @@ async def list_upcoming_events(message: types.Message, state: FSMContext):
             text += f"\n❌ <b>Afsuski, joylar tugadi.</b> Keyingi tadbirlarni kuzatib boring! 🌱"
             kb = get_events_menu()
         
+        # 3. Проверка подписки на канал
+        elif not is_subscribed:
+            text += (
+                f"\n⚠️ <b>Ro'yxatdan o'tish uchun avval kanalimizga a'zo bo'ling!</b>\n"
+                f"Kanalga a'zo bo'lib, ushbu bo'limga qaytadan kiring. 🔄"
+            )
+            kb = InlineKeyboardMarkup().add(
+                InlineKeyboardButton(text="📢 Kanalga a'zo bo'lish", url=f"https://t.me/{CHANNEL_ID.replace('@', '')}")
+            )
+        
         else:
             text += f"\n<i>Ro'yxatdan o'tish uchun pastdagi tugmani bosing 👇</i>"
             kb = get_registration_kb()
@@ -87,6 +110,22 @@ async def list_upcoming_events(message: types.Message, state: FSMContext):
 
 # --- ИСПРАВЛЕННАЯ РЕГИСТРАЦИЯ (С ПРОВЕРКОЙ ЛИМИТА) ---
 async def process_registration(message: types.Message, state: FSMContext):
+    # Двойная защита: проверяем подписку прямо в момент клика на кнопку регистрации
+    try:
+        member = await message.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=message.from_user.id)
+        if member.status not in ['creator', 'administrator', 'member']:
+            await message.answer(
+                f"⚠️ <b>Ro'yxatdan o'tish rad etildi!</b>\n\n"
+                f"Siz bizning kanalimizga a'zo emassiz. Iltimos, avval a'zo bo'ling.",
+                reply_markup=InlineKeyboardMarkup().add(
+                    InlineKeyboardButton(text="📢 Kanalga a'zo bo'lish", url=f"https://t.me/{CHANNEL_ID.replace('@', '')}")
+                ),
+                parse_mode="HTML"
+            )
+            return
+    except Exception as e:
+        print(f"Subscription check error during registration process: {e}")
+
     user = await sync_to_async(TGUser.objects.get)(tg_id=message.from_user.id)
 
     # Берем самый актуальный проект
