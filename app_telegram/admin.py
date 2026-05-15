@@ -88,7 +88,8 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
                 text = (
                     f"🎉 <b>Tabriklaymiz!</b>\n\n"
                     f"Siz <b>{obj.project.title}</b> loyihasiga qabul qilindingiz!\n"
-                    f"Guruhga qo'shiling: {obj.project.chat_link}"
+                    f"Guruhga qo'shiling: " 
+                    f"{obj.project.chat_link}"
                 )
                 async_to_sync(send_notification)(obj.user.tg_id, text)
                 count += 1
