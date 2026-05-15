@@ -6,7 +6,7 @@ from django.utils import timezone
 from app_telegram.models import TGUser, EcoProject, ProjectParticipation
 
 # Юзернейм твоего канала (обязательно с @)
-CHANNEL_ID = "@yashil_qollar" 
+CHANNEL_ID = "@yashilqollar" 
 
 # --- КЛАВИАТУРЫ ---
 
