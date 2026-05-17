@@ -54,7 +54,7 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
     list_filter = (('project', admin.RelatedOnlyFieldListFilter), 'status', 'applied_at')
     search_fields = ('user__fullname', 'user__username', 'user__phone', 'project__title')
     list_per_page = 500 
-
+    autocomplete_fields = ['user', 'project']
     actions = ['approve_and_invite', 'make_attended_with_msg', 'make_rejected']
 
     # --- ФУНКЦИЯ ДЛЯ ЦВЕТНОГО СТАТУСА ---
