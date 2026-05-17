@@ -185,6 +185,7 @@ class TGUserAdmin(admin.ModelAdmin):
 
 @admin.register(EcoProject)
 class EcoProjectAdmin(admin.ModelAdmin):
+    search_fields = ('title',)
     list_display = ('title', 'date', 'location_name', 'is_active')
     list_filter = ('is_active', 'date')
     list_editable = ('is_active',)
