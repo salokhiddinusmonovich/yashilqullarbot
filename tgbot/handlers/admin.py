@@ -208,16 +208,19 @@ async def check_user_subscription(message: types.Message):
         return
 
     target_id = None
+    args = message.get_args().strip()
     target_name = args.replace('@', '')
 
-    # 3. Ищем этого человека у нас в базе данных
-    # (Бот может проверить подписку только если знает числовой ID)
-    user_query = await sync_to_async(TGUser.objects.filter(
-        Q(username__iexact=target_name) | Q(tg_id__str__contains=args)
-    ).first)()
+    # ПРОВЕРКА: Если ввели цифры, ищем по tg_id, если буквы — по username
+    if target_name.isdigit():
+        query = Q(tg_id=int(target_name))
+    else:
+        query = Q(username__iexact=target_name) | Q(fullname__icontains=target_name)
+
+    user_query = await sync_to_async(TGUser.objects.filter(query).first)()
 
     if not user_query:
-        await message.answer(f"❌ Юзер <b>{args}</b> не найден в базе бота. Бот не знает его ID.")
+        await message.answer(f"❌ Юзер <b>{args}</b> не найден в базе.")
         return
     
     target_id = user_query.tg_id
