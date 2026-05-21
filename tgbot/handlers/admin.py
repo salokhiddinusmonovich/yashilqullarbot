@@ -5,6 +5,7 @@ from aiogram.utils import exceptions
 from asgiref.sync import sync_to_async
 from app_telegram.models import TGUser
 from django.db.models import Q
+from aiogram.utils.exceptions import ChatNotFound, Unauthorized
 
 logger = logging.getLogger(__name__)
 
@@ -189,8 +190,69 @@ async def region_broadcast(message: types.Message):
 
     await message.answer(f"✅ Готово! Регион <b>{args}</b> оповещен. Доставлено: {count}.")
 
+
+async def check_user_subscription(message: types.Message):
+    """
+    Проверка: подписан ли конкретный юзер на канал.
+    Использование: /check @username или /check 12345678 (ID)
+    """
+    # 1. Проверка прав (админ ли ты в БД)
+    user_in_db = await sync_to_async(TGUser.objects.filter(tg_id=message.from_user.id).first)()
+    if not user_in_db or not getattr(user_in_db, 'is_admin', False):
+        return
+
+    # 2. Получаем аргументы (кого ищем)
+    args = message.get_args().strip()
+    if not args:
+        await message.answer("⚠️ Введите юзернейм или ID после команды.\nПример: <code>/check @nickname</code>")
+        return
+
+    target_id = None
+    target_name = args.replace('@', '')
+
+    # 3. Ищем этого человека у нас в базе данных
+    # (Бот может проверить подписку только если знает числовой ID)
+    user_query = await sync_to_async(TGUser.objects.filter(
+        Q(username__iexact=target_name) | Q(tg_id__str__contains=args)
+    ).first)()
+
+    if not user_query:
+        await message.answer(f"❌ Юзер <b>{args}</b> не найден в базе бота. Бот не знает его ID.")
+        return
+    
+    target_id = user_query.tg_id
+    # Замени на ID своего канала (обязательно начинается с -100)
+    CHANNEL_ID = -1002652020165
+
+    try:
+        # 4. Сама проверка через Telegram API
+        member = await message.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=target_id)
+        
+        status_emoji = {
+            'creator': '👑 Создатель',
+            'administrator': '👨‍✈️ Админ',
+            'member': '✅ Подписан',
+            'left': '❌ Вышел из канала',
+            'kicked': '🚫 Забанен'
+        }
+        
+        res = status_emoji.get(member.status, f"Статус: {member.status}")
+        
+        await message.answer(
+            f"👤 <b>Пользователь:</b> {user_query.fullname}\n"
+            f"🆔 <b>ID:</b> <code>{target_id}</code>\n"
+            f"📊 <b>Результат:</b> {res}",
+            parse_mode="HTML"
+        )
+
+    except ChatNotFound:
+        await message.answer("⚠️ Канал не найден. Проверь ID канала в коде.")
+    except Exception as e:
+        await message.answer(f"⚠️ Ошибка проверки: {e}")
+
 def register_admin(dp: Dispatcher):
     dp.register_message_handler(run_broadcast, commands=['send'], state="*")
     dp.register_message_handler(send_to_admins, commands=['adminsend'], state="*") # <-- Новая строка
     dp.register_message_handler(target_broadcast, commands=['targetsend'], state="*")
     dp.register_message_handler(region_broadcast, commands=['regionsend'], state="*")
+    dp.register_message_handler(check_user_subscription, commands=['check'], state="*")

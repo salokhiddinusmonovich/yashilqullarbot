@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Наша команда · Yashil Qo'llar</title>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@300;400;600;700;900&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+    --black:#000000;--deep:#03080a;--neon:#00FF88;--neon2:#00cc6a;--neon3:rgba(0,255,136,.08);--border:rgba(0,255,136,.14);--glass:rgba(0,255,136,.05);--white:#ffffff;--gray:#8a9a8e;--r:12px;--fh:'Unbounded',sans-serif;--fb:'Inter',sans-serif;
+}
+body.light {
+    --black:#ffffff;--deep:#f2fbf5;--neon:#007a3d;--neon2:#005a2d;--neon3:rgba(0,122,61,.08);--border:rgba(0,122,61,.18);--glass:rgba(0,122,61,.05);--white:#1a2e1f;--gray:#4a6a52;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--black);color:var(--white);font-family:var(--fb);transition:background .4s;}
+#nav{position:fixed;top:0;left:0;right:0;z-index:500;display:flex;align-items:center;justify-content:space-between;padding:1rem 3.5rem;background:rgba(0,0,0,.7);backdrop-filter:blur(24px);border-bottom:1px solid var(--border);}
+.nav-logo{display:flex;align-items:center;gap:.5rem;font-family:var(--fh);font-weight:900;font-size:.95rem;color:var(--neon);}
+.nav-logo b{color:var(--white);}
+.container{max-width:1000px;margin:100px auto 50px;padding:0 2rem;}
+.page-title{font-family:var(--fh);font-size:2rem;font-weight:900;margin-bottom:2rem;text-align:center;}
+.team-grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));gap:1.5rem;}
+.member-card{background:var(--glass);border:1px solid var(--border);border-radius:16px;padding:2rem;text-align:center;transition:transform .3s;}
+.member-card:hover{transform:translateY(-5px);border-color:var(--neon);}
+.member-av{width:100px;height:100px;border-radius:50%;border:3px solid var(--neon);margin:0 auto 1rem;display:flex;align-items:center;justify-content:center;font-size:2.5rem;background:var(--neon3);}
+.member-name{font-family:var(--fh);font-size:1rem;font-weight:700;margin-bottom:.3rem;}
+.member-role{font-size:.75rem;color:var(--neon);text-transform:uppercase;letter-spacing:1px;}
+</style>
+</head>
+<body>
+<nav id="nav">
+  <a href="index.html" class="nav-logo">Yashil <b>Qo'llar</b></a>
+  <a href="index.html" style="color:var(--gray);font-size:.8rem;">← Назад</a>
+</nav>
+<div class="container">
+    <h1 class="page-title">Наша Команда</h1>
+    <div class="team-grid">
+        <div class="member-card">
+            <div class="member-av">👨‍💻</div>
+            <div class="member-name">Азиз</div>
+            <div class="member-role">Основатель</div>
+        </div>
+        <div class="member-card">
+            <div class="member-av">🎨</div>
+            <div class="member-name">Диана</div>
+            <div class="member-role">Дизайнер</div>
+        </div>
+        <div class="member-card">
+            <div class="member-av">🌿</div>
+            <div class="member-name">Тимур</div>
+            <div class="member-role">Эколог</div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
