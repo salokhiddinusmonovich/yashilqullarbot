@@ -180,11 +180,11 @@ async def process_registration(message: types.Message, state: FSMContext):
 
     if created:
         await message.answer(
-            "✅ <b>Muvaffaqiyatli ro'yxatdan o'tdingiz!</b>\n\n"
-            "Arizangiz ko'rib chiqilmoqda.",
-            reply_markup=get_events_menu(),
-            parse_mode="HTML"
-        )
+    "✅ <b>Arizangiz qabul qilindi!</b>\n\n"
+    "Profilingiz ko'rib chiqilmoqda. Tez orada botimiz sizga natija haqida xabar beradi. 🌱",
+    reply_markup=get_events_menu(),
+    parse_mode="HTML"
+)
     else:
         await message.answer(
             "Siz allaqachon ariza topshirgansiz. 👍",
