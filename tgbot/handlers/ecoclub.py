@@ -1,11 +1,16 @@
 from aiogram import types, Dispatcher
 from aiogram.dispatcher import FSMContext
+from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from asgiref.sync import sync_to_async
 from django.utils import timezone
 from app_telegram.models import TGUser, EcoProject, ProjectParticipation
 
 CHANNEL_ID = "@yashilqollar"
+
+
+class EventStates(StatesGroup):
+    waiting_for_registration = State()
 
 
 # --- КЛАВИАТУРЫ ---
@@ -16,12 +21,10 @@ def get_events_menu():
     kb.row(KeyboardButton("⬅️ Orqaga"))
     return kb
 
-def get_registration_kb(project_id: int):
-    kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton(
-        text="✅ Ro'yxatdan o'tish",
-        callback_data=f"reg_{project_id}"
-    ))
+def get_registration_kb():
+    kb = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    kb.add(KeyboardButton("✅ Ro'yxatdan o'tish"))
+    kb.add(KeyboardButton("⬅️ Orqaga"))
     return kb
 
 
@@ -33,11 +36,12 @@ async def show_events_menu(message: types.Message, state: FSMContext):
 
 
 async def list_upcoming_events(message: types.Message, state: FSMContext):
+    await state.finish()
+
     user = await sync_to_async(TGUser.objects.get)(tg_id=message.from_user.id)
 
     tashkent_regions = ['tashkent_s', 'tashkent_v']
 
-    # Фильтруем ивенты ТОЛЬКО по региону юзера
     if user.region in tashkent_regions:
         projects = await sync_to_async(list)(
             EcoProject.objects.filter(
@@ -81,7 +85,6 @@ async def list_upcoming_events(message: types.Message, state: FSMContext):
             text += f"{p.description}\n\n"
         text += f"👥 <b>Joylar:</b> {current_count}/{p.max_participants}\n"
 
-        # Регион уже совпадает (мы отфильтровали выше), просто проверяем места и подписку
         if current_count >= p.max_participants:
             text += f"\n❌ <b>Afsuski, joylar tugadi.</b> Keyingi tadbirlarni kuzatib boring! 🌱"
             kb = get_events_menu()
@@ -100,27 +103,39 @@ async def list_upcoming_events(message: types.Message, state: FSMContext):
 
         else:
             text += f"\n<i>Ro'yxatdan o'tish uchun pastdagi tugmani bosing 👇</i>"
-            kb = get_registration_kb(p.id)
+            kb = get_registration_kb()
+            # Сохраняем project_id в state для этого юзера
+            await state.update_data(project_id=p.id)
+            await EventStates.waiting_for_registration.set()
 
         if p.photo:
             try:
-                await message.answer_photo(photo=InputFile(p.photo.path), caption=text, reply_markup=kb, parse_mode="HTML")
+                await message.answer_photo(
+                    photo=InputFile(p.photo.path),
+                    caption=text,
+                    reply_markup=kb,
+                    parse_mode="HTML"
+                )
             except Exception:
                 await message.answer(text, reply_markup=kb, parse_mode="HTML")
         else:
             await message.answer(text, reply_markup=kb, parse_mode="HTML")
 
 
-async def process_registration(callback: types.CallbackQuery):
-    await callback.answer()
+async def process_registration(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    project_id = data.get('project_id')
 
-    project_id = int(callback.data.split("_")[1])
+    if not project_id:
+        await message.answer("Xatolik yuz berdi. Iltimos, qaytadan urinib ko'ring.", reply_markup=get_events_menu())
+        await state.finish()
+        return
 
     # Проверка подписки
     try:
-        member = await callback.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=callback.from_user.id)
+        member = await message.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=message.from_user.id)
         if member.status not in ['creator', 'administrator', 'member']:
-            await callback.message.answer(
+            await message.answer(
                 "⚠️ <b>Ro'yxatdan o'tish rad etildi!</b>\n\n"
                 "Avval kanalimizga a'zo bo'ling.",
                 reply_markup=InlineKeyboardMarkup().add(
@@ -135,58 +150,50 @@ async def process_registration(callback: types.CallbackQuery):
     except Exception as e:
         print(f"Subscription check error during registration: {e}")
 
-    user = await sync_to_async(TGUser.objects.get)(tg_id=callback.from_user.id)
+    user = await sync_to_async(TGUser.objects.get)(tg_id=message.from_user.id)
 
     project = await sync_to_async(
         EcoProject.objects.filter(id=project_id, is_active=True).first
     )()
 
     if not project:
-        await callback.message.answer("Bu tadbir endi mavjud emas.")
-        return
-
-    # Двойная проверка региона
-    tashkent_regions = ['tashkent_s', 'tashkent_v']
-    project_region = getattr(project, 'region', 'tashkent_s')
-
-    if project_region in tashkent_regions:
-        region_ok = user.region in tashkent_regions
-    else:
-        region_ok = user.region == project_region
-
-    if not region_ok:
-        await callback.message.answer(
-            "⚠️ Bu tadbir sizning hududingiz uchun emas.",
-            reply_markup=get_events_menu()
-        )
+        await message.answer("Bu tadbir endi mavjud emas.", reply_markup=get_events_menu())
+        await state.finish()
         return
 
     # Двойная проверка лимита
     current_count = await sync_to_async(project.participants.exclude(status='rejected').count)()
 
     if current_count >= project.max_participants:
-        await callback.message.answer(
+        await message.answer(
             "❌ Kechirasiz, joylar qolmagan.",
             reply_markup=get_events_menu()
         )
+        await state.finish()
         return
 
     part, created = await sync_to_async(ProjectParticipation.objects.get_or_create)(
         user=user, project=project
     )
 
+    await state.finish()
+
     if created:
-        await callback.message.answer(
+        await message.answer(
             "✅ <b>Muvaffaqiyatli ro'yxatdan o'tdingiz!</b>\n\n"
             "Arizangiz ko'rib chiqilmoqda.",
             reply_markup=get_events_menu(),
             parse_mode="HTML"
         )
     else:
-        await callback.message.answer("Siz allaqachon ariza topshirgansiz. 👍")
+        await message.answer(
+            "Siz allaqachon ariza topshirgansiz. 👍",
+            reply_markup=get_events_menu()
+        )
 
 
-async def list_past_events(message: types.Message):
+async def list_past_events(message: types.Message, state: FSMContext):
+    await state.finish()
     past_events = await sync_to_async(lambda: list(
         EcoProject.objects.filter(date__lt=timezone.now()).order_by('-date')
     ))()
@@ -227,8 +234,8 @@ def register_eco_clubs(dp: Dispatcher):
     dp.register_message_handler(list_upcoming_events, lambda m: "Kelgusi" in m.text, state="*")
     dp.register_message_handler(list_past_events, lambda m: "O'tgan" in m.text, state="*")
     dp.register_message_handler(handle_back, lambda m: "Orqaga" in m.text, state="*")
-    dp.register_callback_query_handler(
+    dp.register_message_handler(
         process_registration,
-        lambda c: c.data and c.data.startswith("reg_"),
-        state="*"
+        lambda m: "Ro'yxatdan o'tish" in m.text,
+        state=EventStates.waiting_for_registration
     )
