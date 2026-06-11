@@ -173,3 +173,15 @@ class Partner(TimeBasedModel):
 
     def __str__(self):
         return self.name
+    
+
+
+class ProjectNotification(models.Model):
+    project = models.ForeignKey(EcoProject, on_delete=models.CASCADE)
+    user = models.ForeignKey(TGUser, on_delete=models.CASCADE)
+    sent_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('project', 'user')
+        verbose_name = "Уведомление"
+        verbose_name_plural = "Уведомления"

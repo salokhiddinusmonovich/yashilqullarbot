@@ -6,6 +6,7 @@ from import_export import resources
 from import_export.admin import ExportMixin
 from import_export.fields import Field
 from asgiref.sync import async_to_sync # asyncio.run ўрнига хавфсизроқ
+from .models import ProjectNotification
 
 from .models import (
     TGUser, TeamMemberYashilQullar, ProjectParticipation, 
@@ -192,57 +193,7 @@ class EcoProjectAdmin(admin.ModelAdmin):
 
     actions = ['remind_local_users']
 
-    @admin.action(description='🔔 Рассылка: "Вы забыли зарегистрироваться" (Ташкент + Область)')
-    def remind_local_users(self, request, queryset):
-        # Список кодов регионов, которые мы считаем "Ташкентом"
-        # Убедитесь, что эти строки совпадают с теми, что записаны у вас в базе (напр. 'tashkent_c', 'tashkent_s')
-        tashkent_group = ['tashkent_v', 'tashkent_s'] 
-
-        for project in queryset:
-            project_region = getattr(project, 'region', 'tashkent_s')
-
-            # 1. Определяем, кого искать
-            if project_region in tashkent_group:
-                # Если проект в Ташкенте, ищем пользователей и из города, и из области
-                target_regions = tashkent_group
-            else:
-                # Если проект в другом регионе (напр. Самарканд), ищем только там
-                target_regions = [project_region]
-
-            # 2. Находим тех, кто уже зарегистрирован
-            registered_ids = ProjectParticipation.objects.filter(
-                project=project
-            ).values_list('user__id', flat=True)
-
-            # 3. Фильтруем пользователей:
-            # region__in — это поиск по списку (если регион входит в список target_regions)
-            unregistered_users = TGUser.objects.filter(
-                region__in=target_regions
-            ).exclude(id__in=registered_ids)
-
-            count = 0
-            for user in unregistered_users:
-                if user.tg_id:
-                    text = (
-                        f"👋 Salom, {user.fullname}!\n\n"
-                        f"Toshkent va Toshkent viloyati bo'ylab {project.title} loyihasi rejalashtirilgan! ✨\n"
-                        f"Lekin siz hali ro'yxatdan o'tmabsiz. Safimizga qo'shiling! 👇\n\n"
-                        f"Qanday ro'yxatdan o'tish mumkin?\n"
-                        f"1️⃣ Bot menyusidan «Tadbirlar» bo'limiga kiring.\n"
-                        f"2️⃣ «Kelgusi tadbirlar» tugmasini bosing.\n"
-                        f"3️⃣ Loyihani tanlang va «✅ Ro'yxatdan o'tish» tugmasini bosing.\n\n"
-                        f"Sizni kutib qolamiz! 🌿"
-                    )
-                    try:
-                        async_to_sync(send_notification)(user.tg_id, text)
-                        count += 1
-                    except Exception as e:
-                        print(f"Ошибка отправки {user.tg_id}: {e}")
-
-            self.message_user(
-                request, 
-                f"Проект '{project.title}': отправлено {count} уведомлений для региона(ов) {target_regions}."
-            )
+    
 
 
 @admin.register(TeamMemberYashilQullar)
@@ -258,3 +209,60 @@ class TeamMemberAdmin(admin.ModelAdmin):
     display_photo.short_description = "Фото"
 
 admin.site.register(Partner)
+
+
+
+
+@admin.action(description='🔔 Рассылка: только новым юзерам')
+def remind_local_users(self, request, queryset):
+    tashkent_group = ['tashkent_v', 'tashkent_s']
+
+    for project in queryset:
+        project_region = getattr(project, 'region', 'tashkent_s')
+
+        if project_region in tashkent_group:
+            target_regions = tashkent_group
+        else:
+            target_regions = [project_region]
+
+        # Кто уже зарегистрировался на проект
+        registered_ids = ProjectParticipation.objects.filter(
+            project=project
+        ).values_list('user__id', flat=True)
+
+        # Кто уже получил уведомление
+        already_notified_ids = ProjectNotification.objects.filter(
+            project=project
+        ).values_list('user__id', flat=True)
+
+        # Только новые юзеры из региона
+        new_users = TGUser.objects.filter(
+            region__in=target_regions
+        ).exclude(id__in=registered_ids).exclude(id__in=already_notified_ids)
+
+        count = 0
+        for user in new_users:
+            if user.tg_id:
+                text = (
+                    f"👋 Salom, {user.fullname}!\n\n"
+                    f"{project.title} loyihasi rejalashtirilgan! ✨\n"
+                    f"Ro'yxatdan o'tish uchun botga kiring! 👇\n\n"
+                    f"1️⃣ «Tadbirlar» bo'limiga kiring.\n"
+                    f"2️⃣ «Kelgusi tadbirlar» tugmasini bosing.\n"
+                    f"3️⃣ Loyihani tanlang va ro'yxatdan o'ting.\n\n"
+                    f"Sizni kutib qolamiz! 🌿"
+                )
+                try:
+                    async_to_sync(send_notification)(user.tg_id, text)
+                    # Сохраняем что отправили
+                    ProjectNotification.objects.get_or_create(
+                        project=project, user=user
+                    )
+                    count += 1
+                except Exception as e:
+                    print(f"Ошибка отправки {user.tg_id}: {e}")
+
+        self.message_user(
+            request,
+            f"Проект '{project.title}': отправлено {count} новым юзерам."
+        )
