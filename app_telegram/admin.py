@@ -263,6 +263,8 @@ class TeamMemberAdmin(admin.ModelAdmin):
     display_photo.short_description = "Фото"
 
 admin.site.register(Partner)
+admin.site.register(ProjectNotification)
+
 
 
 
