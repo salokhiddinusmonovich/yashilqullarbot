@@ -5,8 +5,8 @@ from asgiref.sync import sync_to_async
 from django.utils import timezone
 from app_telegram.models import TGUser, EcoProject, ProjectParticipation
 
-# Юзернейм твоего канала (обязательно с @)
-CHANNEL_ID = "@yashilqollar" 
+CHANNEL_ID = "@yashilqollar"
+
 
 # --- КЛАВИАТУРЫ ---
 
@@ -16,12 +16,16 @@ def get_events_menu():
     kb.row(KeyboardButton("⬅️ Orqaga"))
     return kb
 
-def get_registration_kb():
-    # one_time_keyboard=True чтобы кнопка исчезала после нажатия
-    kb = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    kb.add(KeyboardButton("✅ Ro'yxatdan o'tish"))
-    kb.add(KeyboardButton("⬅️ Orqaga"))
+def get_registration_kb(project_id: int):
+    kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton(
+        text="✅ Ro'yxatdan o'tish",
+        callback_data=f"reg_{project_id}"
+    ))
     return kb
+
+
+# --- ХЕНДЛЕРЫ ---
 
 async def show_events_menu(message: types.Message, state: FSMContext):
     await state.finish()
@@ -30,16 +34,15 @@ async def show_events_menu(message: types.Message, state: FSMContext):
 
 async def list_upcoming_events(message: types.Message, state: FSMContext):
     user = await sync_to_async(TGUser.objects.get)(tg_id=message.from_user.id)
-    
+
     projects = await sync_to_async(list)(
         EcoProject.objects.filter(is_active=True, date__gt=timezone.now()).order_by('date')
     )
-    
+
     if not projects:
         await message.answer("Hozircha yangi tadbirlar yo'q. 😊", reply_markup=get_events_menu())
         return
 
-    # Проверяем подписку один раз перед циклом, чтобы не спамить Telegram API
     is_subscribed = True
     try:
         member = await message.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=message.from_user.id)
@@ -47,31 +50,24 @@ async def list_upcoming_events(message: types.Message, state: FSMContext):
             is_subscribed = False
     except Exception as e:
         print(f"Subscription check error: {e}")
-        is_subscribed = True  # Если ошибка бота, пропускаем юзера, чтобы код не лёг
+        is_subscribed = True
 
     for p in projects:
         current_count = await sync_to_async(p.participants.exclude(status='rejected').count)()
-        
+
         text = f"🚀 <b>{p.title}</b>\n\n"
         if p.description:
             text += f"{p.description}\n\n"
-        
         text += f"👥 <b>Joylar:</b> {current_count}/{p.max_participants}\n"
 
         project_region = getattr(p, 'region', 'tashkent_s')
-
-        # --- ЛОГИКА ОБЪЕДИНЕНИЯ ТАШКЕНТА ---
         tashkent_regions = ['tashkent_s', 'tashkent_v']
-        
-        # Если проект в Ташкенте (город или область)
+
         if project_region in tashkent_regions:
-            # Разрешаем, если юзер тоже из любой части Ташкента
             region_allowed = user.region in tashkent_regions
         else:
-            # Для других областей оставляем строгую проверку
             region_allowed = user.region == project_region
 
-        # 1. Проверка региона (с учетом Ташкента)
         if not region_allowed:
             user_reg_name = dict(TGUser.Region.choices).get(user.region, user.region)
             text += (
@@ -79,27 +75,27 @@ async def list_upcoming_events(message: types.Message, state: FSMContext):
                 f"Ushbu tadbirda faqat mahalliy ko'ngillilar qatnasha oladi."
             )
             kb = get_events_menu()
-        
-        # 2. Если регион Ок, проверяем места
+
         elif current_count >= p.max_participants:
             text += f"\n❌ <b>Afsuski, joylar tugadi.</b> Keyingi tadbirlarni kuzatib boring! 🌱"
             kb = get_events_menu()
-        
-        # 3. Проверка подписки на канал
+
         elif not is_subscribed:
             text += (
                 f"\n⚠️ <b>Ro'yxatdan o'tish uchun avval kanalimizga a'zo bo'ling!</b>\n"
                 f"Kanalga a'zo bo'lib, ushbu bo'limga qaytadan kiring. (📅 Kelgusi tadbirlar)"
             )
             kb = InlineKeyboardMarkup().add(
-                InlineKeyboardButton(text="📢 Kanalga a'zo bo'lish", url=f"https://t.me/{CHANNEL_ID.replace('@', '')}")
+                InlineKeyboardButton(
+                    text="📢 Kanalga a'zo bo'lish",
+                    url=f"https://t.me/{CHANNEL_ID.replace('@', '')}"
+                )
             )
-        
+
         else:
             text += f"\n<i>Ro'yxatdan o'tish uchun pastdagi tugmani bosing 👇</i>"
-            kb = get_registration_kb()
+            kb = get_registration_kb(p.id)  # ← передаём ID проекта
 
-        # Отправка (с фото или без)
         if p.photo:
             try:
                 await message.answer_photo(photo=InputFile(p.photo.path), caption=text, reply_markup=kb, parse_mode="HTML")
@@ -108,56 +104,66 @@ async def list_upcoming_events(message: types.Message, state: FSMContext):
         else:
             await message.answer(text, reply_markup=kb, parse_mode="HTML")
 
-# --- ИСПРАВЛЕННАЯ РЕГИСТРАЦИЯ (С ПРОВЕРКОЙ ЛИМИТА) ---
-async def process_registration(message: types.Message, state: FSMContext):
-    # Двойная защита: проверяем подписку прямо в момент клика на кнопку регистрации
+
+async def process_registration(callback: types.CallbackQuery):
+    await callback.answer()
+
+    project_id = int(callback.data.split("_")[1])
+
+    # Проверка подписки
     try:
-        member = await message.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=message.from_user.id)
+        member = await callback.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=callback.from_user.id)
         if member.status not in ['creator', 'administrator', 'member']:
-            await message.answer(
-                f"⚠️ <b>Ro'yxatdan o'tish rad etildi!</b>\n\n"
-                f"Siz bizning kanalimizga a'zo emassiz. Iltimos, avval a'zo bo'ling.",
+            await callback.message.answer(
+                "⚠️ <b>Ro'yxatdan o'tish rad etildi!</b>\n\n"
+                "Avval kanalimizga a'zo bo'ling.",
                 reply_markup=InlineKeyboardMarkup().add(
-                    InlineKeyboardButton(text="📢 Kanalga a'zo bo'lish", url=f"https://t.me/{CHANNEL_ID.replace('@', '')}")
+                    InlineKeyboardButton(
+                        text="📢 Kanalga a'zo bo'lish",
+                        url=f"https://t.me/{CHANNEL_ID.replace('@', '')}"
+                    )
                 ),
                 parse_mode="HTML"
             )
             return
     except Exception as e:
-        print(f"Subscription check error during registration process: {e}")
+        print(f"Subscription check error during registration: {e}")
 
-    user = await sync_to_async(TGUser.objects.get)(tg_id=message.from_user.id)
+    user = await sync_to_async(TGUser.objects.get)(tg_id=callback.from_user.id)
 
-    # Берем самый актуальный проект
-    project = await sync_to_async(EcoProject.objects.filter(is_active=True, date__gt=timezone.now()).first)()
-    
+    project = await sync_to_async(
+        EcoProject.objects.filter(id=project_id, is_active=True).first
+    )()
+
     if not project:
-        await message.answer("Hozircha faol loyihalar yo'q.")
+        await callback.message.answer("Bu tadbir endi mavjud emas.")
         return
 
-    # ДВОЙНАЯ ПРОВЕРКА (чтобы не пролезли через кэш кнопок)
     current_count = await sync_to_async(project.participants.exclude(status='rejected').count)()
-    
+
     if current_count >= project.max_participants:
-        await message.answer("❌ Kechirasiz, ro'yxatdan o'tish yopildi. Joylar qolmagan.", reply_markup=get_events_menu())
+        await callback.message.answer(
+            "❌ Kechirasiz, joylar qolmagan.",
+            reply_markup=get_events_menu()
+        )
         return
 
     part, created = await sync_to_async(ProjectParticipation.objects.get_or_create)(
         user=user, project=project
     )
-    
+
     if created:
-        await message.answer(
-            "✅ <b>Siz muvaffaqiyatli ro'yxatdan o'tdingiz!</b>\n\n"
+        await callback.message.answer(
+            "✅ <b>Muvaffaqiyatli ro'yxatdan o'tdingiz!</b>\n\n"
             "Arizangiz ko'rib chiqilmoqda.",
             reply_markup=get_events_menu(),
             parse_mode="HTML"
         )
     else:
-        await message.answer("Siz allaqachon ariza topshirgansiz. 👍")
+        await callback.message.answer("Siz allaqachon ariza topshirgansiz. 👍")
+
 
 async def list_past_events(message: types.Message):
-    # Автоматически берем те, что уже прошли (date < сейчас)
     past_events = await sync_to_async(lambda: list(
         EcoProject.objects.filter(date__lt=timezone.now()).order_by('-date')
     ))()
@@ -167,10 +173,7 @@ async def list_past_events(message: types.Message):
         return
 
     for event in past_events:
-        # УБРАНО ЧИСЛО. Только заголовок жирным.
         caption = f"<b>{event.title}</b>"
-        
-        # Описание выводится только если оно есть
         if event.description:
             caption += f"\n\n{event.description}"
 
@@ -187,16 +190,22 @@ async def list_past_events(message: types.Message):
         else:
             await message.answer(caption, parse_mode="HTML")
 
+
 async def handle_back(message: types.Message, state: FSMContext):
     await state.finish()
-    from ..keyboards import reply # Твоя главная клавиатура
+    from ..keyboards import reply
     await message.answer("Asosiy menyu", reply_markup=reply.hi_there())
 
-# --- РЕГИСТРАЦИЯ МОДУЛЯ ---
+
+# --- РЕГИСТРАЦИЯ ---
 
 def register_eco_clubs(dp: Dispatcher):
     dp.register_message_handler(show_events_menu, lambda m: "Tadbirlar" in m.text, state="*")
     dp.register_message_handler(list_upcoming_events, lambda m: "Kelgusi" in m.text, state="*")
     dp.register_message_handler(list_past_events, lambda m: "O'tgan" in m.text, state="*")
-    dp.register_message_handler(process_registration, lambda m: "Ro'yxatdan o'tish" in m.text, state="*")
     dp.register_message_handler(handle_back, lambda m: "Orqaga" in m.text, state="*")
+    dp.register_callback_query_handler(
+        process_registration,
+        lambda c: c.data and c.data.startswith("reg_"),
+        state="*"
+    )
