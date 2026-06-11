@@ -35,14 +35,35 @@ async def show_events_menu(message: types.Message, state: FSMContext):
 async def list_upcoming_events(message: types.Message, state: FSMContext):
     user = await sync_to_async(TGUser.objects.get)(tg_id=message.from_user.id)
 
-    projects = await sync_to_async(list)(
-        EcoProject.objects.filter(is_active=True, date__gt=timezone.now()).order_by('date')
-    )
+    tashkent_regions = ['tashkent_s', 'tashkent_v']
+
+    # Фильтруем ивенты ТОЛЬКО по региону юзера
+    if user.region in tashkent_regions:
+        projects = await sync_to_async(list)(
+            EcoProject.objects.filter(
+                is_active=True,
+                date__gt=timezone.now(),
+                region__in=tashkent_regions
+            ).order_by('date')
+        )
+    else:
+        projects = await sync_to_async(list)(
+            EcoProject.objects.filter(
+                is_active=True,
+                date__gt=timezone.now(),
+                region=user.region
+            ).order_by('date')
+        )
 
     if not projects:
-        await message.answer("Hozircha yangi tadbirlar yo'q. 😊", reply_markup=get_events_menu())
+        await message.answer(
+            "😊 Sizning hududingizda hozircha yangi tadbirlar yo'q.\n"
+            "Kuzatib boring, tez orada e'lon qilinadi!",
+            reply_markup=get_events_menu()
+        )
         return
 
+    # Проверка подписки один раз
     is_subscribed = True
     try:
         member = await message.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=message.from_user.id)
@@ -60,30 +81,15 @@ async def list_upcoming_events(message: types.Message, state: FSMContext):
             text += f"{p.description}\n\n"
         text += f"👥 <b>Joylar:</b> {current_count}/{p.max_participants}\n"
 
-        project_region = getattr(p, 'region', 'tashkent_s')
-        tashkent_regions = ['tashkent_s', 'tashkent_v']
-
-        if project_region in tashkent_regions:
-            region_allowed = user.region in tashkent_regions
-        else:
-            region_allowed = user.region == project_region
-
-        if not region_allowed:
-            user_reg_name = dict(TGUser.Region.choices).get(user.region, user.region)
-            text += (
-                f"\n⚠️ <b>Diqqat:</b> Siz <b>{user_reg_name}</b> hududidansiz.\n"
-                f"Ushbu tadbirda faqat mahalliy ko'ngillilar qatnasha oladi."
-            )
-            kb = get_events_menu()
-
-        elif current_count >= p.max_participants:
+        # Регион уже совпадает (мы отфильтровали выше), просто проверяем места и подписку
+        if current_count >= p.max_participants:
             text += f"\n❌ <b>Afsuski, joylar tugadi.</b> Keyingi tadbirlarni kuzatib boring! 🌱"
             kb = get_events_menu()
 
         elif not is_subscribed:
             text += (
                 f"\n⚠️ <b>Ro'yxatdan o'tish uchun avval kanalimizga a'zo bo'ling!</b>\n"
-                f"Kanalga a'zo bo'lib, ushbu bo'limga qaytadan kiring. (📅 Kelgusi tadbirlar)"
+                f"Kanalga a'zo bo'lib, ushbu bo'limga qaytadan kiring."
             )
             kb = InlineKeyboardMarkup().add(
                 InlineKeyboardButton(
@@ -94,7 +100,7 @@ async def list_upcoming_events(message: types.Message, state: FSMContext):
 
         else:
             text += f"\n<i>Ro'yxatdan o'tish uchun pastdagi tugmani bosing 👇</i>"
-            kb = get_registration_kb(p.id)  # ← передаём ID проекта
+            kb = get_registration_kb(p.id)
 
         if p.photo:
             try:
@@ -139,6 +145,23 @@ async def process_registration(callback: types.CallbackQuery):
         await callback.message.answer("Bu tadbir endi mavjud emas.")
         return
 
+    # Двойная проверка региона
+    tashkent_regions = ['tashkent_s', 'tashkent_v']
+    project_region = getattr(project, 'region', 'tashkent_s')
+
+    if project_region in tashkent_regions:
+        region_ok = user.region in tashkent_regions
+    else:
+        region_ok = user.region == project_region
+
+    if not region_ok:
+        await callback.message.answer(
+            "⚠️ Bu tadbir sizning hududingiz uchun emas.",
+            reply_markup=get_events_menu()
+        )
+        return
+
+    # Двойная проверка лимита
     current_count = await sync_to_async(project.participants.exclude(status='rejected').count)()
 
     if current_count >= project.max_participants:
