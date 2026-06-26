@@ -2,7 +2,7 @@ from rest_framework import status, views, response
 from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
 from app_telegram.models import TGUser
-from .se import UserSerializer
+from .serializers import UserSerializer
 
 class RegisterView(views.APIView):
     permission_classes = [AllowAny]
