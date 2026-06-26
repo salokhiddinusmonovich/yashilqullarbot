@@ -10,8 +10,11 @@ class RegisterView(views.APIView):
     def post(self, request):
         serializer = UserSerializer(data=request.data)
         if serializer.is_valid():
-            user = serializer.save()
-            refresh = RefreshToken.for_user(user)
+            tg_user = serializer.save() 
+            
+            # Request valid authentication token context from the shadow user model
+            refresh = RefreshToken.for_user(tg_user.user)
+            
             return response.Response({
                 "refresh": str(refresh),
                 "access": str(refresh.access_token),
@@ -19,27 +22,27 @@ class RegisterView(views.APIView):
             }, status=status.HTTP_201_CREATED)
         return response.Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
 class LoginView(views.APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
         tg_id = request.data.get('tg_id')
+        if not tg_id:
+            return response.Response({"error": "tg_id field is required"}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
-            # 1. Find your custom profile
             tg_profile = TGUser.objects.get(tg_id=tg_id)
-            
-            # 2. Get the linked Django User
             user = tg_profile.user 
-            
-            # 3. Now SimpleJWT works perfectly
             refresh = RefreshToken.for_user(user)
             
             return response.Response({
                 "refresh": str(refresh),
                 "access": str(refresh.access_token),
-            })
+            }, status=status.HTTP_200_OK)
         except TGUser.DoesNotExist:
-            return response.Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+            return response.Response({"error": "User profile not found"}, status=status.HTTP_404_NOT_FOUND)
+
 
 class LogoutView(views.APIView):
     def post(self, request):
@@ -48,5 +51,7 @@ class LogoutView(views.APIView):
             token = RefreshToken(refresh_token)
             token.blacklist()
             return response.Response(status=status.HTTP_205_RESET_CONTENT)
-        except Exception as e:
-            return response.Response(status=status.HTTP_400_BAD_REQUEST)
+        except KeyError:
+            return response.Response({"error": "Refresh token required"}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception:
+            return response.Response({"error": "Invalid or blacklisted token"}, status=status.HTTP_400_BAD_REQUEST)
