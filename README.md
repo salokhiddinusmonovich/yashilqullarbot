@@ -44,3 +44,51 @@ docker-compose exec web sh -c "python manage.py createsuperuser"
 >>>>>>> 3b1241a (salom)
 # yashilqullarbot
 # yashilqullarbot
+
+
+
+
+AUTH
+
+POST /api/auth/register
+POST /api/auth/login
+POST /api/auth/logout
+GET /api/auth/me
+POST /api/auth/refresh
+
+USERS
+
+GET /api/users/:id
+PATCH /api/users/:id
+GET /api/users/leaderboard
+
+BLOG
+
+GET /api/posts
+GET /api/posts/:id
+POST /api/posts
+PATCH /api/posts/:id
+DELETE /api/posts/:id
+POST /api/posts/:id/like
+
+COMMENTS
+
+GET /api/comments?postId=xxx
+POST /api/comments
+DELETE /api/comments/:id
+POST /api/comments/:id/like
+
+PROJECTS
+
+GET /api/projects
+GET /api/projects/:id
+POST /api/projects
+PATCH /api/projects/:id
+
+CONTACT
+
+POST /api/contact
+
+UPLOAD
+
+POST /api/upload/image

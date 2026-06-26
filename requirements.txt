@@ -32,3 +32,7 @@ tablib[xlsx]
 openpyxl
 qrcode==7.4.2
 Pillow==10.2.0
+
+djangorestframework-simplejwt
+drf-spectacular
+rest_framework
