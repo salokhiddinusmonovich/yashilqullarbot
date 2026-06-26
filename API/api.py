@@ -25,8 +25,15 @@ class LoginView(views.APIView):
     def post(self, request):
         tg_id = request.data.get('tg_id')
         try:
-            user = TGUser.objects.get(tg_id=tg_id)
+            # 1. Find your custom profile
+            tg_profile = TGUser.objects.get(tg_id=tg_id)
+            
+            # 2. Get the linked Django User
+            user = tg_profile.user 
+            
+            # 3. Now SimpleJWT works perfectly
             refresh = RefreshToken.for_user(user)
+            
             return response.Response({
                 "refresh": str(refresh),
                 "access": str(refresh.access_token),
