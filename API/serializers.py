@@ -12,7 +12,7 @@ class ProfileSerializer(serializers.ModelSerializer):
         fields = [
             'tg_id', 'fullname', 'username', 'photo', 'region', 
             'balance', 'rank', 'projects_count', 
-            'age', 'email', 'phone', 'education_place', 'experience'
+            'age', 'email', 'phone', 'education_place', 'experience', 'role'
         ]
         # Запрещаем юзеру самому себе накручивать баланс или ранг через PATCH
         read_only_fields = ['tg_id', 'balance', 'rank', 'projects_count']
