@@ -5,7 +5,7 @@ from rest_framework import status, views, response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from app_telegram.models import TGUser
-from serializers import ProfileSerializer
+from .serializers import ProfileSerializer
 from rest_framework import generics
 
 class TelegramLoginView(views.APIView):
