@@ -153,7 +153,7 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
 @admin.register(TGUser)
 class TGUserAdmin(admin.ModelAdmin):
     # ДОБАВЛЯЕМ 'is_admin' и 'is_tester' СЮДА:
-    list_display = ('display_name', 'tg_id', 'region', 'balance', 'colored_status', 'is_admin', 'is_tester')
+    list_display = ('display_name', 'tg_id', 'region', 'balance', 'colored_status', 'role', 'is_admin', 'is_tester')
     
     # Теперь list_editable будет работать без ошибок
     list_editable = ('is_admin', 'is_tester')
