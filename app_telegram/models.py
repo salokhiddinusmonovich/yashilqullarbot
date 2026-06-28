@@ -27,6 +27,14 @@ class TGUser(TimeBasedModel):
         TASHKENT_V = 'tashkent_v', 'Toshkent viloyati'
         TASHKENT_S = 'tashkent_s', 'Toshkent shahri'
 
+    class Role(models.TextChoices):
+        VOLUNTEER = 'volunteer', 'Волонтер'
+        COORDINATOR = 'coordinator', 'Координатор'
+        MOBILOGRAPH = 'mobilograph', 'Мобилограф'
+        IT = 'it', 'IT Специалист'
+        ORGANIZER = 'organizer', 'Организатор'
+        FOUNDER = 'Founder', 'Оснаватель'
+
     tg_id = models.BigIntegerField(unique=True, db_index=True, verbose_name='id Telegram')
     fullname = models.CharField(max_length=255)
     age = models.PositiveSmallIntegerField(blank=True, null=True)
@@ -39,6 +47,7 @@ class TGUser(TimeBasedModel):
     education_place = models.CharField(max_length=255, blank=True, null=True, verbose_name='O‘qish joyi')
     is_admin = models.BooleanField(default=False)
     balance = models.PositiveIntegerField(default=0, verbose_name="Эко-баллы")
+    role = models.CharField(max_length=20, choices=Role.choices, default=Role.VOLUNTEER, verbose_name='Статус / Роль')
     
     is_tester = models.BooleanField(default=False, verbose_name="Тестировщик")
     @property
@@ -55,7 +64,7 @@ class TGUser(TimeBasedModel):
         verbose_name_plural = 'пользователи'
 
     def __str__(self):
-        return f'{self.fullname} ({self.tg_id})'
+        return f'{self.fullname} ({self.tg_id}) {self.role}'
 
 class TeamMemberYashilQullar(TimeBasedModel):
     # Убрали OneToOneField к TGUser. Теперь это самостоятельная модель.
