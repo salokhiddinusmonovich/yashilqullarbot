@@ -2,9 +2,11 @@ import hashlib
 import hmac
 from django.conf import settings
 from rest_framework import status, views, response
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from app_telegram.models import TGUser
+from serializers import ProfileSerializer
+from rest_framework import generics
 
 class TelegramLoginView(views.APIView):
     permission_classes = [AllowAny]
@@ -42,3 +44,15 @@ class LogoutView(views.APIView):
             return response.Response(status=status.HTTP_205_RESET_CONTENT)
         except Exception:
             return response.Response({"error": "Invalid token"}, status=status.HTTP_400_BAD_REQUEST)
+        
+
+
+# --- ПРОФИЛЬ (GET и PATCH) ---
+class ProfileView(generics.RetrieveUpdateAPIView):
+    serializer_class = ProfileSerializer
+    permission_classes = [IsAuthenticated] # Требуется JWT токен!
+
+    def get_object(self):
+        # Автоматически находим профиль того пользователя, чей токен сейчас используется
+        return TGUser.objects.get(user=self.request.user)
+    # ... остальной код
