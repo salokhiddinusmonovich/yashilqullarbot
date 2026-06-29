@@ -8,6 +8,7 @@ from import_export.fields import Field
 from asgiref.sync import async_to_sync # asyncio.run ўрнига хавфсизроқ
 from .models import ProjectNotification
 import requests
+from django.db.models import Q
 
 from .models import (
     TGUser, TeamMemberYashilQullar, ProjectParticipation, 
@@ -188,14 +189,19 @@ class TGUserAdmin(admin.ModelAdmin):
 
     @admin.action(description="📢 Отправить напоминание о выборе региона (Telegram)")
     def send_region_reminders(self, request, queryset):
-        # Отфильтровываем из выделенных только тех, у кого реально пустой регион
-        # (вдруг ты случайно выделил всех)
-        users_without_region = queryset.filter(region__isnull=True) | queryset.filter(region='')
+        # 1. Считаем, сколько всего юзеров ты выделил галочкой
+        total_selected = queryset.count()
 
-        if not users_without_region.exists():
+        # 2. Бот САМ ищет среди выделенных только тех, у кого НЕТ региона (пусто или None)
+        # Объект Q гарантирует строгую фильтрацию на уровне базы данных
+        users_without_region = queryset.filter(Q(region__isnull=True) | Q(region__exact=''))
+        target_count = users_without_region.count()
+
+        # 3. Если среди выделенных у всех всё нормально — тормозим и пишем об этом
+        if target_count == 0:
             self.message_user(
                 request, 
-                "У всех выбранных пользователей уже указан регион. Рассылка отменена.", 
+                f"Выделено юзеров: {total_selected}. У всех них УЖЕ указан регион. Рассылка отменена!", 
                 level=messages.WARNING
             )
             return
@@ -203,38 +209,30 @@ class TGUserAdmin(admin.ModelAdmin):
         success_count = 0
         error_count = 0
 
-        # Текст сообщения
         text = (
             "👋 <b>Salom!</b>\n\n"
-            "⚠️ Siz botda hali o'z hududingizni tanlamagansiz.\n"
+            "⚠️ Siz @YashilQollar botida hali o'z hududingizni tanlamagansiz.\n"
             "Loyihalarda ishtirok etish uchun hududni ko'rsatishingiz <b>shart</b>! ❗\n\n"
             "⚙️ <b>Nima qilish kerak:</b>\n"
             "Bot menyusidan <b>\"👤 Mening profilim\"</b> ➡️ <b>\"📍 Hududni o'zgartirish\"</b> "
             "tugmasini bosing va yashash joyingizni tanlang. 🌿"
         )
 
-        # Проходимся по пользователям и отправляем запрос к Telegram API
+        # 4. Идем ТОЛЬКО по тем, кого скрипт отфильтровал (у кого нет региона)
         for user in users_without_region:
-            url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-            payload = {
-                "chat_id": user.tg_id,
-                "text": text,
-                "parse_mode": "HTML"
-            }
-            try:
-                # Делаем синхронный запрос
-                response = requests.post(url, json=payload, timeout=3)
-                if response.status_code == 200:
+            if user.tg_id:
+                try:
+                    # Используем твою же готовую функцию отправки, она надежнее!
+                    async_to_sync(send_notification)(user.tg_id, text)
                     success_count += 1
-                else:
-                    error_count += 1 # Скорее всего, пользователь заблокировал бота
-            except requests.exceptions.RequestException:
-                error_count += 1
+                except Exception as e:
+                    error_count += 1
 
-        # Выводим зеленое уведомление в самой админке об успешной рассылке
+        # 5. Выдаем тебе точный отчет
         self.message_user(
             request, 
-            f"✅ Рассылка завершена! Успешно доставлено: {success_count}. Ошибок (бот заблокирован): {error_count}.", 
+            f"✅ Выделено юзеров: {total_selected}. Без региона оказалось: {target_count}. "
+            f"Успешно доставлено: {success_count}. Ошибок (заблокировали бота): {error_count}.", 
             level=messages.SUCCESS
         )
 
