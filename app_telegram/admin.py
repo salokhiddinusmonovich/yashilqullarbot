@@ -7,6 +7,7 @@ from import_export.admin import ExportMixin
 from import_export.fields import Field
 from asgiref.sync import async_to_sync # asyncio.run ўрнига хавфсизроқ
 from .models import ProjectNotification
+import requests
 
 from .models import (
     TGUser, TeamMemberYashilQullar, ProjectParticipation, 
@@ -160,6 +161,7 @@ class TGUserAdmin(admin.ModelAdmin):
     
     list_filter = ('is_admin', 'is_tester', 'region')
     search_fields = ('fullname', 'tg_id', 'phone', 'username')
+    actions = ['send_region_reminders']
 
     # Остальной код (display_name, colored_status, fieldsets) оставляешь без изменений
     def display_name(self, obj):
@@ -183,6 +185,58 @@ class TGUserAdmin(admin.ModelAdmin):
         ('Технические данные', {'fields': ('tg_id', 'username', 'experience')}),
         ('Статус и Бонусы', {'fields': ('is_admin', 'is_tester', 'balance')}),
     )
+
+    @admin.action(description="📢 Отправить напоминание о выборе региона (Telegram)")
+    def send_region_reminders(self, request, queryset):
+        # Отфильтровываем из выделенных только тех, у кого реально пустой регион
+        # (вдруг ты случайно выделил всех)
+        users_without_region = queryset.filter(region__isnull=True) | queryset.filter(region='')
+
+        if not users_without_region.exists():
+            self.message_user(
+                request, 
+                "У всех выбранных пользователей уже указан регион. Рассылка отменена.", 
+                level=messages.WARNING
+            )
+            return
+
+        success_count = 0
+        error_count = 0
+
+        # Текст сообщения
+        text = (
+            "👋 <b>Salom!</b>\n\n"
+            "⚠️ Siz botda hali o'z hududingizni tanlamagansiz.\n"
+            "Loyihalarda ishtirok etish uchun hududni ko'rsatishingiz <b>shart</b>! ❗\n\n"
+            "⚙️ <b>Nima qilish kerak:</b>\n"
+            "Bot menyusidan <b>\"👤 Mening profilim\"</b> ➡️ <b>\"📍 Hududni o'zgartirish\"</b> "
+            "tugmasini bosing va yashash joyingizni tanlang. 🌿"
+        )
+
+        # Проходимся по пользователям и отправляем запрос к Telegram API
+        for user in users_without_region:
+            url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+            payload = {
+                "chat_id": user.tg_id,
+                "text": text,
+                "parse_mode": "HTML"
+            }
+            try:
+                # Делаем синхронный запрос
+                response = requests.post(url, json=payload, timeout=3)
+                if response.status_code == 200:
+                    success_count += 1
+                else:
+                    error_count += 1 # Скорее всего, пользователь заблокировал бота
+            except requests.exceptions.RequestException:
+                error_count += 1
+
+        # Выводим зеленое уведомление в самой админке об успешной рассылке
+        self.message_user(
+            request, 
+            f"✅ Рассылка завершена! Успешно доставлено: {success_count}. Ошибок (бот заблокирован): {error_count}.", 
+            level=messages.SUCCESS
+        )
 
 @admin.register(EcoProject)
 class EcoProjectAdmin(admin.ModelAdmin):
