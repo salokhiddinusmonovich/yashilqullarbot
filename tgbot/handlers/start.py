@@ -4,7 +4,6 @@ from aiogram.types import Message
 from aiogram.utils.markdown import hbold
 from asgiref.sync import sync_to_async
 
-# from app_telegram.models import TGUser
 from ..keyboards import reply
 from .qr_handler import process_qr_logic
 
@@ -13,18 +12,25 @@ async def user_start(message: Message, state: FSMContext):
     
     await state.finish()
 
-    # --- ПРОВЕРКА НА СКАНЕР (Deep Link) ---
+    # --- QR CODE SCANNING VIA DEEP LINK ---
     args = message.get_args()
     if args and args.startswith('qr_'):
-        target_id = args.replace('qr_', '')
+        raw_target_id = args.replace('qr_', '')
         
-        # РАСПАКОВКА: получаем текст и объект отдельно
+        # Safety catch: Ensure the target ID is actually a valid number
+        try:
+            target_id = int(raw_target_id)
+        except ValueError:
+            await message.answer("❌ Malumotlar formati noto'g'ri (ID raqam bo'lishi kerak).")
+            return
+        
+        # UNPACKING: passes scanner_tg_id and target_tg_id safely
         result_text, volunteer = await process_qr_logic(message.from_user.id, target_id)
 
-        # Отправляем только текст (избегаем ошибки CantParseEntities)
+        # Send response back to the scanning staff member
         await message.answer(result_text, parse_mode="HTML")
 
-        # Отправляем уведомление волонтеру, если всё ок
+        # Notify the volunteer if attendance was successfully recorded
         if volunteer and "✅" in result_text:
             try:
                 await message.bot.send_message(
@@ -37,10 +43,10 @@ async def user_start(message: Message, state: FSMContext):
                     parse_mode="HTML"
                 )
             except Exception:
-                pass 
+                pass  # Avoid halting execution if the volunteer blocked the bot
         return
 
-    # --- ОБЫЧНОЕ ПРИВЕТСТВИЕ ---
+    # --- STANDARD GREETING FLOW ---
     user = await sync_to_async(TGUser.objects.filter(tg_id=message.from_user.id).first)()
 
     if user:
