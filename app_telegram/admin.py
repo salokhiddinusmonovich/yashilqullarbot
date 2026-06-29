@@ -187,28 +187,22 @@ class TGUserAdmin(admin.ModelAdmin):
         ('Статус и Бонусы', {'fields': ('is_admin', 'is_tester', 'balance')}),
     )
 
-    @admin.action(description="📢 Отправить напоминание о выборе региона (Telegram)")
+    @admin.action(description="📢 ОТПРАВИТЬ ВСЕМ (без региона) по всей базе")
     def send_region_reminders(self, request, queryset):
-        # 1. Считаем, сколько всего юзеров ты выделил галочкой
-        total_selected = queryset.count()
+        # ВАЖНО: Мы игнорируем 'queryset' (то, что ты выделил)
+        # И сразу обращаемся к модели TGUser, чтобы забрать всех из базы
+        all_users_without_region = TGUser.objects.filter(Q(region__isnull=True) | Q(region=''))
+        
+        target_count = all_users_without_region.count()
 
-        # 2. Бот САМ ищет среди выделенных только тех, у кого НЕТ региона (пусто или None)
-        # Объект Q гарантирует строгую фильтрацию на уровне базы данных
-        users_without_region = queryset.filter(Q(region__isnull=True) | Q(region__exact=''))
-        target_count = users_without_region.count()
-
-        # 3. Если среди выделенных у всех всё нормально — тормозим и пишем об этом
         if target_count == 0:
-            self.message_user(
-                request, 
-                f"Выделено юзеров: {total_selected}. У всех них УЖЕ указан регион. Рассылка отменена!", 
-                level=messages.WARNING
-            )
+            self.message_user(request, "Во всей базе нет пользователей без региона!", level=messages.WARNING)
             return
 
         success_count = 0
         error_count = 0
 
+        # Текст рассылки
         text = (
             "👋 <b>Salom!</b>\n\n"
             "⚠️ Siz @YashilQollar botida hali o'z hududingizni tanlamagansiz.\n"
@@ -218,21 +212,21 @@ class TGUserAdmin(admin.ModelAdmin):
             "tugmasini bosing va yashash joyingizni tanlang. 🌿"
         )
 
-        # 4. Идем ТОЛЬКО по тем, кого скрипт отфильтровал (у кого нет региона)
-        for user in users_without_region:
+        # Проходим циклом по ВСЕМ найденным пользователям
+        for user in all_users_without_region:
             if user.tg_id:
                 try:
-                    # Используем твою же готовую функцию отправки, она надежнее!
+                    # Используем твою функцию
                     async_to_sync(send_notification)(user.tg_id, text)
                     success_count += 1
                 except Exception as e:
+                    print(f"Ошибка отправки {user.tg_id}: {e}")
                     error_count += 1
 
-        # 5. Выдаем тебе точный отчет
         self.message_user(
             request, 
-            f"✅ Выделено юзеров: {total_selected}. Без региона оказалось: {target_count}. "
-            f"Успешно доставлено: {success_count}. Ошибок (заблокировали бота): {error_count}.", 
+            f"✅ Рассылка по всей базе завершена. Найдено без региона: {target_count}. "
+            f"Успешно отправлено: {success_count}. Ошибок: {error_count}.", 
             level=messages.SUCCESS
         )
 
