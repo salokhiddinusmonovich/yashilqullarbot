@@ -28,12 +28,12 @@ class TGUser(TimeBasedModel):
         TASHKENT_S = 'tashkent_s', 'Toshkent shahri'
 
     class Role(models.TextChoices):
-        VOLUNTEER = 'volunteer', 'Волонтер'
-        COORDINATOR = 'coordinator', 'Координатор'
-        MOBILOGRAPH = 'mobilograph', 'Мобилограф'
-        IT = 'it', 'IT Специалист'
-        ORGANIZER = 'organizer', 'Организатор'
-        FOUNDER = 'Founder', 'Оснаватель'
+        VOLUNTEER = 'volunteer', 'Volunteer'
+        COORDINATOR = 'coordinator', 'Coordinator'
+        MOBILOGRAPH = 'mobilograph', 'Mobilographer'
+        IT = 'it', 'IT Specialist'
+        ORGANIZER = 'organizer', 'Organizer'
+        FOUNDER = 'Founder', 'Founder'
 
     tg_id = models.BigIntegerField(unique=True, db_index=True, verbose_name='id Telegram')
     fullname = models.CharField(max_length=255)
