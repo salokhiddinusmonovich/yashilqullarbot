@@ -253,9 +253,74 @@ async def check_user_subscription(message: types.Message):
     except Exception as e:
         await message.answer(f"⚠️ Ошибка проверки: {e}")
 
+async def remind_no_region(message: types.Message):
+    """
+    Рассылка-напоминание ВСЕМ пользователям, у которых не указан регион.
+    Использование: просто напиши /remindregion
+    """
+    # 1. Проверка прав (админ ли ты в БД)
+    user_in_db = await sync_to_async(TGUser.objects.filter(tg_id=message.from_user.id).first)()
+    if not user_in_db or not getattr(user_in_db, 'is_admin', False):
+        return
+
+    # 2. Ищем юзеров без региона (пустое поле или NULL)
+    query = Q(region__isnull=True) | Q(region__exact='')
+    users_without_region = await sync_to_async(list)(TGUser.objects.filter(query))
+
+    if not users_without_region:
+        await message.answer("✅ У всех пользователей в базе уже указан регион! Рассылка не требуется.")
+        return
+
+    await message.answer(f"⚠️ Найдено <b>{len(users_without_region)}</b> пользователей без региона. Начинаю рассылку...", parse_mode="HTML")
+
+    # Готовый текст инструкции
+    text = (
+        "👋 <b>Salom!</b>\n\n"
+        "⚠️ Siz @YashilQollar botida hali o'z hududingizni tanlamagansiz.\n"
+        "Loyihalarda ishtirok etish uchun hududni ko'rsatishingiz <b>shart</b>! ❗\n\n"
+        "⚙️ <b>Nima qilish kerak:</b>\n"
+        "Bot menyusidan <b>\"👤 Mening profilim\"</b> ➡️ <b>\"📍 Hududni o'zgartirish\"</b> "
+        "tugmasini bosing va yashash joyingizni tanlang. 🌿"
+    )
+
+    count = 0
+    blocked = 0
+    errors = 0
+
+    # 3. Отправка сообщений
+    for user in users_without_region:
+        if not user.tg_id:
+            continue
+        try:
+            # Отправляем заранее заготовленный текст
+            await message.bot.send_message(chat_id=user.tg_id, text=text, parse_mode="HTML")
+            count += 1
+            await asyncio.sleep(0.05)  # Защита от флуда (лимиты Telegram)
+        except exceptions.BotBlocked:
+            blocked += 1
+        except exceptions.RetryAfter as e:
+            # Если Telegram всё-таки ругается на спам, ждем и повторяем
+            await asyncio.sleep(e.timeout)
+            await message.bot.send_message(chat_id=user.tg_id, text=text, parse_mode="HTML")
+            count += 1
+        except Exception as e:
+            logger.error(f"Ошибка отправки {user.tg_id}: {e}")
+            errors += 1
+
+    # 4. Итоговый отчет
+    await message.answer(
+        f"✅ <b>Напоминание завершено!</b>\n\n"
+        f"🎯 Без региона было: {len(users_without_region)}\n"
+        f"📥 Успешно отправлено: {count}\n"
+        f"🚫 Заблокировали бота: {blocked}\n"
+        f"⚠️ Прочих ошибок: {errors}",
+        parse_mode="HTML"
+    )
+
 def register_admin(dp: Dispatcher):
     dp.register_message_handler(run_broadcast, commands=['send'], state="*")
     dp.register_message_handler(send_to_admins, commands=['adminsend'], state="*") # <-- Новая строка
     dp.register_message_handler(target_broadcast, commands=['targetsend'], state="*")
     dp.register_message_handler(region_broadcast, commands=['regionsend'], state="*")
     dp.register_message_handler(check_user_subscription, commands=['check'], state="*")
+    dp.regisister_message_handler(remind_no_region, commands=['remindregion'], state="*")
