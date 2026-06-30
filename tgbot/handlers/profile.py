@@ -60,7 +60,7 @@ async def view_my_profile(message: types.Message):
         f"📅 <b>Tadbirlar:</b> {events_count} ta\n"
         f"━━━━━━━━━━━━━━\n"
         f"👤 <b>Ism:</b> {user.fullname}\n"
-        f"📞 <b>Tel:</b> {user.phone}\n"
+        f"📞 <b>Tel:</b> +{user.phone}\n"
         f"📍 <b>Hudud:</b> {region_display}\n\n"
     )
 
