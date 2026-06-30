@@ -323,4 +323,4 @@ def register_admin(dp: Dispatcher):
     dp.register_message_handler(target_broadcast, commands=['targetsend'], state="*")
     dp.register_message_handler(region_broadcast, commands=['regionsend'], state="*")
     dp.register_message_handler(check_user_subscription, commands=['check'], state="*")
-    dp.regisister_message_handler(remind_no_region, commands=['remindregion'], state="*")
+    dp.register_message_handler(remind_no_region, commands=['remindregion'], state="*")
