@@ -183,7 +183,7 @@ class TGUserAdmin(admin.ModelAdmin):
 
     fieldsets = (
         ('Личные данные', {'fields': ('fullname', 'photo', 'age', 'phone', 'email', 'education_place', 'region')}),
-        ('Технические данные', {'fields': ('tg_id', 'username', 'experience')}),
+        ('Технические данные', {'fields': ('tg_id', 'username', 'experience', 'role')}),
         ('Статус и Бонусы', {'fields': ('is_admin', 'is_tester', 'balance')}),
     )
 
