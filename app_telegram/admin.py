@@ -162,7 +162,6 @@ class TGUserAdmin(admin.ModelAdmin):
     
     list_filter = ('is_admin', 'is_tester', 'region', 'role')
     search_fields = ('fullname', 'tg_id', 'phone', 'username')
-    actions = ['send_region_reminders']
 
     # Остальной код (display_name, colored_status, fieldsets) оставляешь без изменений
     def display_name(self, obj):
@@ -211,48 +210,7 @@ class TGUserAdmin(admin.ModelAdmin):
         ('Статус и Бонусы', {'fields': ('is_admin', 'is_tester', 'balance')}),
     )
 
-    @admin.action(description="📢 ОТПРАВИТЬ ВСЕМ (без региона) по всей базе")
-    def send_region_reminders(self, request, queryset):
-        # ВАЖНО: Мы игнорируем 'queryset' (то, что ты выделил)
-        # И сразу обращаемся к модели TGUser, чтобы забрать всех из базы
-        all_users_without_region = TGUser.objects.filter(Q(region__isnull=True) | Q(region=''))
-        
-        target_count = all_users_without_region.count()
-
-        if target_count == 0:
-            self.message_user(request, "Во всей базе нет пользователей без региона!", level=messages.WARNING)
-            return
-
-        success_count = 0
-        error_count = 0
-
-        # Текст рассылки
-        text = (
-            "👋 <b>Salom!</b>\n\n"
-            "⚠️ Siz @YashilQollar botida hali o'z hududingizni tanlamagansiz.\n"
-            "Loyihalarda ishtirok etish uchun hududni ko'rsatishingiz <b>shart</b>! ❗\n\n"
-            "⚙️ <b>Nima qilish kerak:</b>\n"
-            "Bot menyusidan <b>\"👤 Mening profilim\"</b> ➡️ <b>\"📍 Hududni o'zgartirish\"</b> "
-            "tugmasini bosing va yashash joyingizni tanlang. 🌿"
-        )
-
-        # Проходим циклом по ВСЕМ найденным пользователям
-        for user in all_users_without_region:
-            if user.tg_id:
-                try:
-                    # Используем твою функцию
-                    async_to_sync(send_notification)(user.tg_id, text)
-                    success_count += 1
-                except Exception as e:
-                    print(f"Ошибка отправки {user.tg_id}: {e}")
-                    error_count += 1
-
-        self.message_user(
-            request, 
-            f"✅ Рассылка по всей базе завершена. Найдено без региона: {target_count}. "
-            f"Успешно отправлено: {success_count}. Ошибок: {error_count}.", 
-            level=messages.SUCCESS
-        )
+   
 
 @admin.register(EcoProject)
 class EcoProjectAdmin(admin.ModelAdmin):
