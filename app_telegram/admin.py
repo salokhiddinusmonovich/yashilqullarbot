@@ -155,12 +155,12 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
 @admin.register(TGUser)
 class TGUserAdmin(admin.ModelAdmin):
     # ДОБАВЛЯЕМ 'is_admin' и 'is_tester' СЮДА:
-    list_display = ('display_name', 'tg_id', 'region', 'balance', 'colored_status', 'role', 'is_admin', 'is_tester')
+    list_display = ('display_name', 'tg_id', 'region', 'balance', 'colored_status', 'role_colored', 'is_admin', 'is_tester')
     
     # Теперь list_editable будет работать без ошибок
     list_editable = ('is_admin', 'is_tester')
     
-    list_filter = ('is_admin', 'is_tester', 'region')
+    list_filter = ('is_admin', 'is_tester', 'region', 'role')
     search_fields = ('fullname', 'tg_id', 'phone', 'username')
     actions = ['send_region_reminders']
 
@@ -172,6 +172,30 @@ class TGUserAdmin(admin.ModelAdmin):
             return format_html('<span style="color: #5bc0de;">🧪 {}</span>', obj.fullname)
         return obj.fullname
     display_name.short_description = 'ФИО пользователя'
+
+
+    def role_colored(self, obj):
+        # Настрой цвета для каждой роли
+        colors = {
+            'volunteer': '#17a2b8',  # Бирюзовый
+            'admin': '#d9534f',      # Красный
+            'manager': '#f0ad4e',    # Оранжевый
+            'mentor': '#6f42c1',     # Фиолетовый
+        }
+        # Получаем цвет по ключу, если нет - серый
+        color = colors.get(obj.role, '#6c757d') 
+        
+        return format_html(
+            '<span style="background-color: {}; color: white; padding: 3px 8px; '
+            'border-radius: 5px; font-weight: bold; font-size: 10px;">'
+            '{}</span>',
+            color,
+            obj.get_role_display() if hasattr(obj, 'get_role_display') else obj.role
+        )
+    role_colored.short_description = 'Роль'
+    # Делаем возможной сортировку по этому полю в админке
+    role_colored.admin_order_field = 'role'
+
 
     def colored_status(self, obj):
         rank = obj.rank
