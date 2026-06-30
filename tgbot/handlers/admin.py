@@ -255,51 +255,77 @@ async def check_user_subscription(message: types.Message):
 
 async def remind_no_region(message: types.Message):
     """
-    Рассылка-напоминание ВСЕМ пользователям, у которых не указан регион.
-    Использование: просто напиши /remindregion
+    Рассылка-напоминание ВСЕМ пользователям, у которых не указан ПРАВИЛЬНЫЙ регион.
+    (Пусто, NULL, или написано руками вместо нажатия кнопки).
     """
-    # 1. Проверка прав (админ ли ты в БД)
+    # 1. Проверка прав
     user_in_db = await sync_to_async(TGUser.objects.filter(tg_id=message.from_user.id).first)()
     if not user_in_db or not getattr(user_in_db, 'is_admin', False):
         return
 
-    # 2. Ищем юзеров без региона (пустое поле или NULL)
-    query = Q(region__isnull=True) | Q(region__exact='')
-    users_without_region = await sync_to_async(list)(TGUser.objects.filter(query))
+    # 2. Ищем "неправильных" юзеров (Логика: берем всех, КРОМЕ тех, у кого правильный код)
+    # ВНИМАНИЕ: Проверь, чтобы эти коды ТОЧНО совпадали с callback_data твоих кнопок!
+    VALID_REGIONS = [
+        'tashkent_s', 'tashkent_v', 'samarkand', 'bukhara', 'andijan', 
+        'namangan', 'fergana', 'syrdarya', 'jizzakh', 'navoiy', 
+        'kashkadarya', 'surkhandarya', 'khorezm', 'karakalpakstan'
+    ]
+
+    # exclude() убирает из списка тех, чье поле region есть в списке VALID_REGIONS.
+    # В итоге остаются все, у кого пусто, null, или левый текст.
+    users_without_region = await sync_to_async(list)(
+        TGUser.objects.exclude(region__in=VALID_REGIONS)
+    )
 
     if not users_without_region:
-        await message.answer("✅ У всех пользователей в базе уже указан регион! Рассылка не требуется.")
+        await message.answer("✅ У всех пользователей в базе указан корректный регион! Рассылка не требуется.")
         return
 
-    await message.answer(f"⚠️ Найдено <b>{len(users_without_region)}</b> пользователей без региона. Начинаю рассылку...", parse_mode="HTML")
+    await message.answer(f"⚠️ Найдено <b>{len(users_without_region)}</b> пользователей без правильного региона. Формирую доклад...", parse_mode="HTML")
 
-    # Готовый текст инструкции
+    # 3. ФОРМИРУЕМ ДОКЛАД (СПИСОК ЛЮДЕЙ)
+    report_lines = []
+    for i, u in enumerate(users_without_region, 1):
+        name = u.fullname or "Без имени"
+        uname = f"(@{u.username})" if u.username else ""
+        # Показываем, что у них сейчас написано в поле region
+        current_region = u.region if u.region else "Пусто"
+        report_lines.append(f"{i}. {name} {uname} | ID: <code>{u.tg_id}</code> | В базе: <b>{current_region}</b>")
+        
+    report_text = "📋 <b>Список пользователей, которым уйдет рассылка:</b>\n\n" + "\n".join(report_lines)
+    
+    # Отправляем список (разбиваем на части, если людей много)
+    for x in range(0, len(report_text), 4000):
+        await message.answer(report_text[x:x+4000], parse_mode="HTML")
+
+    await message.answer("🚀 Начинаю отправку сообщений... ⏳")
+
+    # 4. Текст инструкции (немного поправил текст, чтобы они поняли, что надо именно нажать кнопку)
     text = (
         "👋 <b>Salom!</b>\n\n"
-        "⚠️ Siz @YashilQollar botida hali o'z hududingizni tanlamagansiz.\n"
-        "Loyihalarda ishtirok etish uchun hududni ko'rsatishingiz <b>shart</b>! ❗\n\n"
+        "⚠️ Siz @YashilQollar botida hali o'z hududingizni to'g'ri tanlamagansiz "
+        "(yoki tugmani bosish o'rniga matn yozib yuborgansiz).\n"
+        "Loyihalarda ishtirok etish uchun hududni tugmalar orqali ko'rsatishingiz <b>shart</b>! ❗\n\n"
         "⚙️ <b>Nima qilish kerak:</b>\n"
         "Bot menyusidan <b>\"👤 Mening profilim\"</b> ➡️ <b>\"📍 Hududni o'zgartirish\"</b> "
-        "tugmasini bosing va yashash joyingizni tanlang. 🌿"
+        "tugmasini bosing va yashash joyingizni faqat <b>tugmalar orqali</b> tanlang. 🌿"
     )
 
     count = 0
     blocked = 0
     errors = 0
 
-    # 3. Отправка сообщений
+    # 5. Отправка сообщений
     for user in users_without_region:
         if not user.tg_id:
             continue
         try:
-            # Отправляем заранее заготовленный текст
             await message.bot.send_message(chat_id=user.tg_id, text=text, parse_mode="HTML")
             count += 1
-            await asyncio.sleep(0.05)  # Защита от флуда (лимиты Telegram)
+            await asyncio.sleep(0.05)  
         except exceptions.BotBlocked:
             blocked += 1
         except exceptions.RetryAfter as e:
-            # Если Telegram всё-таки ругается на спам, ждем и повторяем
             await asyncio.sleep(e.timeout)
             await message.bot.send_message(chat_id=user.tg_id, text=text, parse_mode="HTML")
             count += 1
@@ -307,10 +333,10 @@ async def remind_no_region(message: types.Message):
             logger.error(f"Ошибка отправки {user.tg_id}: {e}")
             errors += 1
 
-    # 4. Итоговый отчет
+    # 6. Итоговый отчет
     await message.answer(
         f"✅ <b>Напоминание завершено!</b>\n\n"
-        f"🎯 Без региона было: {len(users_without_region)}\n"
+        f"🎯 Людей с ошибкой в регионе: {len(users_without_region)}\n"
         f"📥 Успешно отправлено: {count}\n"
         f"🚫 Заблокировали бота: {blocked}\n"
         f"⚠️ Прочих ошибок: {errors}",
