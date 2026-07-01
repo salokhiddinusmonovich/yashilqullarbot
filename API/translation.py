@@ -1,5 +1,5 @@
 from modeltranslation.translator import register, TranslationOptions
-from app_telegram.models import TGUser, Article, TeamMemberYashilQullar
+from app_telegram.models import TGUser, Article, TeamMemberYashilQullar, Tag
 
 @register(Tag)
 class TagTranslationOptions(TranslationOptions):
