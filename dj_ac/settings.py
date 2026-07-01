@@ -182,5 +182,6 @@ CORS_ALLOW_ALL_ORIGINS = True
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
-    "http://173.249.19.32:5173",  # если фронт тоже там крутится
+    "http://173.249.19.32:5173",
+    "https://yashilqollarfronted.vercel.app",  # если фронт тоже там крутится
 ]
