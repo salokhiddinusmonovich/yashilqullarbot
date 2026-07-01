@@ -7,4 +7,6 @@ class AppTelegramConfig(AppConfig):
     name = 'app_telegram'
     verbose_name = _('Telegram-бот')
 
-    
+    def ready(self):
+        import app_telegram.translation  
+        
