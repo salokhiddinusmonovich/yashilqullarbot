@@ -88,3 +88,8 @@ class TeamMemberSerializer(serializers.ModelSerializer):
         ]
 
 
+class CommentCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Comment
+        # Фронтенд передает только текст и (если это ответ) ID родительского коммента
+        fields = ['text', 'parent']

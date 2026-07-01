@@ -2,14 +2,15 @@ import hashlib
 import hmac
 from django.conf import settings
 from rest_framework import status, views, generics
+from django.shortcuts import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
-from app_telegram.models import TGUser, Article, TeamMemberYashilQullar
-from .serializers import ProfileSerializer, ArticleListSerializer, ArticleDetailSerializer, TeamMemberSerializer
-
+from app_telegram.models import TGUser, Article, TeamMemberYashilQullar, Comment
+from .serializers import ProfileSerializer, ArticleListSerializer, ArticleDetailSerializer, TeamMemberSerializer, CommentCreateSerializer
+from rest_framework import viewsets
 
 class TelegramLoginView(views.APIView):
     """
@@ -169,3 +170,78 @@ class TeamListView(generics.ListAPIView):
     queryset = TeamMemberYashilQullar.objects.all().order_by('id') 
     serializer_class = TeamMemberSerializer
     permission_classes = [AllowAny]
+
+
+class ArticleViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    GET /api/blog/ — список всех статей
+    GET /api/blog/{id}/ — конкретная статья со всеми комментариями
+    """
+    queryset = Article.objects.all().order_by('-created_at')
+    permission_classes = [AllowAny] 
+    
+    # Для поиска по URL-slug вместо ID (например: /api/blog/aral-sea-project/)
+    lookup_field = 'slug'
+
+    def get_serializer_class(self):
+        # Если запрашивают одну статью — отдаем детальный сериализатор, если список — короткий
+        if self.action == 'retrieve':
+            return ArticleDetailSerializer
+        return ArticleListSerializer
+    
+
+
+class CommentCreateView(generics.CreateAPIView):
+    """
+    POST /api/blog/<slug>/comment/
+    Body: { "text": "Супер статья!", "parent": null }
+    """
+    serializer_class = CommentCreateSerializer
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [TGUserJWTAuthentication]
+
+    def perform_create(self, serializer):
+        # Достаем статью по slug из URL
+        slug = self.kwargs.get('slug')
+        article = get_object_or_404(Article, slug=slug)
+        
+        # Сохраняем коммент, жестко привязывая его к текущему юзеру и статье
+        serializer.save(user=self.request.user, article=article)
+
+
+class ArticleLikeView(views.APIView):
+    """
+    POST /api/blog/<slug>/like/
+    Просто дергаем этот эндпоинт, чтобы добавить лайк статье.
+    """
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [TGUserJWTAuthentication]
+
+    def post(self, request, slug):
+        article = get_object_or_404(Article, slug=slug)
+        article.likes_count += 1
+        article.save(update_fields=['likes_count'])
+        
+        return Response(
+            {"message": "Article liked", "likes_count": article.likes_count},
+            status=status.HTTP_200_OK
+        )
+
+
+class CommentLikeView(views.APIView):
+    """
+    POST /api/comment/<id>/like/
+    Дергаем эндпоинт, чтобы лайкнуть конкретный коммент.
+    """
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [TGUserJWTAuthentication]
+
+    def post(self, request, pk):
+        comment = get_object_or_404(Comment, pk=pk)
+        comment.likes_count += 1
+        comment.save(update_fields=['likes_count'])
+        
+        return Response(
+            {"message": "Comment liked", "likes_count": comment.likes_count},
+            status=status.HTTP_200_OK
+        )
