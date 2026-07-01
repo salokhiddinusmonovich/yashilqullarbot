@@ -185,3 +185,11 @@ CORS_ALLOWED_ORIGINS = [
     "http://173.249.19.32:5173",
     "https://yashilqollarfronted.vercel.app",  # если фронт тоже там крутится
 ]
+
+CORS_ALLOW_HEADERS = [
+    "accept",
+    "accept-language",
+    "authorization",
+    "content-type",
+    "ngrok-skip-browser-warning",
+]
