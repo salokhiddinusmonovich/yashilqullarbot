@@ -38,3 +38,5 @@ drf-spectacular
 djangorestframework
 requests
 django-modeltranslation
+
+django-cors-headers
