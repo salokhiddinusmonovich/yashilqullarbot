@@ -37,3 +37,4 @@ djangorestframework-simplejwt
 drf-spectacular
 djangorestframework
 requests
+django-modeltranslation

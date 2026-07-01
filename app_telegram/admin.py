@@ -9,10 +9,11 @@ from asgiref.sync import async_to_sync # asyncio.run ўрнига хавфсиз
 from .models import ProjectNotification
 import requests
 from django.db.models import Q
-
+from modeltranslation.admin import TranslationAdmin
 from .models import (
     TGUser, TeamMemberYashilQullar, ProjectParticipation, 
-    EcoProject, Partner
+    EcoProject, Partner,
+    Article, Tag, Comment
 )
 
 BOT_TOKEN = "8597081931:AAHrLlthINCN8nIZp_zh3WEbzfc-5GhoHmw"
@@ -289,6 +290,17 @@ class TeamMemberAdmin(admin.ModelAdmin):
             return format_html('<img src="{}" width="50" height="50" style="border-radius:50%; object-fit:cover;"/>', obj.photo.url)
         return "Нет фото"
     display_photo.short_description = "Фото"
+
+
+@admin.register(Article)
+class ArticleAdmin(TranslationAdmin): # Изменили здесь
+    list_display = ('title', 'author_name', 'created_at')
+    prepopulated_fields = {'slug': ('title_en',)} # Генерируем slug из английского тайтла
+
+@admin.register(Tag)
+class TagAdmin(TranslationAdmin): # Изменили здесь
+    list_display = ('name', 'slug')
+admin.site.register(Comment)
 
 admin.site.register(Partner)
 admin.site.register(ProjectNotification)

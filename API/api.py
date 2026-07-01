@@ -7,8 +7,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
-from app_telegram.models import TGUser
-from .serializers import ProfileSerializer
+from app_telegram.models import TGUser, Article, TeamMemberYashilQullar
+from .serializers import ProfileSerializer, ArticleListSerializer, ArticleDetailSerializer, TeamMemberSerializer
 
 
 class TelegramLoginView(views.APIView):
@@ -20,7 +20,7 @@ class TelegramLoginView(views.APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        data = dict(request.data)  # mutable copy
+        data = {k: v[0] if isinstance(v, list) else v for k, v in request.data.items()} # mutable copy
 
         # 1. Extract hash before building check string
         hash_val = data.pop('hash', None)
@@ -157,3 +157,15 @@ class ProfileView(generics.RetrieveUpdateAPIView):
     def get_object(self):
         # request.user is now the TGUser instance (set by TGUserJWTAuthentication)
         return self.request.user
+    
+
+class TeamListView(generics.ListAPIView):
+    """
+    GET /api/team/
+    Возвращает список всех волонтеров команды Yashil Qo'llar.
+    Фронтенд должен сгруппировать их по полю 'focus' (founder, digital, media, organization).
+    """
+    # Сортируем по ID или можешь добавить поле order в модель позже
+    queryset = TeamMemberYashilQullar.objects.all().order_by('id') 
+    serializer_class = TeamMemberSerializer
+    permission_classes = [AllowAny]

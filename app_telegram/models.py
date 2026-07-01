@@ -71,6 +71,7 @@ class TeamMemberYashilQullar(TimeBasedModel):
     fullname = models.CharField(max_length=255, verbose_name="F.I.SH (Имя)")
     photo = models.ImageField(upload_to='team_photos/', verbose_name="Rasm (Фото)")
     telegram_username = models.CharField(max_length=100, blank=True, null=True, verbose_name="Telegram Username (@...)")
+    instagram = models.CharField(max_length=100, blank=True, null=True, verbose_name="Instagram username (@...)")
     skills = models.TextField(blank=True, null=True, verbose_name='Ko‘nikmalar (Навыки)')
     
     FOCUS_CHOICES = [
@@ -194,3 +195,51 @@ class ProjectNotification(models.Model):
         unique_together = ('project', 'user')
         verbose_name = "Уведомление"
         verbose_name_plural = "Уведомления"
+
+
+
+
+
+
+class Tag(models.Model):
+    name = models.CharField(max_length=50)
+    slug = models.SlugField(unique=True)
+
+    def __str__(self):
+        return self.name
+    
+class Article(models.Model):
+    title = models.CharField(max_length=255)
+    slug = models.SlugField(unique=True)
+    cover_image = models.ImageField(upload_to='blog/covers/')
+    content = models.TextField() # В админке сюда лучше подключить CKEditor для форматирования
+    
+    # Данные автора как на скрине (например: "Aziz Karimov", "Founder")
+    author_name = models.CharField(max_length=100)
+    author_role = models.CharField(max_length=100, blank=True, null=True)
+    
+    tags = models.ManyToManyField(Tag, related_name='articles')
+    
+    read_time_minutes = models.PositiveIntegerField(default=3)
+    likes_count = models.PositiveIntegerField(default=0)
+    
+    is_featured = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.title
+
+class Comment(models.Model):
+    article = models.ForeignKey(Article, on_delete=models.CASCADE, related_name='comments')
+    # Parent отвечает за вложенность (reply). Если null — это главный комментарий.
+    parent = models.ForeignKey('self', null=True, blank=True, on_delete=models.CASCADE, related_name='replies')
+    
+    # Привязываем комментатора к твоей базе пользователей
+    user = models.ForeignKey(TGUser, on_delete=models.CASCADE)
+    text = models.TextField()
+    
+    likes_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Comment by {self.user.fullname} on {self.article.title}"
