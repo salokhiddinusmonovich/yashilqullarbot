@@ -2,8 +2,8 @@ from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
 from .api import (
     TelegramLoginView, LogoutView, ProfileView, 
-    TeamListView, ArticleListView, ArticleDetailView, # У тебя там была опечатка "a", я поправил
-    CommentCreateView, ArticleLikeView, CommentLikeView # <-- Импортируем новые вьюхи
+    TeamListView, ArticleViewSet, # <-- Импортируем именно ArticleViewSet
+    CommentCreateView, ArticleLikeView, CommentLikeView
 )
 
 urlpatterns = [
@@ -13,11 +13,11 @@ urlpatterns = [
     path('me/', ProfileView.as_view(), name='profile'),
     path('team/', TeamListView.as_view(), name='team-list'),
     
-    # Пути для блога
-    path('blog/', ArticleListView.as_view(), name='blog-list'),
-    path('blog/<slug:slug>/', ArticleDetailView.as_view(), name='blog-detail'),
+    # Пути для блога (расписываем действия ViewSet)
+    path('blog/', ArticleViewSet.as_view({'get': 'list'}), name='blog-list'),
+    path('blog/<slug:slug>/', ArticleViewSet.as_view({'get': 'retrieve'}), name='blog-detail'),
     
-    # --- НОВЫЕ ПУТИ ДЛЯ КОММЕНТОВ И ЛАЙКОВ ---
+    # Наши новые пути для комментов и лайков
     path('blog/<slug:slug>/comment/', CommentCreateView.as_view(), name='article-comment'),
     path('blog/<slug:slug>/like/', ArticleLikeView.as_view(), name='article-like'),
     path('comment/<int:pk>/like/', CommentLikeView.as_view(), name='comment-like'),
