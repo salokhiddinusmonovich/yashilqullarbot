@@ -193,3 +193,6 @@ CORS_ALLOW_HEADERS = [
     "content-type",
     "ngrok-skip-browser-warning",
 ]
+
+
+TELEGRAM_BOT_TOKEN = "8597081931:AAHrLlthINCN8nIZp_zh3WEbzfc-5GhoHmw"
