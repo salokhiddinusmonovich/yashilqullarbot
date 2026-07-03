@@ -213,6 +213,8 @@ class Article(models.Model):
     slug = models.SlugField(unique=True)
     cover_image = models.ImageField(upload_to='blog/covers/')
     content = models.TextField() # В админке сюда лучше подключить CKEditor для форматирования
+    video = models.FileField(upload_to='blog/videos/', blank=True, null=True, verbose_name="Video fayl (yuklash)")
+    video_url = models.URLField(blank=True, null=True, verbose_name="Video havolasi (YouTube va h.k.)")
     
     # Данные автора как на скрине (например: "Aziz Karimov", "Founder")
     author_name = models.CharField(max_length=100)
@@ -228,6 +230,16 @@ class Article(models.Model):
 
     def __str__(self):
         return self.title
+    
+class ArticleImage(models.Model):
+    article = models.ForeignKey(Article, on_delete=models.CASCADE, related_name='gallery_images')
+    image = models.ImageField(upload_to='blog/gallery/')
+    order = models.PositiveIntegerField(default=0, verbose_name="Tartib raqami")
+
+    class Meta:
+        ordering = ['order']
+        verbose_name = "Rasm (galereya)"
+        verbose_name_plural = "Rasmlar (galereya)"
 
 class Comment(models.Model):
     article = models.ForeignKey(Article, on_delete=models.CASCADE, related_name='comments')

@@ -13,7 +13,7 @@ from modeltranslation.admin import TranslationAdmin
 from .models import (
     TGUser, TeamMemberYashilQullar, ProjectParticipation, 
     EcoProject, Partner,
-    Article, Tag, Comment, LoginToken, EventFeedback
+    Article, Tag, Comment, LoginToken, EventFeedback, ArticleImage
 )
 
 BOT_TOKEN = "8597081931:AAHrLlthINCN8nIZp_zh3WEbzfc-5GhoHmw"
@@ -292,22 +292,30 @@ class TeamMemberAdmin(admin.ModelAdmin):
     display_photo.short_description = "Фото"
 
 
-@admin.register(Article)
-class ArticleAdmin(TranslationAdmin): # Изменили здесь
-    list_display = ('title', 'author_name', 'created_at')
-    prepopulated_fields = {'slug': ('title_en',)} # Генерируем slug из английского тайтла
-
-@admin.register(Tag)
-class TagAdmin(TranslationAdmin): # Изменили здесь
-    list_display = ('name', 'slug')
-admin.site.register(Comment)
-
-admin.site.register(Partner)
-admin.site.register(ProjectNotification)
-admin.site.register(LoginToken)
-
 @admin.register(EventFeedback)
 class EventFeedbackAdmin(admin.ModelAdmin):
     list_display = ['user', 'project', 'rating', 'created_at']
     list_filter = ['rating', 'project']
     readonly_fields = ['user', 'project', 'rating', 'comment', 'created_at']
+
+class ArticleImageInline(admin.TabularInline):
+    model = ArticleImage
+    extra = 3  # сразу 3 пустых слота под фото при создании поста
+
+@admin.register(Article)
+class ArticleAdmin(admin.ModelAdmin):
+    list_display = ['title', 'author_name', 'created_at', 'is_featured']
+    prepopulated_fields = {'slug': ('title',)}
+    inlines = [ArticleImageInline]
+
+@admin.register(Tag)
+class TagAdmin(TranslationAdmin): # Изменили здесь
+    list_display = ('name', 'slug')
+admin.site.register(Comment)
+admin.site.register(Partner)
+admin.site.register(ProjectNotification)
+admin.site.register(LoginToken)
+
+
+
+

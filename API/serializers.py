@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from app_telegram.models import TGUser, Article, Tag, Comment, TeamMemberYashilQullar
+from app_telegram.models import TGUser, Article, Tag, Comment, TeamMemberYashilQullar, ArticleImage
 
 class ProfileSerializer(serializers.ModelSerializer):
     # Добавляем кастомные поля для профиля, которые нужны на фронтенде
@@ -57,20 +57,29 @@ class ArticleListSerializer(serializers.ModelSerializer):
     def get_comments_count(self, obj):
         return obj.comments.count()
 
+class ArticleImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ArticleImage
+        fields = ['id', 'image']
+
 class ArticleDetailSerializer(serializers.ModelSerializer):
-    """Для полного экрана статьи (включая контент и древовидные комменты)"""
     tags = TagSerializer(many=True, read_only=True)
     comments = serializers.SerializerMethodField()
+    gallery_images = ArticleImageSerializer(many=True, read_only=True)
 
     class Meta:
         model = Article
-        fields = ['id', 'title', 'slug', 'cover_image', 'content', 'author_name', 'author_role', 'tags', 'read_time_minutes', 'likes_count', 'created_at', 'comments']
+        fields = ['id', 'title', 'slug', 'cover_image', 'content', 'author_name', 'author_role',
+                  'tags', 'read_time_minutes', 'likes_count', 'created_at', 'comments',
+                  'video', 'video_url', 'gallery_images']
 
     def get_comments(self, obj):
-        # Достаем только корневые комментарии (ответы подтянутся сами через get_replies)
         top_level_comments = obj.comments.filter(parent__isnull=True).order_by('-created_at')
         return CommentSerializer(top_level_comments, many=True).data
     
+
+
+
 
 
 
