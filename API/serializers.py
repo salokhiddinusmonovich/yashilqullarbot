@@ -49,17 +49,35 @@ class ArticleListSerializer(serializers.ModelSerializer):
     tags = TagSerializer(many=True, read_only=True)
     comments_count = serializers.SerializerMethodField()
     has_video = serializers.SerializerMethodField()
+    author_name = serializers.SerializerMethodField()
+    author_role = serializers.SerializerMethodField()
+    author_photo = serializers.SerializerMethodField()
 
     class Meta:
         model = Article
         fields = ['id', 'title', 'slug', 'cover_image', 'tags', 'read_time_minutes', 'likes_count',
-                  'comments_count', 'created_at', 'is_featured', 'author_name', 'author_role', 'has_video']
+                  'comments_count', 'created_at', 'is_featured', 'author_name', 'author_role', 'author_photo', 'has_video']
 
     def get_comments_count(self, obj):
         return obj.comments.count()
 
     def get_has_video(self, obj):
-        return bool(obj.video or obj.video_url)
+        return bool((obj.video and obj.video.name) or (obj.video_url and obj.video_url.strip()))
+
+    def get_author_name(self, obj):
+        return obj.author.fullname if obj.author else obj.author_name
+
+    def get_author_role(self, obj):
+        if obj.author:
+            return obj.author.get_focus_display() if hasattr(obj.author, 'get_focus_display') else None
+        return obj.author_role
+
+    def get_author_photo(self, obj):
+        if obj.author and obj.author.photo:
+            request = self.context.get('request')
+            url = obj.author.photo.url
+            return request.build_absolute_uri(url) if request else url
+        return None
 
 class ArticleImageSerializer(serializers.ModelSerializer):
     class Meta:
@@ -76,6 +94,22 @@ class ArticleDetailSerializer(serializers.ModelSerializer):
         fields = ['id', 'title', 'slug', 'cover_image', 'content', 'author_name', 'author_role',
                   'tags', 'read_time_minutes', 'likes_count', 'created_at', 'comments',
                   'video', 'video_url', 'gallery_images']
+    
+
+    def get_author_name(self, obj):
+        return obj.author.fullname if obj.author else obj.author_name
+
+    def get_author_role(self, obj):
+        if obj.author:
+            return obj.author.get_focus_display() if hasattr(obj.author, 'get_focus_display') else None
+        return obj.author_role
+
+    def get_author_photo(self, obj):
+        if obj.author and obj.author.photo:
+            request = self.context.get('request')
+            url = obj.author.photo.url
+            return request.build_absolute_uri(url) if request else url
+        return None
 
     def get_comments(self, obj):
         top_level_comments = obj.comments.filter(parent__isnull=True).order_by('-created_at')

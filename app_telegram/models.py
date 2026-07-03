@@ -217,9 +217,11 @@ class Article(models.Model):
     video_url = models.URLField(blank=True, null=True, verbose_name="Video havolasi (YouTube va h.k.)")
     
     # Данные автора как на скрине (например: "Aziz Karimov", "Founder")
-    author_name = models.CharField(max_length=100)
-    author_role = models.CharField(max_length=100, blank=True, null=True)
-    
+    author = models.ForeignKey(
+        'TeamMemberYashilQullar', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='articles',
+        verbose_name="Muallif (jamoadan tanlang)"
+    )
     tags = models.ManyToManyField(Tag, related_name='articles')
     
     read_time_minutes = models.PositiveIntegerField(default=3)

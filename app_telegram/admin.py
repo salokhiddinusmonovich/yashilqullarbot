@@ -304,9 +304,10 @@ class ArticleImageInline(admin.TabularInline):
 
 @admin.register(Article)
 class ArticleAdmin(admin.ModelAdmin):
-    list_display = ['title', 'author_name', 'created_at', 'is_featured']
+    list_display = ['title', 'author', 'created_at', 'is_featured']
     prepopulated_fields = {'slug': ('title',)}
     inlines = [ArticleImageInline]
+    autocomplete_fields = ['author'] 
 
 @admin.register(Tag)
 class TagAdmin(TranslationAdmin): # Изменили здесь
