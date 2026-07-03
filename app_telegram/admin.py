@@ -13,7 +13,7 @@ from modeltranslation.admin import TranslationAdmin
 from .models import (
     TGUser, TeamMemberYashilQullar, ProjectParticipation, 
     EcoProject, Partner,
-    Article, Tag, Comment
+    Article, Tag, Comment, LoginToken
 )
 
 BOT_TOKEN = "8597081931:AAHrLlthINCN8nIZp_zh3WEbzfc-5GhoHmw"
@@ -304,6 +304,8 @@ admin.site.register(Comment)
 
 admin.site.register(Partner)
 admin.site.register(ProjectNotification)
+admin.site.register(LoginToken)
+
 
 
 
