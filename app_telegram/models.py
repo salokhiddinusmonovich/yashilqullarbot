@@ -218,9 +218,10 @@ class Article(models.Model):
     
     # Данные автора как на скрине (например: "Aziz Karimov", "Founder")
     author = models.ForeignKey(
-        'TeamMemberYashilQullar', on_delete=models.SET_NULL,
+        'TGUser', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='articles',
-        verbose_name="Muallif (jamoadan tanlang)"
+        limit_choices_to={'is_admin': True},
+        verbose_name="Muallif (faqat admin foydalanuvchilar)"
     )
     tags = models.ManyToManyField(Tag, related_name='articles')
     

@@ -65,12 +65,12 @@ class ArticleListSerializer(serializers.ModelSerializer):
         return bool((obj.video and obj.video.name) or (obj.video_url and obj.video_url.strip()))
 
     def get_author_name(self, obj):
-        return obj.author.fullname if obj.author else obj.author_name
+        return obj.author.fullname if obj.author else None
 
     def get_author_role(self, obj):
         if obj.author:
-            return obj.author.get_focus_display() if hasattr(obj.author, 'get_focus_display') else None
-        return obj.author_role
+            return obj.author.get_role_display()
+        return None
 
     def get_author_photo(self, obj):
         if obj.author and obj.author.photo:
@@ -83,6 +83,7 @@ class ArticleImageSerializer(serializers.ModelSerializer):
     class Meta:
         model = ArticleImage
         fields = ['id', 'image']
+
 class ArticleDetailSerializer(serializers.ModelSerializer):
     tags = TagSerializer(many=True, read_only=True)
     comments = serializers.SerializerMethodField()
@@ -106,8 +107,8 @@ class ArticleDetailSerializer(serializers.ModelSerializer):
         return obj.author.fullname if obj.author else None
 
     def get_author_role(self, obj):
-        if obj.author and hasattr(obj.author, 'get_focus_display'):
-            return obj.author.get_focus_display()
+        if obj.author:
+            return obj.author.get_role_display()
         return None
 
     def get_author_photo(self, obj):
