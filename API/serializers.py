@@ -46,16 +46,20 @@ class CommentSerializer(serializers.ModelSerializer):
         return []
 
 class ArticleListSerializer(serializers.ModelSerializer):
-    """Для отображения карточек в ленте (без полного текста и комментов)"""
     tags = TagSerializer(many=True, read_only=True)
     comments_count = serializers.SerializerMethodField()
+    has_video = serializers.SerializerMethodField()
 
     class Meta:
         model = Article
-        fields = ['id', 'title', 'slug', 'cover_image', 'tags', 'read_time_minutes', 'likes_count', 'comments_count', 'created_at', 'is_featured']
+        fields = ['id', 'title', 'slug', 'cover_image', 'tags', 'read_time_minutes', 'likes_count',
+                  'comments_count', 'created_at', 'is_featured', 'author_name', 'author_role', 'has_video']
 
     def get_comments_count(self, obj):
         return obj.comments.count()
+
+    def get_has_video(self, obj):
+        return bool(obj.video or obj.video_url)
 
 class ArticleImageSerializer(serializers.ModelSerializer):
     class Meta:

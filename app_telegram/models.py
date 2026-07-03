@@ -211,7 +211,7 @@ class Tag(models.Model):
 class Article(models.Model):
     title = models.CharField(max_length=255)
     slug = models.SlugField(unique=True)
-    cover_image = models.ImageField(upload_to='blog/covers/')
+    cover_image = models.ImageField(upload_to='blog/covers/', blank=True, null=True)
     content = models.TextField() # В админке сюда лучше подключить CKEditor для форматирования
     video = models.FileField(upload_to='blog/videos/', blank=True, null=True, verbose_name="Video fayl (yuklash)")
     video_url = models.URLField(blank=True, null=True, verbose_name="Video havolasi (YouTube va h.k.)")
