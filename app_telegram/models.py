@@ -243,3 +243,19 @@ class Comment(models.Model):
 
     def __str__(self):
         return f"Comment by {self.user.fullname} on {self.article.title}"
+    
+
+
+class LoginToken(models.Model):
+    token = models.CharField(max_length=64, unique=True, db_index=True)
+    status = models.CharField(
+        max_length=20,
+        choices=[('pending', 'pending'), ('confirmed', 'confirmed')],
+        default='pending',
+    )
+    tg_id = models.BigIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Токен входа'
+        verbose_name_plural = 'Токены входа'

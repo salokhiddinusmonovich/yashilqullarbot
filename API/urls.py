@@ -3,7 +3,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from .api import (
     TelegramLoginView, LogoutView, ProfileView, 
     TeamListView, ArticleViewSet, # <-- Импортируем именно ArticleViewSet
-    CommentCreateView, ArticleLikeView, CommentLikeView
+    CommentCreateView, ArticleLikeView, CommentLikeView,CreateLoginTokenView, LoginTokenStatusView
 )
 
 urlpatterns = [
@@ -21,4 +21,6 @@ urlpatterns = [
     path('blog/<slug:slug>/comment/', CommentCreateView.as_view(), name='article-comment'),
     path('blog/<slug:slug>/like/', ArticleLikeView.as_view(), name='article-like'),
     path('comment/<int:pk>/like/', CommentLikeView.as_view(), name='comment-like'),
+    path('login/token/', CreateLoginTokenView.as_view(), name='create-login-token'),
+    path('login/token/<str:token>/', LoginTokenStatusView.as_view(), name='login-token-status'),
 ]

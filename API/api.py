@@ -245,3 +245,50 @@ class CommentLikeView(views.APIView):
             {"message": "Comment liked", "likes_count": comment.likes_count},
             status=status.HTTP_200_OK
         )
+    
+
+import uuid
+from app_telegram.models import LoginToken
+
+class CreateLoginTokenView(views.APIView):
+    """
+    POST /login/token/
+    Создаёт одноразовый токен и deep-link на бота.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        token = uuid.uuid4().hex
+        LoginToken.objects.create(token=token)
+        bot_username = settings.TELEGRAM_BOT_USERNAME
+        return Response({
+            "token": token,
+            "deep_link": f"https://t.me/{bot_username}?start=login_{token}",
+        })
+
+
+class LoginTokenStatusView(views.APIView):
+    """
+    GET /login/token/<token>/
+    Фронт поллит этот эндпоинт, пока не увидит status: confirmed.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request, token):
+        try:
+            lt = LoginToken.objects.get(token=token)
+        except LoginToken.DoesNotExist:
+            return Response({"status": "expired"}, status=status.HTTP_404_NOT_FOUND)
+
+        if lt.status == 'confirmed' and lt.tg_id:
+            tg_user = get_object_or_404(TGUser, tg_id=lt.tg_id)
+            refresh = CustomRefreshToken.for_tg_user(tg_user)
+            lt.delete()  # одноразовый — использовали, удалили
+            return Response({
+                "status": "confirmed",
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
+                "user": ProfileSerializer(tg_user).data,
+            })
+
+        return Response({"status": lt.status})
