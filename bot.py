@@ -29,6 +29,7 @@ from tgbot.handlers.about import register_about_and_team
 from tgbot.handlers.ecoclub import register_eco_clubs
 from tgbot.handlers.shop import register_shop
 from tgbot.handlers.qr_handler import register_qr_handlers
+from tgbot.handlers.feedback import register_feedback
 from tgbot.handlers.contact_with_team import register_project_handlers
 from tgbot.handlers.admin import register_admin
 
@@ -54,6 +55,7 @@ def register_all_handlers(dp):
     register_project_handlers(dp)
     register_shop(dp)
     register_qr_handlers(dp)
+    register_feedback(dp)
     register_admin(dp)
     print("Handlers registered!")
 
