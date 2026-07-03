@@ -37,6 +37,7 @@ async def ask_feedback(bot, tg_id: int, project_id: int, project_title: str):
 
 
 async def process_rating_callback(call: types.CallbackQuery, state: FSMContext):
+    print(f"🔥 CALLBACK RECEIVED: {call.data}") 
     _, _, project_id, rating = call.data.split("_", 3)
     await state.update_data(project_id=int(project_id), rating=int(rating))
     await FeedbackStates.waiting_for_comment.set()
