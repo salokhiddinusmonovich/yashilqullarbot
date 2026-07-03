@@ -1,88 +1,90 @@
+
+import qrcode
+from io import BytesIO
 from aiogram import types, Dispatcher
-from aiogram.dispatcher import FSMContext
-from aiogram.dispatcher.filters.state import State, StatesGroup
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from asgiref.sync import sync_to_async
+from django.utils import timezone
+from django.db import models
 
+# ==========================================
+# 1. QR CODE & ATTENDANCE LOGIC
+# ==========================================
 
-class FeedbackStates(StatesGroup):
-    waiting_for_comment = State()
-
-
-def rating_keyboard(project_id: int) -> InlineKeyboardMarkup:
-    kb = InlineKeyboardMarkup(row_width=5)
-    kb.add(*[
-        InlineKeyboardButton(text=f"{n}⭐", callback_data=f"fb_rate_{project_id}_{n}")
-        for n in range(1, 6)
-    ])
-    return kb
-
-
-async def ask_feedback(bot, tg_id: int, project_id: int, project_title: str):
+@sync_to_async
+def process_qr_logic(scanner_tg_id, target_tg_id):
     """
-    Вызови эту функцию сразу после того, как волонтёру пришло
-    уведомление "Tadbirda ishtirok etganingiz tasdiqlandi" —
-    то есть внутри qr_handler.py / process_qr_logic, после успешной
-    отметки посещения.
+    Processes the QR code scan.
+    Permission is granted to any role EXCEPT regular volunteers.
+
+    Returns: (result_text, volunteer, project)
     """
-    try:
-        await bot.send_message(
-            chat_id=tg_id,
-            text=(
-                f"🙏 <b>{project_title}</b> tadbiri haqida fikringizni bilishni xohlaymiz!\n\n"
-                f"Tadbirni 1 dan 5 gacha baholang:"
-            ),
-            reply_markup=rating_keyboard(project_id),
-            parse_mode="HTML"
-        )
-    except Exception:
-        pass  # юзер мог заблокировать бота — не критично, просто пропускаем
+    from app_telegram.models import TGUser, ProjectParticipation, EcoProject
 
+    scanner_user = TGUser.objects.filter(tg_id=scanner_tg_id).first()
 
-async def process_rating_callback(call: types.CallbackQuery, state: FSMContext):
-    _, _, project_id, rating = call.data.split("_", 3)
-    await state.update_data(project_id=int(project_id), rating=int(rating))
-    await FeedbackStates.waiting_for_comment.set()
+    if not scanner_user or scanner_user.role == TGUser.Role.VOLUNTEER:
+        return "❌ Sizda skanerlash huquqi yo'q! Bu imkoniyat faqat ishchi guruh uchun.", None, None
 
-    await call.message.edit_text(
-        f"Rahmat! Siz {rating}⭐ qo'ydingiz.\n\n"
-        f"Endi, iltimos, batafsil yozing:\n"
-        f"• Nima yoqmadi yoki nima yaxshi bo'lmadi?\n"
-        f"• Nimani yaxshilash kerak deb o'ylaysiz?\n\n"
-        f"Javobingizni bitta xabar sifatida yuboring 👇"
+    volunteer = TGUser.objects.filter(tg_id=target_tg_id).first()
+    if not volunteer:
+        return "❌ Foydalanuvchi topilmadi!", None, None
+
+    today = timezone.now().date()
+    search_regions = [volunteer.region]
+    if volunteer.region in ['tashkent_s', 'tashkent_v']:
+        search_regions = ['tashkent_s', 'tashkent_v']
+
+    project = EcoProject.objects.filter(
+        is_active=True,
+        date__date=today,
+        region__in=search_regions
+    ).first()
+
+    if not project:
+        project = EcoProject.objects.filter(is_active=True, region__in=search_regions).first()
+
+    if not project:
+        return f"❌ {volunteer.get_region_display()}da faol loyiha topilmadi!", None, None
+
+    participation = ProjectParticipation.objects.filter(project=project, user=volunteer).first()
+    if not participation:
+        return f"❌ Volontyor '{project.title}' loyihasiga ro'yxatdan o'tmagan!", None, None
+
+    if participation.status == 'attended':
+        return f"⚠️ <b>{volunteer.fullname}</b> allaqachon tasdiqlangan!", volunteer, None
+
+    participation.status = 'attended'
+    participation.save()
+
+    volunteer.refresh_from_db()
+
+    success_text = (
+        f"✅ <b>Tayyor!</b>\n"
+        f"Foydalanuvchi: <b>{volunteer.fullname}</b> kelgani tasdiqlandi.\n"
+        f"💰 <b>Yangi balans:</b> {volunteer.balance} ball\n"
+        f"👤 <b>Skaner qildi:</b> {scanner_user.fullname} ({scanner_user.get_role_display()})"
     )
-    await call.answer()
+    return success_text, volunteer, project
 
 
-async def process_comment(message: types.Message, state: FSMContext):
-    from app_telegram.models import TGUser, EcoProject, EventFeedback
+async def show_qr_handler(message: types.Message):
+    """Generates a personal QR code for the user"""
+    bot_info = await message.bot.get_me()
+    qr_link = f"https://t.me/{bot_info.username}?start=qr_{message.from_user.id}"
 
-    data = await state.get_data()
-    project_id = data.get('project_id')
-    rating = data.get('rating')
-    await state.finish()
+    qr = qrcode.QRCode(version=1, box_size=10, border=2)
+    qr.add_data(qr_link)
+    qr.make(fit=True)
 
-    if not project_id or not rating:
-        await message.answer("Xatolik yuz berdi, qaytadan urinib ko'ring.")
-        return
+    img = qr.make_image(fill_color="black", back_color="white")
+    bio = BytesIO()
+    img.save(bio, 'PNG')
+    bio.seek(0)
 
-    user = await sync_to_async(TGUser.objects.get)(tg_id=message.from_user.id)
-    project = await sync_to_async(EcoProject.objects.get)(id=project_id)
-
-    await sync_to_async(EventFeedback.objects.update_or_create)(
-        user=user, project=project,
-        defaults={'rating': rating, 'comment': message.text}
+    await message.answer_photo(
+        photo=bio,
+        caption="🌿 <b>Sizning shaxsiy eko-kodingiz!</b>\n\nTadbirga kelganingizda mas'ul xodimga ko'rsating."
     )
 
-    await message.answer(
-        "✅ Rahmat! Fikringiz uchun tashakkur, bu bizga yaxshilanishga yordam beradi. 🌿"
-    )
-
-
-def register_feedback(dp: Dispatcher):
-    dp.register_callback_query_handler(
-        process_rating_callback,
-        lambda c: c.data and c.data.startswith("fb_rate_"),
-        state="*",
-    )
-    dp.register_message_handler(process_comment, state=FeedbackStates.waiting_for_comment)
+def register_qr_handlers(dp: Dispatcher):
+    dp.register_message_handler(show_qr_handler, text="🌿 Mening QR-kodim", state="*")
