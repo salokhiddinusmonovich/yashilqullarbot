@@ -93,7 +93,15 @@ async def main():
 
     # Запуск polling
     try:
-        await dp.start_polling()
+        await dp.start_polling(
+            allowed_updates=[
+                "message",
+                "edited_message",
+                "callback_query",
+                "my_chat_member",
+                "chat_member",
+            ]
+        )
     finally:
         await dp.storage.close()
         await dp.storage.wait_closed()
