@@ -83,26 +83,32 @@ class ArticleImageSerializer(serializers.ModelSerializer):
     class Meta:
         model = ArticleImage
         fields = ['id', 'image']
-
 class ArticleDetailSerializer(serializers.ModelSerializer):
     tags = TagSerializer(many=True, read_only=True)
     comments = serializers.SerializerMethodField()
     gallery_images = ArticleImageSerializer(many=True, read_only=True)
+    author_name = serializers.SerializerMethodField()
+    author_role = serializers.SerializerMethodField()
+    author_photo = serializers.SerializerMethodField()
 
     class Meta:
         model = Article
-        fields = ['id', 'title', 'slug', 'cover_image', 'content', 'author_name', 'author_role',
-                  'tags', 'read_time_minutes', 'likes_count', 'created_at', 'comments',
-                  'video', 'video_url', 'gallery_images']
-    
+        fields = ['id', 'title', 'slug', 'cover_image', 'content', 'tags',
+                  'read_time_minutes', 'likes_count', 'created_at', 'comments',
+                  'video', 'video_url', 'gallery_images',
+                  'author_name', 'author_role', 'author_photo']
+
+    def get_comments(self, obj):
+        top_level_comments = obj.comments.filter(parent__isnull=True).order_by('-created_at')
+        return CommentSerializer(top_level_comments, many=True).data
 
     def get_author_name(self, obj):
-        return obj.author.fullname if obj.author else obj.author_name
+        return obj.author.fullname if obj.author else None
 
     def get_author_role(self, obj):
-        if obj.author:
-            return obj.author.get_focus_display() if hasattr(obj.author, 'get_focus_display') else None
-        return obj.author_role
+        if obj.author and hasattr(obj.author, 'get_focus_display'):
+            return obj.author.get_focus_display()
+        return None
 
     def get_author_photo(self, obj):
         if obj.author and obj.author.photo:
@@ -110,10 +116,6 @@ class ArticleDetailSerializer(serializers.ModelSerializer):
             url = obj.author.photo.url
             return request.build_absolute_uri(url) if request else url
         return None
-
-    def get_comments(self, obj):
-        top_level_comments = obj.comments.filter(parent__isnull=True).order_by('-created_at')
-        return CommentSerializer(top_level_comments, many=True).data
     
 
 
