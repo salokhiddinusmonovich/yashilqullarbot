@@ -6,6 +6,7 @@ from asgiref.sync import sync_to_async
 
 from ..keyboards import reply
 from .qr_handler import process_qr_logic
+from .feedback import ask_feedback
 
 async def user_start(message: Message, state: FSMContext):
     from app_telegram.models import TGUser, LoginToken
@@ -20,7 +21,6 @@ async def user_start(message: Message, state: FSMContext):
         tg_id = message.from_user.id
         fullname = message.from_user.full_name
 
-        # get_or_create — тот же паттерн, что и в TelegramLoginView на сайте
         user, created = await sync_to_async(TGUser.objects.get_or_create)(
             tg_id=tg_id,
             defaults={
@@ -62,10 +62,14 @@ async def user_start(message: Message, state: FSMContext):
             await message.answer("❌ Malumotlar formati noto'g'ri (ID raqam bo'lishi kerak).")
             return
 
-        result_text, volunteer = await process_qr_logic(message.from_user.id, target_id)
+        # process_qr_logic теперь возвращает ещё и project —
+        # он нужен ниже, чтобы запустить опрос обратной связи
+        result_text, volunteer, project = await process_qr_logic(message.from_user.id, target_id)
 
+        # Send response back to the scanning staff member
         await message.answer(result_text, parse_mode="HTML")
 
+        # Notify the volunteer if attendance was successfully recorded
         if volunteer and "✅" in result_text:
             try:
                 await message.bot.send_message(
@@ -78,7 +82,14 @@ async def user_start(message: Message, state: FSMContext):
                     parse_mode="HTML"
                 )
             except Exception:
-                pass
+                pass  # Avoid halting execution if the volunteer blocked the bot
+
+            # Сразу следом — запрашиваем обратную связь по мероприятию
+            if project:
+                try:
+                    await ask_feedback(message.bot, volunteer.tg_id, project.id, project.title)
+                except Exception:
+                    pass  # не критично, если не получилось отправить опрос
         return
 
     # --- STANDARD GREETING FLOW ---

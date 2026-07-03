@@ -13,7 +13,7 @@ from modeltranslation.admin import TranslationAdmin
 from .models import (
     TGUser, TeamMemberYashilQullar, ProjectParticipation, 
     EcoProject, Partner,
-    Article, Tag, Comment, LoginToken
+    Article, Tag, Comment, LoginToken, EventFeedback
 )
 
 BOT_TOKEN = "8597081931:AAHrLlthINCN8nIZp_zh3WEbzfc-5GhoHmw"
@@ -306,8 +306,8 @@ admin.site.register(Partner)
 admin.site.register(ProjectNotification)
 admin.site.register(LoginToken)
 
-
-
-
-
-
+@admin.register(EventFeedback)
+class EventFeedbackAdmin(admin.ModelAdmin):
+    list_display = ['user', 'project', 'rating', 'created_at']
+    list_filter = ['rating', 'project']
+    readonly_fields = ['user', 'project', 'rating', 'comment', 'created_at']

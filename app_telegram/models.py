@@ -259,3 +259,19 @@ class LoginToken(models.Model):
     class Meta:
         verbose_name = 'Токен входа'
         verbose_name_plural = 'Токены входа'
+
+
+class EventFeedback(models.Model):
+    user = models.ForeignKey(TGUser, on_delete=models.CASCADE, related_name='feedbacks')
+    project = models.ForeignKey(EcoProject, on_delete=models.CASCADE, related_name='feedbacks')
+    rating = models.PositiveSmallIntegerField(verbose_name="Baho (1-5)")
+    comment = models.TextField(blank=True, null=True, verbose_name="Fikr-mulohaza")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'project')
+        verbose_name = "Fikr-mulohaza"
+        verbose_name_plural = "Fikr-mulohazalar"
+
+    def __str__(self):
+        return f"{self.user.fullname} — {self.project.title} ({self.rating}⭐)"
