@@ -145,7 +145,6 @@ class LogoutView(views.APIView):
 
 
 class ProfileView(generics.RetrieveUpdateAPIView):
-    authentication_classes = [TGUserJWTAuthentication]
     """
     GET   /api/auth/me/   — get current user profile
     PATCH /api/auth/me/   — update current user profile
