@@ -1,18 +1,18 @@
-version: '3.9'
-
 services:
   db:
     image: postgres:15-alpine
     container_name: yashilqollar-db
     restart: always
+    env_file:
+      - .env
     environment:
-      - POSTGRES_DB=postgres
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -30,25 +30,21 @@ services:
     working_dir: "/usr/src/app"
     volumes:
       - .:/usr/src/app
-      - ./media:/usr/src/app/media  
+      - ./media:/usr/src/app/media
+    env_file:
+      - .env
     environment:
       - PYTHONPATH=/usr/src/app
       - POSTGRES_HOST=db
-      - POSTGRES_DB=postgres
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - SECRET_KEY=123456qwerty
-      - DEBUG=True
     ports:
       - "8000:8000"
     command: >
-      sh -c "python manage.py migrate && 
-             python manage.py collectstatic --noinput && 
+      sh -c "python manage.py migrate &&
+             python manage.py collectstatic --noinput &&
              python manage.py runserver 0.0.0.0:8000"
     depends_on:
       db:
         condition: service_healthy
-      
 
   bot:
     container_name: yashilqollar-bot
@@ -58,18 +54,14 @@ services:
     working_dir: "/usr/src/app"
     volumes:
       - .:/usr/src/app
+    env_file:
+      - .env
     environment:
       - PYTHONPATH=/usr/src/app
-      - BOT_TOKEN=8597081931:AAHrLlthINCN8nIZp_zh3WEbzfc-5GhoHmw
-      - ADMINS=111
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - POSTGRES_HOST=db
-      - POSTGRES_DB=postgres
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
       - DJANGO_SETTINGS_MODULE=dj_ac.settings
-    # Мы запускаем bot.py прямо из корня /usr/src/app
     command: python bot.py
     restart: always
     depends_on:
