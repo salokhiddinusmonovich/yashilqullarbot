@@ -1,4 +1,8 @@
+import os
 from dataclasses import dataclass
+from dotenv import load_dotenv
+
+load_dotenv()
 
 @dataclass
 class Redis:
@@ -23,17 +27,19 @@ class Config:
     misc: Miscellaneous
 
 def load_config(path: str = None):
-    # МЫ ВООБЩЕ УБРАЛИ ENVIRONS И ПИШЕМ ДАННЫЕ ПРЯМО ТУТ
+    admin_ids_raw = os.environ.get("ADMIN_IDS", "111")
+    admin_ids = [int(x.strip()) for x in admin_ids_raw.split(",") if x.strip()]
+
     return Config(
         tg_bot=TgBot(
-            token="8597081931:AAHrLlthINCN8nIZp_zh3WEbzfc-5GhoHmw",
-            admin_ids=[111],
+            token=os.environ.get("BOT_TOKEN"),
+            admin_ids=admin_ids,
         ),
         redis=Redis(
-            host="redis",  # Название сервиса из docker-compose
-            port="6379",
-            password=None,
-            use_redis=True
+            host=os.environ.get("REDIS_HOST", "redis"),
+            port=os.environ.get("REDIS_PORT", "6379"),
+            password=os.environ.get("REDIS_PASSWORD") or None,
+            use_redis=True,
         ),
         misc=Miscellaneous()
     )
