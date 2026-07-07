@@ -292,3 +292,143 @@ class LoginTokenStatusView(views.APIView):
             })
 
         return Response({"status": lt.status})
+    
+
+
+
+class CustomRefreshToken(RefreshToken):
+    """
+    Универсальный токен для ЛЮБОГО способа входа (telegram / email / google).
+    Кладём pk (uid) — это работает для всех, включая юзеров без tg_id.
+    """
+    @classmethod
+    def for_tg_user(cls, tg_user: TGUser):
+        # оставлено для обратной совместимости с существующим кодом,
+        # который его вызывает (TelegramLoginView и т.д.)
+        return cls.for_user_obj(tg_user)
+ 
+    @classmethod
+    def for_user_obj(cls, user: TGUser):
+        token = cls()
+        token['uid'] = user.pk
+        token['fullname'] = user.fullname
+        return token
+ 
+ 
+class TGUserJWTAuthentication(JWTAuthentication):
+    """
+    Сначала пробуем новый claim 'uid' (pk) — работает для всех юзеров.
+    Если его нет (старый токен, выданный до этого изменения) — fallback на tg_id.
+    """
+    def get_user(self, validated_token):
+        uid = validated_token.get('uid')
+        if uid is not None:
+            try:
+                return TGUser.objects.get(pk=uid)
+            except TGUser.DoesNotExist:
+                raise InvalidToken("User not found")
+ 
+        tg_id = validated_token.get('tg_id')
+        if tg_id:
+            try:
+                return TGUser.objects.get(tg_id=tg_id)
+            except TGUser.DoesNotExist:
+                raise InvalidToken("TGUser not found")
+ 
+        raise InvalidToken("Token contains no user identifier")
+ 
+ 
+"""
+2) ДОБАВИТЬ эти вьюхи (после LogoutView, например).
+"""
+from .serializers import RegisterSerializer, PasswordLoginSerializer
+ 
+ 
+class RegisterView(views.APIView):
+    """
+    POST /register/
+    Body: { fullname, email, password }
+    Регистрация международного юзера БЕЗ Telegram-бота.
+    """
+    permission_classes = [AllowAny]
+ 
+    def post(self, request):
+        serializer = RegisterSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+ 
+        refresh = CustomRefreshToken.for_user_obj(user)
+        return Response({
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "user": ProfileSerializer(user).data,
+        }, status=status.HTTP_201_CREATED)
+ 
+ 
+class PasswordLoginView(views.APIView):
+    """
+    POST /login/password/
+    Body: { email, password }
+    """
+    permission_classes = [AllowAny]
+ 
+    def post(self, request):
+        serializer = PasswordLoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.validated_data['user']
+ 
+        refresh = CustomRefreshToken.for_user_obj(user)
+        return Response({
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "user": ProfileSerializer(user).data,
+        }, status=status.HTTP_200_OK)
+ 
+ 
+class GoogleLoginView(views.APIView):
+    """
+    POST /login/google/
+    Body: { id_token }   — id_token берётся на фронте из Google Identity Services
+    (google.accounts.id.initialize / One Tap / кнопка "Sign in with Google").
+ 
+    Требует: pip install google-auth
+    Требует: settings.GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
+    (получить Client ID в Google Cloud Console → APIs & Services → Credentials
+    → OAuth 2.0 Client IDs → Web application, добавить домен фронта в
+    Authorized JavaScript origins).
+    """
+    permission_classes = [AllowAny]
+ 
+    def post(self, request):
+        token = request.data.get("id_token")
+        if not token:
+            return Response({"error": "Missing id_token"}, status=status.HTTP_400_BAD_REQUEST)
+ 
+        from google.oauth2 import id_token as google_id_token
+        from google.auth.transport import requests as google_requests
+ 
+        try:
+            idinfo = google_id_token.verify_oauth2_token(
+                token, google_requests.Request(), settings.GOOGLE_CLIENT_ID
+            )
+        except ValueError:
+            return Response({"error": "Invalid Google token"}, status=status.HTTP_401_UNAUTHORIZED)
+ 
+        email = idinfo.get("email")
+        if not email:
+            return Response({"error": "Google account has no email"}, status=status.HTTP_400_BAD_REQUEST)
+ 
+        fullname = idinfo.get("name", "")
+        user, created = TGUser.objects.get_or_create(
+            email=email,
+            defaults={"fullname": fullname, "auth_provider": TGUser.AuthProvider.GOOGLE},
+        )
+ 
+        refresh = CustomRefreshToken.for_user_obj(user)
+        return Response({
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "user": ProfileSerializer(user).data,
+            "created": created,
+        }, status=status.HTTP_200_OK)
+ 

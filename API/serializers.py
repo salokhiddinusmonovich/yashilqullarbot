@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.contrib.auth.password_validation import validate_password
 from app_telegram.models import TGUser, Article, Tag, Comment, TeamMemberYashilQullar, ArticleImage
 
 class ProfileSerializer(serializers.ModelSerializer):
@@ -143,3 +144,61 @@ class CommentCreateSerializer(serializers.ModelSerializer):
         model = Comment
         # Фронтенд передает только текст и (если это ответ) ID родительского коммента
         fields = ['text', 'parent']
+
+
+
+
+
+class RegisterSerializer(serializers.ModelSerializer):
+    """
+    POST /register/
+    Body: { fullname, email, password }
+    """
+    password = serializers.CharField(write_only=True, min_length=8)
+ 
+    class Meta:
+        model = TGUser
+        fields = ['fullname', 'email', 'password']
+ 
+    def validate_email(self, value):
+        if TGUser.objects.filter(email=value).exists():
+            raise serializers.ValidationError("A user with this email already exists.")
+        return value
+ 
+    def validate_password(self, value):
+        # Использует стандартные Django-валидаторы из AUTH_PASSWORD_VALIDATORS
+        # в settings.py (длина, похожесть на данные юзера, распространённость и т.д.)
+        validate_password(value)
+        return value
+ 
+    def create(self, validated_data):
+        raw_password = validated_data.pop('password')
+        user = TGUser(
+            fullname=validated_data['fullname'],
+            email=validated_data['email'],
+            auth_provider=TGUser.AuthProvider.EMAIL,
+        )
+        user.set_password(raw_password)
+        user.save()
+        return user
+ 
+ 
+class PasswordLoginSerializer(serializers.Serializer):
+    """
+    POST /login/password/
+    Body: { email, password }
+    """
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True)
+ 
+    def validate(self, attrs):
+        try:
+            user = TGUser.objects.get(email=attrs['email'])
+        except TGUser.DoesNotExist:
+            raise serializers.ValidationError("Invalid email or password.")
+ 
+        if not user.check_password(attrs['password']):
+            raise serializers.ValidationError("Invalid email or password.")
+ 
+        attrs['user'] = user
+        return attrs

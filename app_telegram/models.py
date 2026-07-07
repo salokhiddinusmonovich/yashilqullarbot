@@ -26,7 +26,7 @@ class TGUser(TimeBasedModel):
         SURKHANDARYO = 'surkhandaryo', 'Surxondaryo viloyati'
         TASHKENT_V = 'tashkent_v', 'Toshkent viloyati'
         TASHKENT_S = 'tashkent_s', 'Toshkent shahri'
-
+ 
     class Role(models.TextChoices):
         VOLUNTEER = 'volunteer', 'Volunteer'
         COORDINATOR = 'coordinator', 'Coordinator'
@@ -34,12 +34,29 @@ class TGUser(TimeBasedModel):
         IT = 'it', 'IT Specialist'
         ORGANIZER = 'organizer', 'Organizer'
         FOUNDER = 'Founder', 'Founder'
-
-    tg_id = models.BigIntegerField(unique=True, db_index=True, verbose_name='id Telegram')
+ 
+    # НОВОЕ: откуда пришёл юзер — нужно, чтобы фронт понимал,
+    # какую форму логина показывать, и для аналитики.
+    class AuthProvider(models.TextChoices):
+        TELEGRAM = 'telegram', 'Telegram Bot'
+        EMAIL = 'email', 'Email + Password'
+        GOOGLE = 'google', 'Google'
+ 
+    # ИЗМЕНЕНО: tg_id больше не обязателен — международный юзер его не имеет.
+    # unique=True + null=True — Postgres допускает много NULL при unique-констрейнте.
+    tg_id = models.BigIntegerField(
+        unique=True, null=True, blank=True, db_index=True, verbose_name='id Telegram'
+    )
+ 
     fullname = models.CharField(max_length=255)
     age = models.PositiveSmallIntegerField(blank=True, null=True)
-    email = models.EmailField(max_length=255)
-    phone = models.CharField(max_length=20)
+ 
+    # ИЗМЕНЕНО: email теперь unique — это будет основной идентификатор
+    # для email- и google-логина. null=True (не blank='') чтобы старые
+    # telegram-юзера без email не конфликтовали друг с другом на unique.
+    email = models.EmailField(max_length=255, unique=True, null=True, blank=True)
+ 
+    phone = models.CharField(max_length=20, blank=True, null=True)
     username = models.CharField(max_length=255, blank=True, null=True, verbose_name='Username')
     experience = models.TextField(blank=True, null=True, verbose_name='tajribasi')
     photo = models.ImageField(upload_to='users_photos/', blank=True, null=True, verbose_name='Profil rasmi')
@@ -48,8 +65,18 @@ class TGUser(TimeBasedModel):
     is_admin = models.BooleanField(default=False)
     balance = models.PositiveIntegerField(default=0, verbose_name="Эко-баллы")
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.VOLUNTEER, verbose_name='Статус / Роль')
-    
+ 
+    # НОВОЕ: хэш пароля для email-регистрации. Пусто у telegram-only юзеров.
+    # Хранится через django.contrib.auth.hashers.make_password — НЕ plaintext.
+    password = models.CharField(max_length=128, blank=True, null=True, verbose_name="Пароль (хэш)")
+ 
+    auth_provider = models.CharField(
+        max_length=20, choices=AuthProvider.choices, default=AuthProvider.TELEGRAM,
+        verbose_name="Способ регистрации",
+    )
+ 
     is_tester = models.BooleanField(default=False, verbose_name="Тестировщик")
+ 
     @property
     def rank(self):
         if self.balance < 150:
@@ -58,13 +85,24 @@ class TGUser(TimeBasedModel):
             return "🌳 Daraxt (Дерево)"
         else:
             return "🛡 Tabiat Himoyachisi (Защитник)"
-
+    
+    def set_password(self, raw_password: str):
+        from django.contrib.auth.hashers import make_password
+        self.password = make_password(raw_password)
+ 
+    def check_password(self, raw_password: str) -> bool:
+        from django.contrib.auth.hashers import check_password
+        if not self.password:
+            return False
+        return check_password(raw_password, self.password)
+ 
     class Meta:
         verbose_name = 'пользователь'
         verbose_name_plural = 'пользователи'
-
+ 
     def __str__(self):
-        return f'{self.fullname} ({self.tg_id}) {self.role}'
+        return f'{self.fullname} ({self.tg_id or self.email}) {self.role}'
+ 
 
 class TeamMemberYashilQullar(TimeBasedModel):
     # Убрали OneToOneField к TGUser. Теперь это самостоятельная модель.

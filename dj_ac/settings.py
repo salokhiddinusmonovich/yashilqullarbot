@@ -196,3 +196,4 @@ CORS_ALLOW_HEADERS = [
 
 TELEGRAM_BOT_TOKEN = os.environ.get("BOT_TOKEN")
 TELEGRAM_BOT_USERNAME = os.environ.get("BOT_USERNAME", "yashilqollarbot")
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
