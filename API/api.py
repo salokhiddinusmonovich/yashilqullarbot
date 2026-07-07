@@ -62,10 +62,13 @@ class TelegramLoginView(views.APIView):
             defaults={
                 'fullname': fullname,
                 'username': data.get('username', ''),
-                # email and phone are required in your model — set blank defaults
-                # user must complete profile later
-                'email': '',
-                'phone': '',
+                # ВАЖНО: None, а не '' — email теперь unique=True.
+                # Telegram-виджет никогда не присылает email, так что
+                # '' у двух разных юзеров подряд = мгновенный
+                # UniqueViolation при следующей же регистрации через бота.
+                # None безопасен: unique допускает сколько угодно NULL.
+                'email': None,
+                'phone': None,
             }
         )
 

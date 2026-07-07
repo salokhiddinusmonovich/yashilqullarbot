@@ -5,7 +5,7 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 from asgiref.sync import sync_to_async
 import re
 
-
+from django.db import IntegrityError
 from ..keyboards.text import register_text
 from ..keyboards.reply import contact_btn
 from ..keyboards import reply
@@ -144,11 +144,10 @@ async def phone_handler(message: Message, state: FSMContext):
     if not message.contact:
         await message.answer("Iltimos, tugma orqali telefon raqam yuboring 👇")
         return
-
+ 
     data = await state.get_data()
     user_id = message.from_user.id
-    
-    # 1. Yangi foydalanuvchi obyektini yaratish
+ 
     new_user = TGUser(
         tg_id=user_id,
         fullname=data.get("fullname"),
@@ -160,24 +159,47 @@ async def phone_handler(message: Message, state: FSMContext):
         education_place=data.get("education_place"),
         experience=data.get("experience"),
     )
-
-    # 2. Rasmni yuklab olish (agar file_id bo'lsa)
+ 
     photo_file_id = data.get("photo_file_id")
     if photo_file_id:
-        # Telegramdan rasmni yuklab olish
         photo_buffer = BytesIO()
         await message.bot.download_file_by_id(photo_file_id, photo_buffer)
         photo_buffer.seek(0)
-        
-        # Django modeliga saqlash
         photo_name = f"user_{user_id}.jpg"
         new_user.photo.save(photo_name, ContentFile(photo_buffer.read()), save=False)
-
-    # 3. Bazaga saqlash
-    await sync_to_async(new_user.save)()
-
+ 
+    # ── НОВОЕ: аккуратная обработка дубликата email/tg_id ──
+    try:
+        await sync_to_async(new_user.save)()
+    except IntegrityError as e:
+        error_text = str(e).lower()
+ 
+        if "email" in error_text:
+            # Этот email уже занят другим юзером — просим ввести другой,
+            # а не оставляем человека висеть без ответа.
+            await state.set_state(RegisterState.email.state)
+            await message.answer(
+                "⚠️ Bu email allaqachon ro'yxatdan o'tgan. "
+                "Iltimos, boshqa email manzilini kiriting 👇"
+            )
+            return
+ 
+        if "tg_id" in error_text:
+            # Этот Telegram-аккаунт уже зарегистрирован ранее —
+            # не даём создать вторую запись, просто сообщаем об этом.
+            await state.finish()
+            await message.answer(
+                "Siz allaqachon ro'yxatdan o'tgansiz ✅",
+                reply_markup=reply.hi_there()
+            )
+            return
+ 
+        # Другая, непредвиденная ошибка БД — не проглатываем молча,
+        # логируем и сообщаем юзеру, что что-то пошло не так.
+        raise
+ 
     await state.finish()
-    await message.answer("✅ Ro‘yxatdan o‘tish muvaffaqiyatli yakunlandi!", reply_markup=reply.hi_there())
+    await message.answer("✅ Ro'yxatdan o'tish muvaffaqiyatli yakunlandi!", reply_markup=reply.hi_there())
 
 # Register all handlers
 def register_register(dp: Dispatcher):

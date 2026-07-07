@@ -149,6 +149,10 @@ class CommentCreateSerializer(serializers.ModelSerializer):
 
 
 
+from django.contrib.auth.password_validation import validate_password
+from app_telegram.models import TGUser
+ 
+ 
 class RegisterSerializer(serializers.ModelSerializer):
     """
     POST /register/
@@ -161,8 +165,18 @@ class RegisterSerializer(serializers.ModelSerializer):
         fields = ['fullname', 'email', 'password']
  
     def validate_email(self, value):
-        if TGUser.objects.filter(email=value).exists():
-            raise serializers.ValidationError("A user with this email already exists.")
+        existing = TGUser.objects.filter(email=value).first()
+        if existing:
+            if existing.tg_id:
+                # Уже зарегистрирован через Telegram-бота — это не "email занят",
+                # это конкретная и полезная подсказка, что делать дальше.
+                raise serializers.ValidationError(
+                    "This email is already registered via our Telegram bot. "
+                    "Please sign in using Telegram instead of creating a new account."
+                )
+            raise serializers.ValidationError(
+                "An account with this email already exists. Try signing in instead."
+            )
         return value
  
     def validate_password(self, value):
