@@ -152,9 +152,9 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 
 REST_FRAMEWORK = {
-    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    # ... other settings ...
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'API.api.TGUserJWTAuthentication',
+        'API.authentication.TGUserJWTAuthentication', # This path must point to the new file
     ],
 }
 
