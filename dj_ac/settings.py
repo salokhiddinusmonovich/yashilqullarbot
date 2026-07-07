@@ -153,6 +153,9 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'app_telegram.api.TGUserJWTAuthentication',
+    ],
 }
 SIMPLE_JWT = {
     'ROTATE_REFRESH_TOKENS': True,

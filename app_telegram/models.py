@@ -328,3 +328,49 @@ class EventFeedback(models.Model):
 
     def __str__(self):
         return f"{self.user.fullname} — {self.project.title} ({self.rating}⭐)"
+    
+
+
+
+class ArticleLike(models.Model):
+    """
+    Кто именно лайкнул статью — раньше likes_count просто увеличивался
+    без привязки к юзеру, поэтому нельзя было понять "лайкнул ли Я",
+    и один юзер мог накрутить счётчик бесконечно.
+    """
+    article = models.ForeignKey('Article', on_delete=models.CASCADE, related_name='user_likes')
+    user = models.ForeignKey(TGUser, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+ 
+    class Meta:
+        unique_together = ('article', 'user')
+        verbose_name = 'Лайк статьи'
+        verbose_name_plural = 'Лайки статей'
+ 
+ 
+class CommentLike(models.Model):
+    """То же самое, но для комментариев."""
+    comment = models.ForeignKey('Comment', on_delete=models.CASCADE, related_name='user_likes')
+    user = models.ForeignKey(TGUser, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+ 
+    class Meta:
+        unique_together = ('comment', 'user')
+        verbose_name = 'Лайк комментария'
+        verbose_name_plural = 'Лайки комментариев'
+ 
+ 
+class EcoProjectImage(models.Model):
+    """
+    Множественные фото для эко-проекта (плоггинг и т.п.) — та же логика,
+    что уже есть у ArticleImage для статей блога.
+    """
+    project = models.ForeignKey('EcoProject', on_delete=models.CASCADE, related_name='gallery_images')
+    image = models.ImageField(upload_to='projects/gallery/')
+    order = models.PositiveIntegerField(default=0, verbose_name="Tartib raqami")
+ 
+    class Meta:
+        ordering = ['order']
+        verbose_name = "Loyiha rasmi (galereya)"
+        verbose_name_plural = "Loyiha rasmlari (galereya)"
+ 

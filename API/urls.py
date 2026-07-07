@@ -6,6 +6,7 @@ from .api import (
     CommentCreateView, ArticleLikeView, CommentLikeView, CreateLoginTokenView, LoginTokenStatusView,
     RegisterView, PasswordLoginView, GoogleLoginView,  # НОВОЕ
 )
+from .api import EcoProjectViewSet, JoinProjectView 
 
 urlpatterns = [
     # ── Telegram bot login (без изменений) ──
@@ -29,3 +30,10 @@ urlpatterns = [
     path('blog/<slug:slug>/like/', ArticleLikeView.as_view(), name='article-like'),
     path('comment/<int:pk>/like/', CommentLikeView.as_view(), name='comment-like'),
 ]
+
+urlpatterns += [
+    path('projects/', EcoProjectViewSet.as_view({'get': 'list'}), name='project-list'),
+    path('projects/<int:pk>/', EcoProjectViewSet.as_view({'get': 'retrieve'}), name='project-detail'),
+    path('projects/<int:pk>/join/', JoinProjectView.as_view(), name='project-join'),
+]
+ 

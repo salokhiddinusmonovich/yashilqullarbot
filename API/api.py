@@ -11,6 +11,8 @@ from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from app_telegram.models import TGUser, Article, TeamMemberYashilQullar, Comment
 from .serializers import ProfileSerializer, ArticleListSerializer, ArticleDetailSerializer, TeamMemberSerializer, CommentCreateSerializer
 from rest_framework import viewsets
+from app_telegram.models import ArticleLike, CommentLike, EcoProject, ProjectParticipation
+from .serializers import EcoProjectSerializer
 
 class TelegramLoginView(views.APIView):
     """
@@ -176,78 +178,73 @@ class TeamListView(generics.ListAPIView):
 
 
 class ArticleViewSet(viewsets.ReadOnlyModelViewSet):
-    """
-    GET /api/blog/ — список всех статей
-    GET /api/blog/{id}/ — конкретная статья со всеми комментариями
-    """
     queryset = Article.objects.all().order_by('-created_at')
-    permission_classes = [AllowAny] 
-    
-    # Для поиска по URL-slug вместо ID (например: /api/blog/aral-sea-project/)
+    permission_classes = [AllowAny]
+    authentication_classes = [TGUserJWTAuthentication]  # НОВОЕ
     lookup_field = 'slug'
-
+ 
     def get_serializer_class(self):
-        # Если запрашивают одну статью — отдаем детальный сериализатор, если список — короткий
         if self.action == 'retrieve':
             return ArticleDetailSerializer
         return ArticleListSerializer
     
-
-
 class CommentCreateView(generics.CreateAPIView):
-    """
-    POST /api/blog/<slug>/comment/
-    Body: { "text": "Супер статья!", "parent": null }
-    """
     serializer_class = CommentCreateSerializer
     permission_classes = [IsAuthenticated]
     authentication_classes = [TGUserJWTAuthentication]
-
+ 
     def perform_create(self, serializer):
-        # Достаем статью по slug из URL
         slug = self.kwargs.get('slug')
         article = get_object_or_404(Article, slug=slug)
-        
-        # Сохраняем коммент, жестко привязывая его к текущему юзеру и статье
         serializer.save(user=self.request.user, article=article)
+ 
+    def get_serializer_context(self):
+        # ВАЖНО: без этого is_liked_by_me/user_photo не работали бы
+        # даже там, где сериализатор их использует.
+        ctx = super().get_serializer_context()
+        return ctx
 
 
 class ArticleLikeView(views.APIView):
     """
-    POST /api/blog/<slug>/like/
-    Просто дергаем этот эндпоинт, чтобы добавить лайк статье.
+    POST /blog/<slug>/like/
+    Переключает лайк: если юзер ещё не лайкал — ставит лайк, если уже
+    лайкал — снимает. Возвращает актуальные likes_count и liked.
     """
     permission_classes = [IsAuthenticated]
     authentication_classes = [TGUserJWTAuthentication]
-
+ 
     def post(self, request, slug):
         article = get_object_or_404(Article, slug=slug)
-        article.likes_count += 1
+        like, created = ArticleLike.objects.get_or_create(article=article, user=request.user)
+        if created:
+            article.likes_count += 1
+            liked = True
+        else:
+            like.delete()
+            article.likes_count = max(0, article.likes_count - 1)
+            liked = False
         article.save(update_fields=['likes_count'])
-        
-        return Response(
-            {"message": "Article liked", "likes_count": article.likes_count},
-            status=status.HTTP_200_OK
-        )
-
-
+        return Response({"likes_count": article.likes_count, "liked": liked}, status=status.HTTP_200_OK)
+ 
+ 
 class CommentLikeView(views.APIView):
-    """
-    POST /api/comment/<id>/like/
-    Дергаем эндпоинт, чтобы лайкнуть конкретный коммент.
-    """
+    """POST /comment/<id>/like/ — тот же toggle-паттерн для комментариев."""
     permission_classes = [IsAuthenticated]
     authentication_classes = [TGUserJWTAuthentication]
-
+ 
     def post(self, request, pk):
         comment = get_object_or_404(Comment, pk=pk)
-        comment.likes_count += 1
+        like, created = CommentLike.objects.get_or_create(comment=comment, user=request.user)
+        if created:
+            comment.likes_count += 1
+            liked = True
+        else:
+            like.delete()
+            comment.likes_count = max(0, comment.likes_count - 1)
+            liked = False
         comment.save(update_fields=['likes_count'])
-        
-        return Response(
-            {"message": "Comment liked", "likes_count": comment.likes_count},
-            status=status.HTTP_200_OK
-        )
+        return Response({"likes_count": comment.likes_count, "liked": liked}, status=status.HTTP_200_OK)
     
 
 import uuid
@@ -434,4 +431,35 @@ class GoogleLoginView(views.APIView):
             "user": ProfileSerializer(user).data,
             "created": created,
         }, status=status.HTTP_200_OK)
+ 
+
+class EcoProjectViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    GET /projects/ — список активных эко-проектов/плоггингов
+    GET /projects/<id>/ — один проект с полной галереей
+    title/description отдаются на языке из Accept-Language автоматически.
+    """
+    queryset = EcoProject.objects.filter(is_active=True).order_by('date')
+    serializer_class = EcoProjectSerializer
+    permission_classes = [AllowAny]
+    authentication_classes = [TGUserJWTAuthentication]
+ 
+ 
+class JoinProjectView(views.APIView):
+    """
+    POST /projects/<id>/join/
+    Записывает текущего юзера в участники проекта (статус 'pending').
+    """
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [TGUserJWTAuthentication]
+ 
+    def post(self, request, pk):
+        project = get_object_or_404(EcoProject, pk=pk)
+        participation, created = ProjectParticipation.objects.get_or_create(
+            user=request.user, project=project
+        )
+        return Response({
+            "status": participation.status,
+            "created": created,
+        }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
  

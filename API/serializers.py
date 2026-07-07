@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
-from app_telegram.models import TGUser, Article, Tag, Comment, TeamMemberYashilQullar, ArticleImage
+from app_telegram.models import TGUser, Article, Tag, Comment, TeamMemberYashilQullar, ArticleImage,EcoProject, EcoProjectImage, ProjectParticipation
 
 class ProfileSerializer(serializers.ModelSerializer):
     # Добавляем кастомные поля для профиля, которые нужны на фронтенде
@@ -32,19 +32,38 @@ class TagSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'slug']
 
 class CommentSerializer(serializers.ModelSerializer):
-    # Берем fullname из твоей модели TGUser
     user_name = serializers.CharField(source='user.fullname', read_only=True)
+    user_id = serializers.IntegerField(source='user.id', read_only=True)
+    user_photo = serializers.SerializerMethodField()
+    is_liked_by_me = serializers.SerializerMethodField()
     replies = serializers.SerializerMethodField()
-    
+ 
     class Meta:
         model = Comment
-        fields = ['id', 'user_name', 'text', 'likes_count', 'created_at', 'replies']
-
+        fields = ['id', 'user_id', 'user_name', 'user_photo', 'text', 'likes_count',
+                  'is_liked_by_me', 'created_at', 'replies']
+ 
+    def get_user_photo(self, obj):
+        if obj.user and obj.user.photo:
+            request = self.context.get('request')
+            url = obj.user.photo.url
+            return request.build_absolute_uri(url) if request else url
+        return None
+ 
+    def get_is_liked_by_me(self, obj):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if not request or not user or not getattr(user, 'is_authenticated', False):
+            return False
+        return obj.user_likes.filter(user=user).exists()
+ 
     def get_replies(self, obj):
-        # Рекурсивно собираем ответы на этот комментарий
         if obj.replies.exists():
-            return CommentSerializer(obj.replies.all(), many=True).data
+            # ВАЖНО: context=self.context — без этого is_liked_by_me/user_photo
+            # у вложенных ответов всегда были бы пустыми/False.
+            return CommentSerializer(obj.replies.all(), many=True, context=self.context).data
         return []
+ 
 
 class ArticleListSerializer(serializers.ModelSerializer):
     tags = TagSerializer(many=True, read_only=True)
@@ -79,6 +98,16 @@ class ArticleListSerializer(serializers.ModelSerializer):
             url = obj.author.photo.url
             return request.build_absolute_uri(url) if request else url
         return None
+    
+    is_liked_by_me = serializers.SerializerMethodField()
+ 
+    def get_is_liked_by_me(self, obj):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if not request or not user or not getattr(user, 'is_authenticated', False):
+            return False
+        return obj.user_likes.filter(user=user).exists()
+
 
 class ArticleImageSerializer(serializers.ModelSerializer):
     class Meta:
@@ -102,7 +131,7 @@ class ArticleDetailSerializer(serializers.ModelSerializer):
 
     def get_comments(self, obj):
         top_level_comments = obj.comments.filter(parent__isnull=True).order_by('-created_at')
-        return CommentSerializer(top_level_comments, many=True).data
+        return CommentSerializer(top_level_comments, many=True, context=self.context).data
 
     def get_author_name(self, obj):
         return obj.author.fullname if obj.author else None
@@ -119,6 +148,15 @@ class ArticleDetailSerializer(serializers.ModelSerializer):
             return request.build_absolute_uri(url) if request else url
         return None
     
+    is_liked_by_me = serializers.SerializerMethodField()
+ 
+    def get_is_liked_by_me(self, obj):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if not request or not user or not getattr(user, 'is_authenticated', False):
+            return False
+        return obj.user_likes.filter(user=user).exists()
+
 
 
 
@@ -226,3 +264,40 @@ class PasswordLoginSerializer(serializers.Serializer):
  
         attrs['user'] = user
         return attrs
+    
+
+
+class EcoProjectImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EcoProjectImage
+        fields = ['id', 'image']
+
+class EcoProjectSerializer(serializers.ModelSerializer):
+    """
+    GET /projects/ и /projects/<id>/
+    title/description/location_name автоматически переводятся
+    modeltranslation-ом по Accept-Language запроса.
+    """
+    gallery_images = EcoProjectImageSerializer(many=True, read_only=True)
+    region_display = serializers.CharField(source='get_region_display', read_only=True)
+    participants_count = serializers.SerializerMethodField()
+    is_joined = serializers.SerializerMethodField()
+ 
+    class Meta:
+        model = EcoProject
+        fields = [
+            'id', 'title', 'description', 'date', 'location_name', 'photo',
+            'gallery_images', 'is_active', 'max_participants', 'participants_count',
+            'region', 'region_display', 'is_joined', 'chat_link',
+        ]
+ 
+    def get_participants_count(self, obj):
+        return obj.participants.filter(status__in=['approved', 'attended']).count()
+ 
+    def get_is_joined(self, obj):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if not request or not user or not getattr(user, 'is_authenticated', False):
+            return False
+        return obj.participants.filter(user=user).exists()
+ 
