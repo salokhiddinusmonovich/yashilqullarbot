@@ -152,12 +152,11 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 
 REST_FRAMEWORK = {
-    # ... other settings ...
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'API.authentication.TGUserJWTAuthentication', # This path must point to the new file
+        'API.api.TGUserJWTAuthentication',
     ],
 }
-
 
 SIMPLE_JWT = {
     'ROTATE_REFRESH_TOKENS': True,
