@@ -211,6 +211,16 @@ class PasswordLoginSerializer(serializers.Serializer):
         except TGUser.DoesNotExist:
             raise serializers.ValidationError("Invalid email or password.")
  
+        if not user.password:
+            # Аккаунт создан через Telegram-бота — там пароль никогда не
+            # спрашивается и не сохраняется (password=NULL). "Invalid email
+            # or password" тут вводит в заблуждение — пароля там в принципе
+            # никогда не было. Говорим честно, что делать дальше.
+            raise serializers.ValidationError(
+                "This account was created via our Telegram bot and has no password. "
+                "Please use \"Continue with Telegram\" below instead."
+            )
+ 
         if not user.check_password(attrs['password']):
             raise serializers.ValidationError("Invalid email or password.")
  
