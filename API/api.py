@@ -11,7 +11,7 @@ from .serializers import ProfileSerializer, ArticleListSerializer, ArticleDetail
 from rest_framework import viewsets
 from app_telegram.models import ArticleLike, CommentLike, EcoProject, ProjectParticipation
 from app_telegram.models import EcoProjectComment, EcoProjectLike, EcoProjectCommentLike
-from .serializers import EcoProjectCommentCreateSerializer
+from .serializers import EcoProjectCommentCreateSerializer,EcoProjectSerializer
 from .authentication import CustomRefreshToken, TGUserJWTAuthentication
 
 class TelegramLoginView(views.APIView):
