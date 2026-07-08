@@ -10,8 +10,10 @@ from app_telegram.models import TGUser, Article, TeamMemberYashilQullar, Comment
 from .serializers import ProfileSerializer, ArticleListSerializer, ArticleDetailSerializer, TeamMemberSerializer, CommentCreateSerializer
 from rest_framework import viewsets
 from app_telegram.models import ArticleLike, CommentLike, EcoProject, ProjectParticipation
-from .serializers import EcoProjectSerializer
+from app_telegram.models import EcoProjectComment, EcoProjectLike, EcoProjectCommentLike
+from .serializers import EcoProjectCommentCreateSerializer
 from .authentication import CustomRefreshToken, TGUserJWTAuthentication
+
 class TelegramLoginView(views.APIView):
     """
     POST /api/auth/login/
@@ -393,3 +395,51 @@ class JoinProjectView(views.APIView):
             "created": created,
         }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
  
+
+class EcoProjectLikeView(views.APIView):
+    """POST /projects/<id>/like/ — toggle, как и у статей."""
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [TGUserJWTAuthentication]
+ 
+    def post(self, request, pk):
+        project = get_object_or_404(EcoProject, pk=pk)
+        like, created = EcoProjectLike.objects.get_or_create(project=project, user=request.user)
+        if created:
+            project.likes_count += 1
+            liked = True
+        else:
+            like.delete()
+            project.likes_count = max(0, project.likes_count - 1)
+            liked = False
+        project.save(update_fields=['likes_count'])
+        return Response({"likes_count": project.likes_count, "liked": liked}, status=status.HTTP_200_OK)
+ 
+ 
+class EcoProjectCommentCreateView(generics.CreateAPIView):
+    """POST /projects/<id>/comment/"""
+    serializer_class = EcoProjectCommentCreateSerializer
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [TGUserJWTAuthentication]
+ 
+    def perform_create(self, serializer):
+        project = get_object_or_404(EcoProject, pk=self.kwargs.get('pk'))
+        serializer.save(user=self.request.user, project=project)
+ 
+ 
+class EcoProjectCommentLikeView(views.APIView):
+    """POST /project-comment/<id>/like/"""
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [TGUserJWTAuthentication]
+ 
+    def post(self, request, pk):
+        comment = get_object_or_404(EcoProjectComment, pk=pk)
+        like, created = EcoProjectCommentLike.objects.get_or_create(comment=comment, user=request.user)
+        if created:
+            comment.likes_count += 1
+            liked = True
+        else:
+            like.delete()
+            comment.likes_count = max(0, comment.likes_count - 1)
+            liked = False
+        comment.save(update_fields=['likes_count'])
+        return Response({"likes_count": comment.likes_count, "liked": liked}, status=status.HTTP_200_OK)

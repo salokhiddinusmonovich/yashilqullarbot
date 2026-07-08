@@ -272,16 +272,63 @@ class EcoProjectImageSerializer(serializers.ModelSerializer):
         model = EcoProjectImage
         fields = ['id', 'image']
 
+class EcoProjectCommentSerializer(serializers.ModelSerializer):
+    user_id = serializers.IntegerField(source='user.id', read_only=True)
+    user_name = serializers.CharField(source='user.fullname', read_only=True)
+    user_photo = serializers.SerializerMethodField()
+    is_liked_by_me = serializers.SerializerMethodField()
+    replies = serializers.SerializerMethodField()
+ 
+    class Meta:
+        model = EcoProjectComment
+        fields = ['id', 'user_id', 'user_name', 'user_photo', 'text', 'likes_count',
+                  'is_liked_by_me', 'created_at', 'replies']
+ 
+    def get_user_photo(self, obj):
+        if obj.user and obj.user.photo:
+            request = self.context.get('request')
+            url = obj.user.photo.url
+            return request.build_absolute_uri(url) if request else url
+        return None
+ 
+    def get_is_liked_by_me(self, obj):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if not request or not user or not getattr(user, 'is_authenticated', False):
+            return False
+        return obj.user_likes.filter(user=user).exists()
+ 
+    def get_replies(self, obj):
+        if obj.replies.exists():
+            return EcoProjectCommentSerializer(obj.replies.all(), many=True, context=self.context).data
+        return []
+ 
+ 
+class EcoProjectCommentCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EcoProjectComment
+        fields = ['text', 'parent']
+ 
+ 
+class EcoProjectImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EcoProjectImage
+        fields = ['id', 'image']
+ 
+ 
 class EcoProjectSerializer(serializers.ModelSerializer):
     """
     GET /projects/ и /projects/<id>/
-    title/description/location_name автоматически переводятся
-    modeltranslation-ом по Accept-Language запроса.
+    Теперь ведёт себя как полноценный пост: лайки, комментарии, галерея.
+    title/description/location_name переводятся modeltranslation-ом по Accept-Language.
     """
     gallery_images = EcoProjectImageSerializer(many=True, read_only=True)
     region_display = serializers.CharField(source='get_region_display', read_only=True)
     participants_count = serializers.SerializerMethodField()
     is_joined = serializers.SerializerMethodField()
+    is_liked_by_me = serializers.SerializerMethodField()
+    comments_count = serializers.SerializerMethodField()
+    comments = serializers.SerializerMethodField()
  
     class Meta:
         model = EcoProject
@@ -289,6 +336,7 @@ class EcoProjectSerializer(serializers.ModelSerializer):
             'id', 'title', 'description', 'date', 'location_name', 'photo',
             'gallery_images', 'is_active', 'max_participants', 'participants_count',
             'region', 'region_display', 'is_joined', 'chat_link',
+            'likes_count', 'is_liked_by_me', 'comments_count', 'comments',
         ]
  
     def get_participants_count(self, obj):
@@ -300,4 +348,21 @@ class EcoProjectSerializer(serializers.ModelSerializer):
         if not request or not user or not getattr(user, 'is_authenticated', False):
             return False
         return obj.participants.filter(user=user).exists()
+ 
+    def get_is_liked_by_me(self, obj):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if not request or not user or not getattr(user, 'is_authenticated', False):
+            return False
+        return obj.user_likes.filter(user=user).exists()
+ 
+    def get_comments_count(self, obj):
+        return obj.comments.count()
+ 
+    def get_comments(self, obj):
+        # Для списка (/projects/) это довольно дорого при много проектов —
+        # если список большой, можно позже отдавать comments только в detail.
+        # Пока оставляем одинаково для простоты (мало проектов на старте).
+        top_level = obj.comments.filter(parent__isnull=True).order_by('-created_at')
+        return EcoProjectCommentSerializer(top_level, many=True, context=self.context).data
  

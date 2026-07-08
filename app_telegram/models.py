@@ -135,7 +135,7 @@ class EcoProject(models.Model):
     photo = models.ImageField(upload_to='projects/', null=True, blank=True, verbose_name="Rasm")
     is_active = models.BooleanField(default=True, verbose_name="Faolmi?")
     max_participants = models.PositiveIntegerField(default=100, verbose_name="Макс. участников")
-
+    likes_count = models.PositiveIntegerField(default=0, verbose_name="Лайки")
     # НОВОЕ: Ссылка на чат для этого проекта
     chat_link = models.URLField(blank=True, null=True, verbose_name="Ссылка на чат (для принятых)")
     region = models.CharField(
@@ -373,4 +373,34 @@ class EcoProjectImage(models.Model):
         ordering = ['order']
         verbose_name = "Loyiha rasmi (galereya)"
         verbose_name_plural = "Loyiha rasmlari (galereya)"
+ 
+
+class EcoProjectComment(models.Model):
+    project = models.ForeignKey('EcoProject', on_delete=models.CASCADE, related_name='comments')
+    parent = models.ForeignKey('self', null=True, blank=True, on_delete=models.CASCADE, related_name='replies')
+    user = models.ForeignKey(TGUser, on_delete=models.CASCADE)
+    text = models.TextField()
+    likes_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+ 
+    def __str__(self):
+        return f"Comment by {self.user.fullname} on {self.project.title}"
+ 
+ 
+class EcoProjectCommentLike(models.Model):
+    comment = models.ForeignKey(EcoProjectComment, on_delete=models.CASCADE, related_name='user_likes')
+    user = models.ForeignKey(TGUser, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+ 
+    class Meta:
+        unique_together = ('comment', 'user')
+ 
+ 
+class EcoProjectLike(models.Model):
+    project = models.ForeignKey('EcoProject', on_delete=models.CASCADE, related_name='user_likes')
+    user = models.ForeignKey(TGUser, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+ 
+    class Meta:
+        unique_together = ('project', 'user')
  
