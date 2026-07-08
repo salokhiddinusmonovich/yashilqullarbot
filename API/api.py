@@ -5,15 +5,13 @@ from rest_framework import status, views, generics
 from django.shortcuts import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from app_telegram.models import TGUser, Article, TeamMemberYashilQullar, Comment
 from .serializers import ProfileSerializer, ArticleListSerializer, ArticleDetailSerializer, TeamMemberSerializer, CommentCreateSerializer
 from rest_framework import viewsets
 from app_telegram.models import ArticleLike, CommentLike, EcoProject, ProjectParticipation
 from .serializers import EcoProjectSerializer
-
+from .authentication import CustomRefreshToken, TGUserJWTAuthentication
 class TelegramLoginView(views.APIView):
     """
     POST /api/auth/login/
@@ -92,32 +90,6 @@ class TelegramLoginView(views.APIView):
         }, status=status.HTTP_200_OK)
 
 
-class CustomRefreshToken(RefreshToken):
-    """
-    Custom token that stores tg_id instead of Django user pk.
-    """
-    @classmethod
-    def for_tg_user(cls, tg_user: TGUser):
-        token = cls()
-        token['tg_id'] = tg_user.tg_id
-        token['fullname'] = tg_user.fullname
-        return token
-
-
-class TGUserJWTAuthentication(JWTAuthentication):
-    """
-    Custom authenticator that resolves TGUser from JWT tg_id claim.
-    Use this instead of default JWTAuthentication.
-    Add to settings: REST_FRAMEWORK.DEFAULT_AUTHENTICATION_CLASSES
-    """
-    def get_user(self, validated_token):
-        tg_id = validated_token.get('tg_id')
-        if not tg_id:
-            raise InvalidToken("Token contains no tg_id")
-        try:
-            return TGUser.objects.get(tg_id=tg_id)
-        except TGUser.DoesNotExist:
-            raise InvalidToken("TGUser not found")
 
 
 class LogoutView(views.APIView):
