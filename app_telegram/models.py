@@ -95,6 +95,16 @@ class TGUser(TimeBasedModel):
         if not self.password:
             return False
         return check_password(raw_password, self.password)
+    
+    @property
+    def is_authenticated(self):
+        # Если у нас вообще есть объект TGUser (а не AnonymousUser) —
+        # значит JWT уже успешно проверен, юзер аутентифицирован.
+        return True
+ 
+    @property
+    def is_anonymous(self):
+        return False
  
     class Meta:
         verbose_name = 'пользователь'
