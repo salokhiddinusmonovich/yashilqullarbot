@@ -268,6 +268,48 @@ class LoginTokenStatusView(views.APIView):
 
 
 
+class CustomRefreshToken(RefreshToken):
+    """
+    Универсальный токен для ЛЮБОГО способа входа (telegram / email / google).
+    Кладём pk (uid) — это работает для всех, включая юзеров без tg_id.
+    """
+    @classmethod
+    def for_tg_user(cls, tg_user: TGUser):
+        # оставлено для обратной совместимости с существующим кодом,
+        # который его вызывает (TelegramLoginView и т.д.)
+        return cls.for_user_obj(tg_user)
+ 
+    @classmethod
+    def for_user_obj(cls, user: TGUser):
+        token = cls()
+        token['uid'] = user.pk
+        token['fullname'] = user.fullname
+        return token
+ 
+ 
+class TGUserJWTAuthentication(JWTAuthentication):
+    """
+    Сначала пробуем новый claim 'uid' (pk) — работает для всех юзеров.
+    Если его нет (старый токен, выданный до этого изменения) — fallback на tg_id.
+    """
+    def get_user(self, validated_token):
+        uid = validated_token.get('uid')
+        if uid is not None:
+            try:
+                return TGUser.objects.get(pk=uid)
+            except TGUser.DoesNotExist:
+                raise InvalidToken("User not found")
+ 
+        tg_id = validated_token.get('tg_id')
+        if tg_id:
+            try:
+                return TGUser.objects.get(tg_id=tg_id)
+            except TGUser.DoesNotExist:
+                raise InvalidToken("TGUser not found")
+ 
+        raise InvalidToken("Token contains no user identifier")
+ 
+ 
 """
 2) ДОБАВИТЬ эти вьюхи (после LogoutView, например).
 """
