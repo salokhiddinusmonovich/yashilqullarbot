@@ -11,8 +11,8 @@ import requests
 from django.db.models import Q
 from modeltranslation.admin import TranslationAdmin
 from .models import (
-    TGUser, TeamMemberYashilQullar, ProjectParticipation, 
-    EcoProject, Partner,
+    TGUser, TeamMemberYashilQullar, ProjectParticipation,
+    EcoProject, EcoProjectImage, Partner,          # ← добавлен EcoProjectImage
     Article, Tag, Comment, LoginToken, EventFeedback, ArticleImage
 )
 
@@ -214,41 +214,40 @@ class TGUserAdmin(admin.ModelAdmin):
    
 
 @admin.register(EcoProject)
-class EcoProjectAdmin(admin.ModelAdmin):
+class EcoProjectAdmin(TranslationAdmin):
     search_fields = ('title',)
-    list_display = ('title', 'date', 'location_name', 'is_active')
+    list_display = ('title', 'date', 'location_name', 'is_active', 'likes_count')
     list_filter = ('is_active', 'date')
     list_editable = ('is_active',)
-
+    inlines = [EcoProjectImageInline]
+ 
     actions = ['remind_local_users']
-
+ 
     @admin.action(description='🔔 Рассылка: только новым юзерам')
     def remind_local_users(self, request, queryset):
+        # ... (весь код действия остаётся без изменений, просто копия из твоего файла)
         tashkent_group = ['tashkent_v', 'tashkent_s']
-
+ 
         for project in queryset:
             project_region = getattr(project, 'region', 'tashkent_s')
-
+ 
             if project_region in tashkent_group:
                 target_regions = tashkent_group
             else:
                 target_regions = [project_region]
-
-            # Кто уже зарегистрировался на проект
+ 
             registered_ids = ProjectParticipation.objects.filter(
                 project=project
             ).values_list('user__id', flat=True)
-
-            # Кто уже получил уведомление
+ 
             already_notified_ids = ProjectNotification.objects.filter(
                 project=project
             ).values_list('user__id', flat=True)
-
-            # Только новые юзеры из региона
+ 
             new_users = TGUser.objects.filter(
                 region__in=target_regions
             ).exclude(id__in=registered_ids).exclude(id__in=already_notified_ids)
-
+ 
             count = 0
             for user in new_users:
                 if user.tg_id:
@@ -263,14 +262,13 @@ class EcoProjectAdmin(admin.ModelAdmin):
                     )
                     try:
                         async_to_sync(send_notification)(user.tg_id, text)
-                        # Сохраняем что отправили
                         ProjectNotification.objects.get_or_create(
                             project=project, user=user
                         )
                         count += 1
                     except Exception as e:
                         print(f"Ошибка отправки {user.tg_id}: {e}")
-
+ 
             self.message_user(
                 request,
                 f"Проект '{project.title}': отправлено {count} новым юзерам."
@@ -301,6 +299,10 @@ class EventFeedbackAdmin(admin.ModelAdmin):
 class ArticleImageInline(admin.TabularInline):
     model = ArticleImage
     extra = 3  # сразу 3 пустых слота под фото при создании поста
+
+class EcoProjectImageInline(admin.TabularInline):
+    model = EcoProjectImage
+    extra = 3  # сразу 3 пустых
 
 @admin.register(Article)
 class ArticleAdmin(admin.ModelAdmin):
