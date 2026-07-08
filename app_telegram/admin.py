@@ -210,7 +210,9 @@ class TGUserAdmin(admin.ModelAdmin):
         ('Технические данные', {'fields': ('tg_id', 'username', 'experience', 'role')}),
         ('Статус и Бонусы', {'fields': ('is_admin', 'is_tester', 'balance')}),
     )
-
+class EcoProjectImageInline(admin.TabularInline):
+    model = EcoProjectImage
+    extra = 3
    
 
 @admin.register(EcoProject)
@@ -300,9 +302,7 @@ class ArticleImageInline(admin.TabularInline):
     model = ArticleImage
     extra = 3  # сразу 3 пустых слота под фото при создании поста
 
-class EcoProjectImageInline(admin.TabularInline):
-    model = EcoProjectImage
-    extra = 3  # сразу 3 пустых
+
 
 @admin.register(Article)
 class ArticleAdmin(admin.ModelAdmin):
