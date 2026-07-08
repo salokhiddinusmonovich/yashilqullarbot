@@ -216,7 +216,7 @@ class EcoProjectImageInline(admin.TabularInline):
    
 
 @admin.register(EcoProject)
-class EcoProjectAdmin(TranslationAdmin):
+class EcoProjectAdmin(admin.ModelAdmin):
     search_fields = ('title',)
     list_display = ('title', 'date', 'location_name', 'is_active', 'likes_count')
     list_filter = ('is_active', 'date')
