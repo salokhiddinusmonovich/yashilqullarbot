@@ -378,6 +378,5 @@ class RegionTeamMemberSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'fullname', 'photo', 'role', 'role_display',
             'region_display', 'balance',
-            'username', 'experience',
+            'username', 'bio',
         ]
- 

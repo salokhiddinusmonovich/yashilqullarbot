@@ -55,7 +55,7 @@ class TGUser(TimeBasedModel):
     # для email- и google-логина. null=True (не blank='') чтобы старые
     # telegram-юзера без email не конфликтовали друг с другом на unique.
     email = models.EmailField(max_length=255, unique=True, null=True, blank=True)
- 
+    bio = models.TextField(blank=True, null=True, verbose_name="Bio")
     phone = models.CharField(max_length=20, blank=True, null=True)
     username = models.CharField(max_length=255, blank=True, null=True, verbose_name='Username')
     experience = models.TextField(blank=True, null=True, verbose_name='tajribasi')
