@@ -6,6 +6,7 @@ from django.shortcuts import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from django.db.models import Case, When, Value, IntegerField
 from app_telegram.models import TGUser, Article, TeamMemberYashilQullar, Comment
 from .serializers import ProfileSerializer, ArticleListSerializer, ArticleDetailSerializer, TeamMemberSerializer, CommentCreateSerializer
 from rest_framework import viewsets
@@ -464,10 +465,21 @@ class RegionTeamView(generics.ListAPIView):
     def get_queryset(self):
         region_param = self.kwargs.get('region')
         regions = [r.strip() for r in region_param.split(',') if r.strip()]
+ 
+        # Сортировка по рангу, а не по алфавиту: Founder → coordinator → organizer → mobilograph
+        role_order = Case(
+            When(role='Founder', then=Value(0)),
+            When(role='coordinator', then=Value(1)),
+            When(role='organizer', then=Value(2)),
+            When(role='mobilograph', then=Value(3)),
+            default=Value(4),
+            output_field=IntegerField(),
+        )
         return TGUser.objects.filter(
             region__in=regions,
             role__in=['coordinator', 'mobilograph', 'organizer', 'Founder'],
-        ).order_by('role')
+        ).annotate(role_rank=role_order).order_by('role_rank', 'fullname')
+ 
  
 
 class PublicProfileView(generics.RetrieveAPIView):
