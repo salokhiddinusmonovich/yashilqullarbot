@@ -371,12 +371,13 @@ class EcoProjectSerializer(serializers.ModelSerializer):
 
 class RegionTeamMemberSerializer(serializers.ModelSerializer):
     role_display = serializers.CharField(source='get_role_display', read_only=True)
+    region_display = serializers.CharField(source='get_region_display', read_only=True)
  
     class Meta:
         model = TGUser
         fields = [
             'id', 'fullname', 'photo', 'role', 'role_display',
-            'username',      # Telegram username — публично, это ок
-            'experience',    # то, что ты называешь "bio"
-            # 'email',       # ← раскомментируй, если решишь, что риск спама не критичен
+            'region_display', 'balance',
+            'username', 'experience',
         ]
+ 

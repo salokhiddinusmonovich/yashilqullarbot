@@ -466,19 +466,19 @@ class RegionTeamView(generics.ListAPIView):
         region_param = self.kwargs.get('region')
         regions = [r.strip() for r in region_param.split(',') if r.strip()]
  
-        # Сортировка по рангу, а не по алфавиту: Founder → coordinator → organizer → mobilograph
-        role_order = Case(
-            When(role='Founder', then=Value(0)),
-            When(role='coordinator', then=Value(1)),
-            When(role='organizer', then=Value(2)),
-            When(role='mobilograph', then=Value(3)),
-            default=Value(4),
+        role_rank = Case(
+            When(role='Founder', then=0),
+            When(role='organizer', then=1),
+            When(role='coordinator', then=2),
+            When(role='mobilograph', then=3),
+            default=4,
             output_field=IntegerField(),
         )
+ 
         return TGUser.objects.filter(
             region__in=regions,
             role__in=['coordinator', 'mobilograph', 'organizer', 'Founder'],
-        ).annotate(role_rank=role_order).order_by('role_rank', 'fullname')
+        ).annotate(role_rank=role_rank).order_by('role_rank', 'fullname')
  
  
 
