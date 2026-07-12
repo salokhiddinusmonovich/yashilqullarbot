@@ -457,14 +457,15 @@ class RegionTeamView(generics.ListAPIView):
         ).order_by('role')
  
 
-class PublicProfileView(generics.RetrieveAPIView):
-    """
-    GET /users/<id>/profile/
-    Единая точка для любого профиля — автора статьи, комментатора,
-    участника региональной команды. Всё, что раньше делало разные
-    куски кода по-разному, теперь ведёт сюда.
-    """
-    queryset = TGUser.objects.all()
-    serializer_class = RegionTeamMemberSerializer  # та же форма данных, повторно используем
+class RegionTeamView(generics.ListAPIView):
+    serializer_class = RegionTeamMemberSerializer
     permission_classes = [AllowAny]
+ 
+    def get_queryset(self):
+        region_param = self.kwargs.get('region')
+        regions = [r.strip() for r in region_param.split(',') if r.strip()]
+        return TGUser.objects.filter(
+            region__in=regions,
+            role__in=['coordinator', 'mobilograph', 'organizer', 'Founder'],
+        ).order_by('role')
  
