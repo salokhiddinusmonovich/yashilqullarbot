@@ -367,10 +367,14 @@ class EcoProjectSerializer(serializers.ModelSerializer):
         return EcoProjectCommentSerializer(top_level, many=True, context=self.context).data
  
 
-
 class RegionTeamMemberSerializer(serializers.ModelSerializer):
     role_display = serializers.CharField(source='get_role_display', read_only=True)
  
     class Meta:
         model = TGUser
-        fields = ['id', 'fullname', 'photo', 'role', 'role_display']
+        fields = [
+            'id', 'fullname', 'photo', 'role', 'role_display',
+            'username',      # Telegram username — публично, это ок
+            'experience',    # то, что ты называешь "bio"
+            # 'email',       # ← раскомментируй, если решишь, что риск спама не критичен
+        ]

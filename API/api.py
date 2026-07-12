@@ -446,13 +446,6 @@ class EcoProjectCommentLikeView(views.APIView):
     
  
 class RegionTeamView(generics.ListAPIView):
-    """
-    GET /team/region/<region>/
-    Возвращает координаторов/мобилографов/организаторов конкретного региона —
-    то, что должно появляться при клике на регион на карте.
-    <region> — код региона (например 'navoi', 'tashkent_s') — те же значения,
-    что в TGUser.Region.choices.
-    """
     serializer_class = RegionTeamMemberSerializer
     permission_classes = [AllowAny]
  
@@ -460,5 +453,6 @@ class RegionTeamView(generics.ListAPIView):
         region = self.kwargs.get('region')
         return TGUser.objects.filter(
             region=region,
-            role__in=['coordinator', 'mobilograph', 'organizer'],
+            role__in=['coordinator', 'mobilograph', 'organizer', 'Founder'],
         ).order_by('role')
+ 
