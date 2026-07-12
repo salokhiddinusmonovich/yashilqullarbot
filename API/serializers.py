@@ -72,11 +72,12 @@ class ArticleListSerializer(serializers.ModelSerializer):
     author_name = serializers.SerializerMethodField()
     author_role = serializers.SerializerMethodField()
     author_photo = serializers.SerializerMethodField()
+    author_id = serializers.IntegerField(source='author.id', read_only=True, allow_null=True)
 
     class Meta:
         model = Article
         fields = ['id', 'title', 'slug', 'cover_image', 'tags', 'read_time_minutes', 'likes_count', 'is_liked_by_me',
-          'comments_count', 'created_at', 'is_featured', 'author_name', 'author_role', 'author_photo', 'has_video']
+          'comments_count', 'created_at', 'is_featured', 'author_name', 'author_role', 'author_photo', 'has_video', 'author_id']
 
     def get_comments_count(self, obj):
         return obj.comments.count()
@@ -121,13 +122,14 @@ class ArticleDetailSerializer(serializers.ModelSerializer):
     author_name = serializers.SerializerMethodField()
     author_role = serializers.SerializerMethodField()
     author_photo = serializers.SerializerMethodField()
+    author_id = serializers.IntegerField(source='author.id', read_only=True, allow_null=True)
 
     class Meta:
         model = Article
         fields = ['id', 'title', 'slug', 'cover_image', 'content', 'tags',
           'read_time_minutes', 'likes_count', 'is_liked_by_me', 'created_at', 'comments',
           'video', 'video_url', 'gallery_images',
-          'author_name', 'author_role', 'author_photo']
+          'author_name', 'author_role', 'author_photo', 'author_id']
 
     def get_comments(self, obj):
         top_level_comments = obj.comments.filter(parent__isnull=True).order_by('-created_at')
