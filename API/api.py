@@ -469,3 +469,13 @@ class RegionTeamView(generics.ListAPIView):
             role__in=['coordinator', 'mobilograph', 'organizer', 'Founder'],
         ).order_by('role')
  
+
+class PublicProfileView(generics.RetrieveAPIView):
+    """
+    GET /users/<id>/profile/
+    Единая точка для любого профиля — автора статьи, комментатора,
+    участника региональной команды.
+    """
+    queryset = TGUser.objects.all()
+    serializer_class = RegionTeamMemberSerializer  # та же форма данных, что и у RegionTeamView
+    permission_classes = [AllowAny]
