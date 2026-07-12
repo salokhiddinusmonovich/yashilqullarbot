@@ -11,7 +11,7 @@ from .serializers import ProfileSerializer, ArticleListSerializer, ArticleDetail
 from rest_framework import viewsets
 from app_telegram.models import ArticleLike, CommentLike, EcoProject, ProjectParticipation
 from app_telegram.models import EcoProjectComment, EcoProjectLike, EcoProjectCommentLike
-from .serializers import EcoProjectCommentCreateSerializer,EcoProjectSerializer
+from .serializers import EcoProjectCommentCreateSerializer,EcoProjectSerializer, RegionTeamMemberSerializer
 from .authentication import CustomRefreshToken, TGUserJWTAuthentication
 
 class TelegramLoginView(views.APIView):
@@ -443,3 +443,22 @@ class EcoProjectCommentLikeView(views.APIView):
             liked = False
         comment.save(update_fields=['likes_count'])
         return Response({"likes_count": comment.likes_count, "liked": liked}, status=status.HTTP_200_OK)
+    
+ 
+class RegionTeamView(generics.ListAPIView):
+    """
+    GET /team/region/<region>/
+    Возвращает координаторов/мобилографов/организаторов конкретного региона —
+    то, что должно появляться при клике на регион на карте.
+    <region> — код региона (например 'navoi', 'tashkent_s') — те же значения,
+    что в TGUser.Region.choices.
+    """
+    serializer_class = RegionTeamMemberSerializer
+    permission_classes = [AllowAny]
+ 
+    def get_queryset(self):
+        region = self.kwargs.get('region')
+        return TGUser.objects.filter(
+            region=region,
+            role__in=['coordinator', 'mobilograph', 'organizer'],
+        ).order_by('role')

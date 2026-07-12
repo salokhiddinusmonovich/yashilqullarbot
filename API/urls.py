@@ -9,7 +9,7 @@ from .api import (
 from .api import EcoProjectViewSet, JoinProjectView 
  
 
-from .api import EcoProjectLikeView, EcoProjectCommentCreateView, EcoProjectCommentLikeView
+from .api import EcoProjectLikeView, EcoProjectCommentCreateView, EcoProjectCommentLikeView, RegionTeamView
 
 urlpatterns = [
     # ── Telegram bot login (без изменений) ──
@@ -45,4 +45,6 @@ urlpatterns += [
     path('projects/<int:pk>/like/', EcoProjectLikeView.as_view(), name='project-like'),
     path('projects/<int:pk>/comment/', EcoProjectCommentCreateView.as_view(), name='project-comment'),
     path('project-comment/<int:pk>/like/', EcoProjectCommentLikeView.as_view(), name='project-comment-like'),
+
+    path('team/region/<str:region>/', RegionTeamView.as_view(), name='team-by-region'),
 ]

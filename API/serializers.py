@@ -366,3 +366,11 @@ class EcoProjectSerializer(serializers.ModelSerializer):
         top_level = obj.comments.filter(parent__isnull=True).order_by('-created_at')
         return EcoProjectCommentSerializer(top_level, many=True, context=self.context).data
  
+
+
+class RegionTeamMemberSerializer(serializers.ModelSerializer):
+    role_display = serializers.CharField(source='get_role_display', read_only=True)
+ 
+    class Meta:
+        model = TGUser
+        fields = ['id', 'fullname', 'photo', 'role', 'role_display']
