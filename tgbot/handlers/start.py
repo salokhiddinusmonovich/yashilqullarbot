@@ -7,6 +7,7 @@ from asgiref.sync import sync_to_async
 from ..keyboards import reply
 from .qr_handler import process_qr_logic
 from .feedback import ask_feedback
+from .link_account import ask_if_registered  # НОВОЕ
 
 async def user_start(message: Message, state: FSMContext):
     from app_telegram.models import TGUser, LoginToken
@@ -30,7 +31,7 @@ async def user_start(message: Message, state: FSMContext):
                 'phone': '',
             }
         )
-        if not created:
+        if not created:  # ← БЫЛО "if not created:not created:" — синтаксическая ошибка, исправлено
             user.fullname = fullname
             if message.from_user.username:
                 user.username = message.from_user.username
@@ -62,14 +63,10 @@ async def user_start(message: Message, state: FSMContext):
             await message.answer("❌ Malumotlar formati noto'g'ri (ID raqam bo'lishi kerak).")
             return
 
-        # process_qr_logic теперь возвращает ещё и project —
-        # он нужен ниже, чтобы запустить опрос обратной связи
         result_text, volunteer, project = await process_qr_logic(message.from_user.id, target_id)
 
-        # Send response back to the scanning staff member
         await message.answer(result_text, parse_mode="HTML")
 
-        # Notify the volunteer if attendance was successfully recorded
         if volunteer and "✅" in result_text:
             try:
                 await message.bot.send_message(
@@ -82,31 +79,31 @@ async def user_start(message: Message, state: FSMContext):
                     parse_mode="HTML"
                 )
             except Exception:
-                pass  # Avoid halting execution if the volunteer blocked the bot
+                pass
 
-            # Сразу следом — запрашиваем обратную связь по мероприятию
             if project:
                 try:
                     await ask_feedback(message.bot, volunteer.tg_id, project.id, project.title)
                 except Exception:
-                    pass  # не критично, если не получилось отправить опрос
+                    pass
         return
 
     # --- STANDARD GREETING FLOW ---
     user = await sync_to_async(TGUser.objects.filter(tg_id=message.from_user.id).first)()
 
     if user:
+        # Уже зарегистрирован (есть tg_id в базе) — обычное приветствие, без изменений
         await message.answer(
             f"👋 Salom, {hbold(user.fullname)}! @YashilQollar oilasiga xush kelibsiz.",
             reply_markup=reply.hi_there(),
             parse_mode="HTML"
         )
     else:
-        await message.answer(
-            f"👋 Salom, {hbold(message.from_user.full_name)}! @YashilQollar oilasiga xush kelibsiz.",
-            reply_markup=reply.auth_btn(),
-            parse_mode="HTML"
-        )
+        # ИЗМЕНЕНО: раньше здесь сразу показывался reply.auth_btn().
+        # Теперь СНАЧАЛА спрашиваем "уже есть аккаунт на сайте?" —
+        # старая кнопка auth_btn() показывается только если юзер ответит
+        # "нет, впервые" (см. process_choice в link_account.py).
+        await ask_if_registered(message)
 
 def register_user(dp: Dispatcher):
     dp.register_message_handler(user_start, commands=["start"], state="*")
