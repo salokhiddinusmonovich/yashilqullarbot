@@ -29,11 +29,14 @@ class TGUser(TimeBasedModel):
  
     class Role(models.TextChoices):
         VOLUNTEER = 'volunteer', 'Volunteer'
+        HEAD_COORDINATOR = 'head_coordinator', 'Head of Coordinators'
+        MAIN_COORDINATOR = 'main_coordinator', 'Main Coordinator' 
         COORDINATOR = 'coordinator', 'Coordinator'
         MOBILOGRAPH = 'mobilograph', 'Mobilographer'
         IT = 'it', 'IT Specialist'
         ORGANIZER = 'organizer', 'Organizer'
         FOUNDER = 'Founder', 'Founder'
+
  
     # НОВОЕ: откуда пришёл юзер — нужно, чтобы фронт понимал,
     # какую форму логина показывать, и для аналитики.
