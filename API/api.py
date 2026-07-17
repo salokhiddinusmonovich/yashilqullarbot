@@ -445,7 +445,33 @@ class EcoProjectCommentLikeView(views.APIView):
         comment.save(update_fields=['likes_count'])
         return Response({"likes_count": comment.likes_count, "liked": liked}, status=status.HTTP_200_OK)
     
+class CommentDeleteView(generics.DestroyAPIView):
+    """DELETE /comment/<id>/delete/ — только автор комментария или админ."""
+    queryset = Comment.objects.all()
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [TGUserJWTAuthentication]
  
+    def get_object(self):
+        obj = super().get_object()
+        if obj.user_id != self.request.user.id and not self.request.user.is_admin:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("You can only delete your own comments.")
+        return obj
+ 
+ 
+class EcoProjectCommentDeleteView(generics.DestroyAPIView):
+    """DELETE /project-comment/<id>/delete/ — то же самое для комментариев проектов."""
+    queryset = EcoProjectComment.objects.all()
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [TGUserJWTAuthentication]
+ 
+    def get_object(self):
+        obj = super().get_object()
+        if obj.user_id != self.request.user.id and not self.request.user.is_admin:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("You can only delete your own comments.")
+        return obj
+
 class RegionTeamView(generics.ListAPIView):
     serializer_class = RegionTeamMemberSerializer
     permission_classes = [AllowAny]
