@@ -368,7 +368,6 @@ class EcoProjectSerializer(serializers.ModelSerializer):
         top_level = obj.comments.filter(parent__isnull=True).order_by('-created_at')
         return EcoProjectCommentSerializer(top_level, many=True, context=self.context).data
  
-
 class RegionTeamMemberSerializer(serializers.ModelSerializer):
     role_display = serializers.CharField(source='get_role_display', read_only=True)
     region_display = serializers.CharField(source='get_region_display', read_only=True)
@@ -378,5 +377,5 @@ class RegionTeamMemberSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'fullname', 'photo', 'role', 'role_display',
             'region_display', 'balance',
-            'username', 'bio',
+            'username', 'experience',
         ]

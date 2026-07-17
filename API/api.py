@@ -467,20 +467,20 @@ class RegionTeamView(generics.ListAPIView):
         regions = [r.strip() for r in region_param.split(',') if r.strip()]
  
         role_rank = Case(
-            When(role='Founder', then=0),
-            When(role='organizer', then=1),
-            When(role='coordinator', then=2),
-            When(role='mobilograph', then=3),
-            default=4,
+            When(role='main_coordinator', then=0),
+            When(role='coordinator', then=1),
+            When(role='mobilograph', then=2),
+            default=3,
             output_field=IntegerField(),
         )
  
         return TGUser.objects.filter(
             region__in=regions,
-            role__in=['coordinator', 'mobilograph', 'organizer', 'Founder'],
+            role__in=['main_coordinator', 'coordinator', 'mobilograph'],
+            # Founder, organizer, head_coordinator — сознательно НЕ показываются
+            # на главной странице (карта регионов), хотя как роли в системе
+            # они по-прежнему существуют.
         ).annotate(role_rank=role_rank).order_by('role_rank', 'fullname')
- 
- 
 
 class PublicProfileView(generics.RetrieveAPIView):
     """
