@@ -11,7 +11,7 @@ class ProfileSerializer(serializers.ModelSerializer):
         model = TGUser
         # ВАЖНО: Мы НЕ добавляем сюда никакие "trees", только то, что есть в модели
         fields = [
-            'tg_id', 'fullname', 'username', 'photo', 'region', 
+           "id", 'tg_id', 'fullname', 'username', 'photo', 'region', 
             'balance', 'rank', 'projects_count', 
             'age', 'email', 'phone', 'education_place', 'experience', 'role'
         ]
