@@ -10,9 +10,9 @@ from django.db.models import Case, When, Value, IntegerField
 from app_telegram.models import TGUser, Article, TeamMemberYashilQullar, Comment
 from .serializers import ProfileSerializer, ArticleListSerializer, ArticleDetailSerializer, TeamMemberSerializer, CommentCreateSerializer
 from rest_framework import viewsets
-from app_telegram.models import ArticleLike, CommentLike, EcoProject, ProjectParticipation
+from app_telegram.models import ArticleLike, CommentLike, EcoProject, ProjectParticipation, Partner
 from app_telegram.models import EcoProjectComment, EcoProjectLike, EcoProjectCommentLike
-from .serializers import EcoProjectCommentCreateSerializer,EcoProjectSerializer, RegionTeamMemberSerializer
+from .serializers import EcoProjectCommentCreateSerializer,EcoProjectSerializer, RegionTeamMemberSerializer, PartnerSerializer
 from .authentication import CustomRefreshToken, TGUserJWTAuthentication
 
 class TelegramLoginView(views.APIView):
@@ -516,4 +516,16 @@ class PublicProfileView(generics.RetrieveAPIView):
     """
     queryset = TGUser.objects.all()
     serializer_class = RegionTeamMemberSerializer  # та же форма данных, что и у RegionTeamView
+    permission_classes = [AllowAny]
+
+
+class PartnerListView(generics.ListAPIView):
+    """
+    GET /partners/
+    Реальные партнёры из админки (Partner.is_active=True), вместо
+    захардкоженного массива на фронте — добавить/убрать партнёра
+    теперь можно прямо в Django admin, без правки кода.
+    """
+    queryset = Partner.objects.filter(is_active=True)
+    serializer_class = PartnerSerializer
     permission_classes = [AllowAny]

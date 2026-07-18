@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
-from app_telegram.models import TGUser, Article, Tag, Comment, TeamMemberYashilQullar, ArticleImage,EcoProject, EcoProjectImage, ProjectParticipation,EcoProjectComment
+from app_telegram.models import TGUser, Article, Tag, Comment, TeamMemberYashilQullar, ArticleImage,EcoProject, EcoProjectImage, ProjectParticipation,EcoProjectComment, Partner
 
 class ProfileSerializer(serializers.ModelSerializer):
     # Добавляем кастомные поля для профиля, которые нужны на фронтенде
@@ -379,3 +379,8 @@ class RegionTeamMemberSerializer(serializers.ModelSerializer):
             'region_display', 'balance',
             'username', 'experience',
         ]
+
+class PartnerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Partner
+        fields = ['id', 'name', 'description', 'logo', 'instagram', 'telegram', 'linkedin']
