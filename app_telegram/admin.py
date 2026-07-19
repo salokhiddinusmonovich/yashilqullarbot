@@ -139,7 +139,7 @@ class TGUserAdmin(admin.ModelAdmin):
     # ── Список — что видно в таблице ──
     list_display = (
         'fullname', 'colored_role', 'region_badge', 'phone', 'balance',
-        'auth_provider', 'is_admin', 'created_at',
+        'auth_provider', 'is_admin',
     )
  
     # ── ФИЛЬТРЫ СПРАВА — это то, что ты просил: клик по региону/роли
