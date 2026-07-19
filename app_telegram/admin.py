@@ -155,7 +155,7 @@ class TGUserAdmin(admin.ModelAdmin):
     search_fields = ('fullname', 'username', 'email', 'phone', 'tg_id')
  
     # ── Сортировка по умолчанию — новые сверху ──
-    ordering = ('-created_at',)
+    # ordering = ('-created_at',)
  
     # ── Быстрая правка роли прямо из списка, без захода в карточку юзера ──
     list_editable = ('is_admin',) if 'is_admin' in list_display else ()
