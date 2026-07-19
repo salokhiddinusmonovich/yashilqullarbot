@@ -59,7 +59,7 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
     search_fields = ('user__fullname', 'user__username', 'user__phone', 'project__title')
     list_per_page = 500 
     autocomplete_fields = ['user', 'project']
-    actions = ['approve_and_invite', 'make_attended_with_msg', 'make_rejected']
+    actions = ['make_attended_with_msg', 'make_rejected']
 
     # --- ФУНКЦИЯ ДЛЯ ЦВЕТНОГО СТАТУСА ---
     def colored_status(self, obj):
@@ -80,26 +80,7 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
         )
     colored_status.short_description = 'Status'
 
-    # --- ТВОИ ACTIONS (approve_and_invite и т.д. без изменений) ---
-    @admin.action(description='✅ Одобрить и отправить ССЫЛКУ НА ЧАТ')
-    def approve_and_invite(self, request, queryset):
-        count = 0
-        for obj in queryset:
-            if obj.project.chat_link:
-                obj.status = 'approved'
-                obj.save()
-                
-                text = (
-                    f"🎉 <b>Tabriklaymiz!</b>\n\n"
-                    f"Siz <b>{obj.project.title}</b> loyihasiga qabul qilindingiz!\n"
-                    f"Guruhga qo'shiling: " 
-                    f"{obj.project.chat_link}"
-                )
-                async_to_sync(send_notification)(obj.user.tg_id, text)
-                count += 1
-            else:
-                self.message_user(request, f"Ошибка: У проекта '{obj.project.title}' нет ссылки!", messages.ERROR)
-        self.message_user(request, f"Одобрено и отправлено сообщений: {count}")
+   
 
     @admin.action(description='🌟 Пришёл на эвент (+10 баллов + Уведомление)')
     def make_attended_with_msg(self, request, queryset):

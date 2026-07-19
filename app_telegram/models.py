@@ -169,7 +169,6 @@ class EcoProject(models.Model):
 
 class ProjectParticipation(models.Model):
     STATUS_CHOICES = [
-        ('pending', '⏳ Кутиш (Ожидание)'), 
         ('approved', '✅ Қабул қилинди (Принят)'),
         ('attended', '🌟 Келди (Пришел +10 баллов)'),
         ('rejected', '❌ Рад этилди (Отклонен)'),

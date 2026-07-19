@@ -77,6 +77,13 @@ async def list_upcoming_events(message: types.Message, state: FSMContext):
         print(f"Subscription check error: {e}")
         is_subscribed = True
 
+    # ИСПРАВЛЕНО: одним запросом получаем id всех проектов, на которые
+    # юзер уже подал заявку — чтобы для каждого проекта в списке сразу
+    # знать "уже записан" без похода в базу на каждой итерации цикла.
+    already_joined_ids = await sync_to_async(set)(
+        ProjectParticipation.objects.filter(user=user, project__in=projects).values_list('project_id', flat=True)
+    )
+
     for p in projects:
         current_count = await sync_to_async(p.participants.exclude(status='rejected').count)()
 
@@ -85,7 +92,13 @@ async def list_upcoming_events(message: types.Message, state: FSMContext):
             text += f"{p.description}\n\n"
         text += f"👥 <b>Joylar:</b> {current_count}/{p.max_participants}\n"
 
-        if current_count >= p.max_participants:
+        if p.id in already_joined_ids:
+            # ИСПРАВЛЕНО: уже зарегистрирован — говорим об этом сразу,
+            # в самом списке мероприятий, даже не показывая кнопку регистрации.
+            text += "\n✅ <b>Siz bu tadbirga allaqachon yozilgansiz.</b>"
+            kb = get_events_menu()
+
+        elif current_count >= p.max_participants:
             text += f"\n❌ <b>Afsuski, joylar tugadi.</b> Keyingi tadbirlarni kuzatib boring! 🌱"
             kb = get_events_menu()
 
@@ -104,7 +117,6 @@ async def list_upcoming_events(message: types.Message, state: FSMContext):
         else:
             text += f"\n<i>Ro'yxatdan o'tish uchun pastdagi tugmani bosing 👇</i>"
             kb = get_registration_kb()
-            # Сохраняем project_id в state для этого юзера
             await state.update_data(project_id=p.id)
             await EventStates.waiting_for_registration.set()
 
@@ -131,7 +143,28 @@ async def process_registration(message: types.Message, state: FSMContext):
         await state.finish()
         return
 
-    # Проверка подписки
+    user = await sync_to_async(TGUser.objects.get)(tg_id=message.from_user.id)
+
+    # ИСПРАВЛЕНО: ПЕРВЫМ ДЕЛОМ проверяем в базе, не зарегистрирован ли
+    # юзер уже на этот проект — это быстрый локальный запрос к БД.
+    # Раньше здесь СНАЧАЛА шёл сетевой запрос get_chat_member (проверка
+    # подписки на канал), и только потом — проверка "а не записан ли уже".
+    # Из-за этого уже зарегистрированный юзер каждый раз ждал лишний
+    # сетевой round-trip в Telegram API просто чтобы услышать "ты и так
+    # уже записан". Теперь для уже записанных — мгновенный ответ, без
+    # единого сетевого запроса.
+    existing = await sync_to_async(
+        ProjectParticipation.objects.filter(user=user, project_id=project_id).first
+    )()
+    if existing:
+        await state.finish()
+        await message.answer(
+            "Siz allaqachon ariza topshirgansiz. 👍",
+            reply_markup=get_events_menu()
+        )
+        return
+
+    # Проверка подписки — только для НОВОЙ регистрации
     try:
         member = await message.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=message.from_user.id)
         if member.status not in ['creator', 'administrator', 'member']:
@@ -150,8 +183,6 @@ async def process_registration(message: types.Message, state: FSMContext):
     except Exception as e:
         print(f"Subscription check error during registration: {e}")
 
-    user = await sync_to_async(TGUser.objects.get)(tg_id=message.from_user.id)
-
     project = await sync_to_async(
         EcoProject.objects.filter(id=project_id, is_active=True).first
     )()
@@ -161,7 +192,6 @@ async def process_registration(message: types.Message, state: FSMContext):
         await state.finish()
         return
 
-    # Двойная проверка лимита
     current_count = await sync_to_async(project.participants.exclude(status='rejected').count)()
 
     if current_count >= project.max_participants:
@@ -179,12 +209,22 @@ async def process_registration(message: types.Message, state: FSMContext):
     await state.finish()
 
     if created:
-        await message.answer(
-    "✅ <b>Arizangiz qabul qilindi!</b>\n\n"
-    "Profilingiz ko'rib chiqilmoqda. Tez orada botimiz sizga natija haqida xabar beradi. 🌱",
-    reply_markup=get_events_menu(),
-    parse_mode="HTML"
-)
+        # ИЗМЕНЕНО: раньше тут просто говорили "ждите, вас проверят",
+        # а ссылку на чат отправлял админ отдельно, вручную запуская
+        # действие "approve_and_invite" в админке. Раз регистрация теперь
+        # СРАЗУ approved (без промежуточного "Ожидание") — ссылку кидаем
+        # сразу же, в этом самом сообщении, без ручного шага админа.
+        if project.chat_link:
+            text = (
+                "✅ <b>Arizangiz qabul qilindi!</b>\n\n"
+                f"Loyiha guruhiga qo'shiling: {project.chat_link}"
+            )
+        else:
+            text = (
+                "✅ <b>Arizangiz qabul qilindi!</b>\n\n"
+                "Tez orada tafsilotlar bilan bog'lanamiz. 🌱"
+            )
+        await message.answer(text, reply_markup=get_events_menu(), parse_mode="HTML")
     else:
         await message.answer(
             "Siz allaqachon ariza topshirgansiz. 👍",
