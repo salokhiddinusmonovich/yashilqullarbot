@@ -136,61 +136,68 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
 
 @admin.register(TGUser)
 class TGUserAdmin(admin.ModelAdmin):
-    # ДОБАВЛЯЕМ 'is_admin' и 'is_tester' СЮДА:
-    list_display = ('display_name', 'tg_id', 'region', 'balance', 'colored_status', 'role_colored', 'is_admin', 'is_tester')
-    
-    # Теперь list_editable будет работать без ошибок
-    list_editable = ('is_admin', 'is_tester')
-    
-    list_filter = ('is_admin', 'is_tester', 'region', 'role')
-    search_fields = ('fullname', 'tg_id', 'phone', 'username')
-
-    # Остальной код (display_name, colored_status, fieldsets) оставляешь без изменений
-    def display_name(self, obj):
-        if obj.is_admin:
-            return format_html('<strong style="color: #d9534f;">⭐ [ADMIN] {}</strong>', obj.fullname)
-        if obj.is_tester:
-            return format_html('<span style="color: #5bc0de;">🧪 {}</span>', obj.fullname)
-        return obj.fullname
-    display_name.short_description = 'ФИО пользователя'
-
-
-    def role_colored(self, obj):
-        # Настрой цвета для каждой роли
-        colors = {
-            'volunteer': '#17a2b8',  # Бирюзовый
-            'admin': '#d9534f',      # Красный
-            'manager': '#f0ad4e',    # Оранжевый
-            'mentor': '#6f42c1',     # Фиолетовый
-        }
-        # Получаем цвет по ключу, если нет - серый
-        color = colors.get(obj.role, '#6c757d') 
-        
-        return format_html(
-            '<span style="background-color: {}; color: white; padding: 3px 8px; '
-            'border-radius: 5px; font-weight: bold; font-size: 10px;">'
-            '{}</span>',
-            color,
-            obj.get_role_display() if hasattr(obj, 'get_role_display') else obj.role
-        )
-    role_colored.short_description = 'Роль'
-    # Делаем возможной сортировку по этому полю в админке
-    role_colored.admin_order_field = 'role'
-
-
-    def colored_status(self, obj):
-        rank = obj.rank
-        color = "#5cb85c" if obj.balance >= 150 else "#f0ad4e"
-        if obj.balance < 50:
-            color = "#777"
-        return format_html('<b style="color: {};">{}</b>', color, rank)
-    colored_status.short_description = 'Статус / Ранг'
-
-    fieldsets = (
-        ('Личные данные', {'fields': ('fullname', 'photo', 'age', 'phone', 'email', 'education_place', 'region')}),
-        ('Технические данные', {'fields': ('tg_id', 'username', 'experience', 'role')}),
-        ('Статус и Бонусы', {'fields': ('is_admin', 'is_tester', 'balance')}),
+    # ── Список — что видно в таблице ──
+    list_display = (
+        'fullname', 'colored_role', 'region_badge', 'phone', 'balance',
+        'auth_provider', 'is_admin', 'created_at',
     )
+ 
+    # ── ФИЛЬТРЫ СПРАВА — это то, что ты просил: клик по региону/роли
+    # сразу фильтрует список, без ручного поиска ──
+    list_filter = (
+        'region',        # ← клик "Toshkent shahri" — видишь только их
+        'role',          # ← клик "Coordinator" — видишь только координаторов
+        'auth_provider', # telegram / email / google
+        'is_admin',
+    )
+ 
+    # ── Поиск по имени/юзернейму/email/телефону ──
+    search_fields = ('fullname', 'username', 'email', 'phone', 'tg_id')
+ 
+    # ── Сортировка по умолчанию — новые сверху ──
+    ordering = ('-created_at',)
+ 
+    # ── Быстрая правка роли прямо из списка, без захода в карточку юзера ──
+    list_editable = ('is_admin',) if 'is_admin' in list_display else ()
+ 
+    # ── Пагинация — с ~1000 юзеров дефолтные 100/страница делают
+    # страницу тяжёлой и медленной. 50 — комфортный компромисс. ──
+    list_per_page = 50
+ 
+    # ── Цвет по роли — тот же паттерн, что уже используется для
+    # статусов участия в проектах (colored_status). ──
+    def colored_role(self, obj):
+        colors = {
+            'volunteer': '#6c757d',       # серый — обычные волонтёры (их больше всего)
+            'coordinator': '#17a2b8',     # бирюзовый
+            'main_coordinator': '#0d6efd',# синий — выделяется среди координаторов
+            'head_coordinator': '#6610f2',# фиолетовый
+            'mobilograph': '#fd7e14',     # оранжевый
+            'organizer': '#20c997',       # мятный
+            'it': '#e83e8c',              # розовый
+            'Founder': '#ffc107',         # жёлтый/золотой — основатели заметны сразу
+        }
+        color = colors.get(obj.role, '#6c757d')
+        return format_html(
+            '<span style="background-color: {}; color: white; padding: 4px 10px; '
+            'border-radius: 14px; font-weight: 700; font-size: 11px; white-space: nowrap;">{}</span>',
+            color, obj.get_role_display(),
+        )
+    colored_role.short_description = 'Rol'
+    colored_role.admin_order_field = 'role'  # позволяет сортировать по этой колонке
+ 
+    # ── Регион тоже бейджем — проще визуально сканировать список ──
+    def region_badge(self, obj):
+        if not obj.region:
+            return format_html('<span style="color:#999;">—</span>')
+        return format_html(
+            '<span style="background: rgba(34,197,94,0.12); color:#22c55e; padding: 3px 9px; '
+            'border-radius: 10px; font-size: 11px; font-weight: 600;">{}</span>',
+            obj.get_region_display(),
+        )
+    region_badge.short_description = 'Hudud'
+    region_badge.admin_order_field = 'region'
+ 
 class EcoProjectImageInline(admin.TabularInline):
     model = EcoProjectImage
     extra = 3
