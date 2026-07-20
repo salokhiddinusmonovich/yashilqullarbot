@@ -13,5 +13,5 @@ class ArticleTranslationOptions(TranslationOptions):
 @register(TeamMemberYashilQullar)
 class TeamMemberTranslationOptions(TranslationOptions):
     # Django автоматически создаст поля skills_en, skills_ru, skills_uz
-    fields = ('skills',)
+    fields = ('bio',) 
 
