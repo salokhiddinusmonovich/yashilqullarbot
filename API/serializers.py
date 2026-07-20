@@ -161,23 +161,10 @@ class ArticleDetailSerializer(serializers.ModelSerializer):
 
 
 
-
-
-
-
 class TeamMemberSerializer(serializers.ModelSerializer):
     class Meta:
         model = TeamMemberYashilQullar
-        fields = [
-            'id', 
-            'fullname', 
-            'photo', 
-            'telegram_username', 
-            'instagram', 
-            'skills', 
-            'focus'
-        ]
-
+        fields = ['id', 'fullname', 'photo', 'telegram_username', 'instagram', 'github', 'linkedin', 'bio', 'focus']
 
 class CommentCreateSerializer(serializers.ModelSerializer):
     class Meta:
@@ -186,11 +173,6 @@ class CommentCreateSerializer(serializers.ModelSerializer):
         fields = ['text', 'parent']
 
 
-
-
-
-from django.contrib.auth.password_validation import validate_password
-from app_telegram.models import TGUser
  
  
 class RegisterSerializer(serializers.ModelSerializer):

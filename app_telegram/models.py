@@ -117,26 +117,25 @@ class TGUser(TimeBasedModel):
         return f'{self.fullname} ({self.tg_id or self.email}) {self.role}'
  
 
-class TeamMemberYashilQullar(TimeBasedModel):
-    # Убрали OneToOneField к TGUser. Теперь это самостоятельная модель.
-    fullname = models.CharField(max_length=255, verbose_name="F.I.SH (Имя)")
-    photo = models.ImageField(upload_to='team_photos/', verbose_name="Rasm (Фото)")
-    telegram_username = models.CharField(max_length=100, blank=True, null=True, verbose_name="Telegram Username (@...)")
-    instagram = models.CharField(max_length=100, blank=True, null=True, verbose_name="Instagram username (@...)")
-    skills = models.TextField(blank=True, null=True, verbose_name='Ko‘nikmalar (Навыки)')
-    
+class TeamMemberYashilQullar(models.Model):
     FOCUS_CHOICES = [
         ('founder', 'Founder'),
-        ('digital', 'Digital Lead'),
         ('media', 'Media Lead'),
         ('organization', 'Organization'),
+        # 'digital' убран — если у кого-то из существующих участников
+        # стоял именно этот focus, см. миграцию данных ниже, иначе
+        # значение останется в базе, но не будет валидным выбором в форме.
     ]
-    focus = models.CharField(max_length=255, choices=FOCUS_CHOICES, verbose_name="Yo'nalishi (Роль)")
-
-    class Meta:
-        verbose_name = 'Team member (Yashil Qullar)'
-        verbose_name_plural = 'Team members (Yashil Qullar)'
-
+ 
+    fullname = models.CharField(max_length=255)
+    photo = models.ImageField(upload_to='team_photos/', blank=True, null=True)
+    telegram_username = models.CharField(max_length=255, blank=True, null=True)
+    instagram = models.CharField(max_length=255, blank=True, null=True)
+    github = models.URLField(blank=True, null=True, verbose_name="GitHub")
+    linkedin = models.URLField(blank=True, null=True, verbose_name="LinkedIn")
+    bio = models.TextField(blank=True, null=True, verbose_name="Bio")  # ← было skills
+    focus = models.CharField(max_length=20, choices=FOCUS_CHOICES, default='organization')
+ 
     def __str__(self):
         return self.fullname
 
