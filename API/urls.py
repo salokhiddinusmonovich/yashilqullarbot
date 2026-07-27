@@ -9,7 +9,7 @@ from .api import (
 from .api import EcoProjectViewSet, JoinProjectView 
  
 
-from .api import EcoProjectLikeView, EcoProjectCommentCreateView, EcoProjectCommentLikeView, RegionTeamView, PublicProfileView,PartnerListView
+from .api import EcoProjectLikeView, EcoProjectCommentCreateView, EcoProjectCommentLikeView, RegionTeamView, PublicProfileView,PartnerListView, LeaderboardView
 
 urlpatterns = [
     # ── Telegram bot login (без изменений) ──
@@ -50,4 +50,5 @@ urlpatterns += [
     path('users/<int:pk>/profile/', PublicProfileView.as_view(), name='public-profile'),
 
     path('partners/', PartnerListView.as_view(), name='partner-list'),
+    path('leaderboard/', LeaderboardView.as_view(), name='leaderboard'),
 ]

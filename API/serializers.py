@@ -366,3 +366,11 @@ class PartnerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Partner
         fields = ['id', 'name', 'description', 'logo', 'instagram', 'telegram', 'linkedin']
+
+
+
+class LeaderboardEntrySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TGUser
+        fields = ['tg_id', 'fullname', 'photo', 'balance', 'rank', 'region']
+ 

@@ -12,7 +12,7 @@ from .serializers import ProfileSerializer, ArticleListSerializer, ArticleDetail
 from rest_framework import viewsets
 from app_telegram.models import ArticleLike, CommentLike, EcoProject, ProjectParticipation, Partner
 from app_telegram.models import EcoProjectComment, EcoProjectLike, EcoProjectCommentLike
-from .serializers import EcoProjectCommentCreateSerializer,EcoProjectSerializer, RegionTeamMemberSerializer, PartnerSerializer
+from .serializers import EcoProjectCommentCreateSerializer,EcoProjectSerializer, RegionTeamMemberSerializer, PartnerSerializer, LeaderboardEntrySerializer
 from .authentication import CustomRefreshToken, TGUserJWTAuthentication
 
 class TelegramLoginView(views.APIView):
@@ -528,4 +528,15 @@ class PartnerListView(generics.ListAPIView):
     """
     queryset = Partner.objects.filter(is_active=True)
     serializer_class = PartnerSerializer
+    permission_classes = [AllowAny]
+
+
+class LeaderboardView(generics.ListAPIView):
+    """
+    GET /leaderboard/
+    Топ юзеров по эко-баллам (balance). Публичный — виден всем,
+    даже неавторизованным.
+    """
+    queryset = TGUser.objects.filter(balance__gt=0).order_by('-balance')[:100]
+    serializer_class = LeaderboardEntrySerializer
     permission_classes = [AllowAny]
