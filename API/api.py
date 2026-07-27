@@ -540,3 +540,64 @@ class LeaderboardView(generics.ListAPIView):
     queryset = TGUser.objects.filter(balance__gt=0).order_by('-balance')[:100]
     serializer_class = LeaderboardEntrySerializer
     permission_classes = [AllowAny]
+
+
+class RegionalTeamOverviewView(views.APIView):
+    """
+    GET /team/regional-overview/
+    Возвращает ВСЕ регионы разом, каждый со своим списком команды.
+    Founder намеренно исключён везде — он уже показан отдельным блоком
+    "Founders" выше на странице Team, дублировать не нужно.
+    Ташкент — особый случай: город+область объединены в одну группу,
+    и там показываются ТОЛЬКО coordinator и mobilograph (без organizer/
+    main_coordinator), по твоей просьбе.
+    """
+    permission_classes = [AllowAny]
+ 
+    def get(self, request):
+        role_rank = Case(
+            When(role='main_coordinator', then=0),
+            When(role='coordinator', then=1),
+            When(role='organizer', then=2),
+            When(role='mobilograph', then=3),
+            default=4,
+            output_field=IntegerField(),
+        )
+ 
+        TASHKENT_CODES = ['tashkent_s', 'tashkent_v']
+        results = []
+ 
+        # ── Ташкент: объединённый, только coordinator + mobilograph ──
+        tashkent_qs = TGUser.objects.filter(
+            region__in=TASHKENT_CODES,
+            role__in=['coordinator', 'mobilograph'],
+        ).annotate(role_rank=role_rank).order_by('role_rank', 'fullname')
+ 
+        if tashkent_qs.exists():
+            results.append({
+                'region': 'tashkent_combined',
+                'region_display': 'Tashkent',
+                'members': RegionTeamMemberSerializer(tashkent_qs, many=True, context={'request': request}).data,
+            })
+ 
+        # ── Остальные регионы: все роли, кроме Founder ──
+        for code, display in TGUser.Region.choices:
+            if code in TASHKENT_CODES:
+                continue
+            qs = TGUser.objects.filter(
+                region=code,
+                role__in=['main_coordinator', 'coordinator', 'organizer', 'mobilograph'],
+            ).annotate(role_rank=role_rank).order_by('role_rank', 'fullname')
+            if qs.exists():
+                results.append({
+                    'region': code,
+                    'region_display': display,
+                    'members': RegionTeamMemberSerializer(qs, many=True, context={'request': request}).data,
+                })
+ 
+        # Регионы с бОльшим числом людей — выше (Самарканд, судя по твоим
+        # данным, там больше всего координаторов — окажется одним из первых
+        # естественным образом, без хардкода "Самарканд первым").
+        results.sort(key=lambda r: -len(r['members']))
+ 
+        return Response(results)
