@@ -2,24 +2,14 @@ from aiogram import types, Dispatcher
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from asgiref.sync import sync_to_async
 from pathlib import Path
-from app_telegram.models import TeamMemberYashilQullar, Partner
+from app_telegram.models import Partner
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 
 
 ABOUT_REPLY_KB = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="🎯 Loyiha yetakchilari"), KeyboardButton(text="🤝 Hamkorlarimiz")],
-        [KeyboardButton(text="⬅️ Orqaga")]
-    ],
-    resize_keyboard=True
-)
-
-
-TEAM_MENU_KB = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="🌟 Project Lead"), KeyboardButton(text="💻 Digital Lead")],
-        [KeyboardButton(text="📸 Media Lead"), KeyboardButton(text="📋 Organization")],
+        [KeyboardButton(text="🤝 Hamkorlarimiz")],
         [KeyboardButton(text="⬅️ Orqaga")]
     ],
     resize_keyboard=True
@@ -37,10 +27,6 @@ async def about_us(message: types.Message):
             await message.answer_photo(photo=photo, caption=main_text, reply_markup=ABOUT_REPLY_KB, parse_mode="HTML")
     except Exception:
         await message.answer(main_text, reply_markup=ABOUT_REPLY_KB, parse_mode="HTML")
-
-# Функция теперь реагирует на "🎯 Loyiha yetakchilari"
-async def show_team_selection(message: types.Message):
-    await message.answer("Loyiha yetakchilari yo'nalishini tanlang: 👇", reply_markup=TEAM_MENU_KB)
 
 async def show_partners_list(message: types.Message):
     partners = await sync_to_async(lambda: list(Partner.objects.filter(is_active=True)))()
@@ -69,47 +55,7 @@ async def show_partners_list(message: types.Message):
         else:
             await message.answer(caption, reply_markup=kb, parse_mode="HTML")
 
-async def show_team_members_by_focus(message: types.Message):
-    focus_map = {
-        "🌟 Project Lead": "founder",
-        "💻 Digital Lead": "digital",
-        "📸 Media Lead": "media",
-        "📋 Organization": "organization"
-    }
-    selected_focus = focus_map.get(message.text)
-    if not selected_focus: return
-
-    members = await sync_to_async(lambda: list(TeamMemberYashilQullar.objects.filter(focus=selected_focus)))()
-    if not members:
-        await message.answer("Hozircha bu bo‘limda a’zolar mavjud emas.")
-        return
-
-    for member in members:
-        caption = f"👤 <b>{member.fullname}</b>\n"
-        if member.skills: caption += f"{member.skills}\n"
-        if member.telegram_username:
-            username = member.telegram_username.replace('@', '')
-            link = username if "t.me" in username else f"@{username}"
-            caption += f"Telegram: {link}"
-
-        if member.photo:
-            try:
-                await message.answer_photo(photo=InputFile(member.photo.path), caption=caption, parse_mode="HTML")
-            except Exception:
-                await message.answer(caption, parse_mode="HTML")
-        else:
-            await message.answer(caption, parse_mode="HTML")
-
-# --- РЕГИСТРАЦИЯ (ИСПРАВЛЕНО ПОД НОВУЮ КНОПКУ) ---
+# --- РЕГИСТРАЦИЯ ---
 def register_about_and_team(dp: Dispatcher):
     dp.register_message_handler(about_us, text="🌟 Biz haqimizda", state="*")
-    
-    # Теперь реагируем на новый текст кнопки
-    dp.register_message_handler(show_team_selection, text="🎯 Loyiha yetakchilari", state="*")
-    
     dp.register_message_handler(show_partners_list, text="🤝 Hamkorlarimiz", state="*")
-    dp.register_message_handler(
-        show_team_members_by_focus, 
-        lambda m: m.text in ["🌟 Project Lead", "💻 Digital Lead", "📸 Media Lead", "📋 Organization"],
-        state="*"
-    )
