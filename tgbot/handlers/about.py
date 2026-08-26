@@ -19,7 +19,7 @@ async def about_us(message: types.Message):
     main_text = (
         "🌿 <b>Yashil Qo'llar</b> — barqaror kelajak sari!\n\n"
         "Maqsadimiz — yoshlar orasida ekologik madaniyatni rivojnatirish.  "
-        "Safimizda <b>1000+</b> faol ko'ngillilar bor! 💪\n\n"
+        "Safimizda <b>1400+</b> faol ko'ngillilar bor! 💪\n\n"
     )
     poster_path = BASE_DIR / "idk" / "poster.png"
     try:
