@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 from django.contrib import admin, messages
 from django.utils.html import format_html
 from aiogram import Bot
@@ -24,6 +25,69 @@ async def send_notification(user_id, text):
         await bot.send_message(user_id, text, parse_mode="HTML")
     except Exception as e:
         print(f"Ошибка отправки сообщения: {e}")
+    finally:
+        await bot.close()
+
+
+# ── Уведомление о повышении роли ──
+# Роняется, когда роль юзера меняется через карточку в Django admin (см.
+# TGUserAdmin.save_model ниже). Гифка не обязательна: если файла нет —
+# просто уходит текст без анимации, ничего не падает.
+ROLE_PROMOTION_GIF = Path(__file__).resolve().parent.parent / "tgbot" / "assets" / "role_promotion.gif"
+
+ROLE_PROMOTION_MESSAGES = {
+    'coordinator': (
+        "🎉 <b>Tabriklaymiz!</b>\n\n"
+        "Sizga <b>Coordinator</b> maqomi berildi! 🧭\n"
+        "Endi hududingizdagi loyihalarni boshqarishda faol ishtirok etasiz.\n\n"
+        "Yashil Qo'llar jamoasi siz bilan faxrlanadi! 🌿"
+    ),
+    'main_coordinator': (
+        "🎉 <b>Tabriklaymiz!</b>\n\n"
+        "Sizga <b>Main Coordinator</b> maqomi berildi! 🧭✨\n"
+        "Endi hududingizdagi barcha koordinatorlar faoliyati uchun mas'ulsiz.\n\n"
+        "Yashil Qo'llar jamoasi siz bilan faxrlanadi! 🌿"
+    ),
+    'mobilograph': (
+        "🎉 <b>Tabriklaymiz!</b>\n\n"
+        "Sizga <b>Mobilographer</b> maqomi berildi! 📸\n"
+        "Endi tadbirlarni suratga olish va ijtimoiy tarmoqlarda yoritish sizning zimmangizda.\n\n"
+        "Yashil Qo'llar jamoasi siz bilan faxrlanadi! 🌿"
+    ),
+    'organizer': (
+        "🎉 <b>Tabriklaymiz!</b>\n\n"
+        "Sizga <b>Organizer</b> maqomi berildi! 🗂\n"
+        "Endi tadbirlarni tashkil etishda faol ishtirok etasiz.\n\n"
+        "Yashil Qo'llar jamoasi siz bilan faxrlanadi! 🌿"
+    ),
+    'head_coordinator': (
+        "🎉 <b>Tabriklaymiz!</b>\n\n"
+        "Sizga <b>Head of Coordinators</b> maqomi berildi! 👑\n\n"
+        "Yashil Qo'llar jamoasi siz bilan faxrlanadi! 🌿"
+    ),
+    'it': (
+        "🎉 <b>Tabriklaymiz!</b>\n\n"
+        "Sizga <b>IT Specialist</b> maqomi berildi! 💻\n\n"
+        "Yashil Qo'llar jamoasi siz bilan faxrlanadi! 🌿"
+    ),
+    'Founder': (
+        "🎉 <b>Tabriklaymiz!</b>\n\n"
+        "Siz <b>Founder</b> sifatida belgilandingiz! 🏆\n\n"
+        "Yashil Qo'llar jamoasi siz bilan faxrlanadi! 🌿"
+    ),
+}
+
+
+async def send_role_promotion_notification(user_id, text):
+    bot = Bot(token=BOT_TOKEN)
+    try:
+        if ROLE_PROMOTION_GIF.exists():
+            with open(ROLE_PROMOTION_GIF, 'rb') as gif:
+                await bot.send_animation(user_id, gif, caption=text, parse_mode="HTML")
+        else:
+            await bot.send_message(user_id, text, parse_mode="HTML")
+    except Exception as e:
+        print(f"Ошибка отправки уведомления о повышении роли: {e}")
     finally:
         await bot.close()
 
@@ -194,7 +258,27 @@ class TGUserAdmin(admin.ModelAdmin):
         )
     region_badge.short_description = 'Hudud'
     region_badge.admin_order_field = 'region'
- 
+
+    # ── Уведомление юзеру, когда админ меняет ему роль из карточки ──
+    # (не сработает на list_editable — там Django admin сохраняет форму
+    # в обход save_model, но role в list_editable этой админки и не входит,
+    # так что здесь это не проблема).
+    def save_model(self, request, obj, form, change):
+        old_role = None
+        if change and obj.pk:
+            old_role = TGUser.objects.filter(pk=obj.pk).values_list('role', flat=True).first()
+
+        super().save_model(request, obj, form, change)
+
+        if change and obj.tg_id and old_role and old_role != obj.role:
+            text = ROLE_PROMOTION_MESSAGES.get(obj.role)
+            if text:
+                try:
+                    async_to_sync(send_role_promotion_notification)(obj.tg_id, text)
+                    self.message_user(request, f"{obj.fullname}ga yangi rol haqida xabar yuborildi. ✅")
+                except Exception as e:
+                    self.message_user(request, f"Xabar yuborishda xatolik: {e}", messages.WARNING)
+
 class EcoProjectImageInline(admin.TabularInline):
     model = EcoProjectImage
     extra = 3
