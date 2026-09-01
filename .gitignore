@@ -68,3 +68,7 @@ postgres_db/
 db.sqlite3
 
 redis.conf
+
+# Runtime cache — Telegram file_id cache (tgbot/services/photo_cache.py),
+# regenerates itself on first send, nothing to version-control here.
+media/.tg_file_id_cache.json

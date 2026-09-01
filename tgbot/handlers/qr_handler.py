@@ -5,6 +5,7 @@ from aiogram import types, Dispatcher
 from asgiref.sync import sync_to_async
 from django.utils import timezone
 from django.db import models
+from tgbot.services.photo_cache import send_cached_photo
 
 # ==========================================
 # 1. QR CODE & ATTENDANCE LOGIC
@@ -72,17 +73,22 @@ async def show_qr_handler(message: types.Message):
     bot_info = await message.bot.get_me()
     qr_link = f"https://t.me/{bot_info.username}?start=qr_{message.from_user.id}"
 
-    qr = qrcode.QRCode(version=1, box_size=10, border=2)
-    qr.add_data(qr_link)
-    qr.make(fit=True)
+    def _generate_qr():
+        qr = qrcode.QRCode(version=1, box_size=10, border=2)
+        qr.add_data(qr_link)
+        qr.make(fit=True)
 
-    img = qr.make_image(fill_color="black", back_color="white")
-    bio = BytesIO()
-    img.save(bio, 'PNG')
-    bio.seek(0)
+        img = qr.make_image(fill_color="black", back_color="white")
+        bio = BytesIO()
+        img.save(bio, 'PNG')
+        bio.seek(0)
+        return bio
 
-    await message.answer_photo(
-        photo=bio,
+    # QR-код одного и того же юзера всегда одинаковый (зависит только от
+    # его tg_id и username бота) — кэшируем file_id, чтобы при повторных
+    # заходах в раздел не генерировать картинку и не аплоадить её заново.
+    await send_cached_photo(
+        message, f"qr:{message.from_user.id}:{bot_info.username}", _generate_qr,
         caption="🌿 <b>Sizning shaxsiy eko-kodingiz!</b>\n\nTadbirga kelganingizda mas'ul xodimga ko'rsating."
     )
 

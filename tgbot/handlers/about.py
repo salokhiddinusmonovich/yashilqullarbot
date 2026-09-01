@@ -1,8 +1,9 @@
 from aiogram import types, Dispatcher
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputFile, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from asgiref.sync import sync_to_async
 from pathlib import Path
 from app_telegram.models import Partner
+from tgbot.services.photo_cache import send_cached_photo, file_cache_key
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 
@@ -21,10 +22,15 @@ async def about_us(message: types.Message):
         "Maqsadimiz — yoshlar orasida ekologik madaniyatni rivojnatirish.  "
         "Safimizda <b>1400+</b> faol ko'ngillilar bor! 💪\n\n"
     )
-    poster_path = BASE_DIR / "idk" / "poster.png"
+    poster_path = BASE_DIR / "tgbot" / "assets" / "poster.png"
     try:
-        with open(poster_path, 'rb') as photo:
-            await message.answer_photo(photo=photo, caption=main_text, reply_markup=ABOUT_REPLY_KB, parse_mode="HTML")
+        # Постер один и тот же для всех — после первой отправки Telegram
+        # уже хранит его у себя, дальше просто переиспользуем file_id
+        # вместо повторной загрузки файла с диска на каждый /about.
+        await send_cached_photo(
+            message, file_cache_key(poster_path), lambda: open(poster_path, 'rb'),
+            caption=main_text, reply_markup=ABOUT_REPLY_KB, parse_mode="HTML"
+        )
     except Exception:
         await message.answer(main_text, reply_markup=ABOUT_REPLY_KB, parse_mode="HTML")
 
@@ -49,7 +55,10 @@ async def show_partners_list(message: types.Message):
 
         if p.logo:
             try:
-                await message.answer_photo(photo=InputFile(p.logo.path), caption=caption, reply_markup=kb, parse_mode="HTML")
+                await send_cached_photo(
+                    message, file_cache_key(p.logo.path), lambda path=p.logo.path: open(path, 'rb'),
+                    caption=caption, reply_markup=kb, parse_mode="HTML"
+                )
             except Exception:
                 await message.answer(caption, reply_markup=kb, parse_mode="HTML")
         else:

@@ -1,10 +1,12 @@
 from aiogram import types, Dispatcher
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputFile, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from asgiref.sync import sync_to_async
+from django.db.models import Count, Q
 from django.utils import timezone
 from app_telegram.models import TGUser, EcoProject, ProjectParticipation
+from tgbot.services.photo_cache import send_cached_photo, file_cache_key
 
 CHANNEL_ID = "@yashilqollar"
 
@@ -42,13 +44,19 @@ async def list_upcoming_events(message: types.Message, state: FSMContext):
 
     tashkent_regions = ['tashkent_s', 'tashkent_v']
 
+    # ИСПРАВЛЕНО: participants_count считаем одним annotate() сразу для
+    # всех проектов, а не отдельным count()-запросом на КАЖДЫЙ проект в
+    # цикле ниже — раньше список из 10 мероприятий делал 10 лишних
+    # круговых походов в базу просто чтобы узнать "сколько людей записано".
+    participants_count = Count('participants', filter=~Q(participants__status='rejected'))
+
     if user.region in tashkent_regions:
         projects = await sync_to_async(list)(
             EcoProject.objects.filter(
                 is_active=True,
                 date__gt=timezone.now(),
                 region__in=tashkent_regions
-            ).order_by('date')
+            ).annotate(participants_count=participants_count).order_by('date')
         )
     else:
         projects = await sync_to_async(list)(
@@ -56,7 +64,7 @@ async def list_upcoming_events(message: types.Message, state: FSMContext):
                 is_active=True,
                 date__gt=timezone.now(),
                 region=user.region
-            ).order_by('date')
+            ).annotate(participants_count=participants_count).order_by('date')
         )
 
     if not projects:
@@ -85,7 +93,7 @@ async def list_upcoming_events(message: types.Message, state: FSMContext):
     )
 
     for p in projects:
-        current_count = await sync_to_async(p.participants.exclude(status='rejected').count)()
+        current_count = p.participants_count
 
         text = f"🚀 <b>{p.title}</b>\n\n"
         if p.description:
@@ -122,11 +130,12 @@ async def list_upcoming_events(message: types.Message, state: FSMContext):
 
         if p.photo:
             try:
-                await message.answer_photo(
-                    photo=InputFile(p.photo.path),
-                    caption=text,
-                    reply_markup=kb,
-                    parse_mode="HTML"
+                # Одна и та же фотка мероприятия шлётся ВСЕМ юзерам региона
+                # при каждом заходе в раздел — кэш file_id экономит повторную
+                # загрузку с диска и аплоад в Telegram на каждый показ.
+                await send_cached_photo(
+                    message, file_cache_key(p.photo.path), lambda path=p.photo.path: open(path, 'rb'),
+                    caption=text, reply_markup=kb, parse_mode="HTML"
                 )
             except Exception:
                 await message.answer(text, reply_markup=kb, parse_mode="HTML")
@@ -249,10 +258,9 @@ async def list_past_events(message: types.Message, state: FSMContext):
 
         if event.photo:
             try:
-                await message.answer_photo(
-                    photo=InputFile(event.photo.path),
-                    caption=caption,
-                    parse_mode="HTML"
+                await send_cached_photo(
+                    message, file_cache_key(event.photo.path), lambda path=event.photo.path: open(path, 'rb'),
+                    caption=caption, parse_mode="HTML"
                 )
             except Exception as e:
                 print(f"Photo error: {e}")

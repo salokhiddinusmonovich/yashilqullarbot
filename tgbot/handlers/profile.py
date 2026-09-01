@@ -5,6 +5,7 @@ from asgiref.sync import sync_to_async
 from aiogram import Dispatcher
 from app_telegram.models import TGUser
 from ..keyboards import reply # Убедись, что путь к твоим главным кнопкам верный
+from ..services.photo_cache import send_cached_photo, file_cache_key
 
 class ProfileUpdate(StatesGroup):
     waiting_for_name = State()
@@ -77,11 +78,14 @@ async def view_my_profile(message: types.Message):
         f"🍀 <i>Yashil Qo'llar — birgalikda kuchmiz!</i>"
     )
 
-    # Вывод фото 
+    # Вывод фото
     if user.photo:
         try:
-            await message.answer_photo(photo=types.InputFile(user.photo.path), caption=profile_text, parse_mode="HTML")
-        except:
+            await send_cached_photo(
+                message, file_cache_key(user.photo.path), lambda: open(user.photo.path, 'rb'),
+                caption=profile_text, parse_mode="HTML"
+            )
+        except Exception:
             await message.answer(profile_text, parse_mode="HTML")
     else:
         await message.answer(profile_text, parse_mode="HTML")
