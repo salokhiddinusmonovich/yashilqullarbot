@@ -1,5 +1,6 @@
 import asyncio
 from pathlib import Path
+from django.conf import settings
 from django.contrib import admin, messages
 from django.utils.html import format_html
 from aiogram import Bot
@@ -17,7 +18,15 @@ from .models import (
     Article, Tag, Comment, LoginToken, EventFeedback, ArticleImage
 )
 
-BOT_TOKEN = "8597081931:AAHrLlthINCN8nIZp_zh3WEbzfc-5GhoHmw"
+# ИСПРАВЛЕНО: раньше здесь был захардкожен отдельный литерал токена,
+# независимый от реального токена бота (tgbot/config.py читает его из
+# .env через BOT_TOKEN). Если они когда-либо разошлись — например, токен
+# был перевыпущен — ЛЮБОЕ уведомление отсюда (эта функция, отметка
+# "пришёл на эвент", рассылка новым юзерам, уведомление о новой роли)
+# молча падало с 401 Unauthorized, а админка при этом бодро писала
+# "✅ отправлено". Теперь токен один на весь проект — из settings.py,
+# который сам берёт его из того же .env/BOT_TOKEN, что и сам бот.
+BOT_TOKEN = settings.TELEGRAM_BOT_TOKEN
 
 async def send_notification(user_id, text):
     bot = Bot(token=BOT_TOKEN)
@@ -79,6 +88,10 @@ ROLE_PROMOTION_MESSAGES = {
 
 
 async def send_role_promotion_notification(user_id, text):
+    # ВАЖНО: никакого try/except-и-проглотить здесь — ошибка должна
+    # долететь до save_model() ниже, чтобы админ увидел РЕАЛЬНУЮ причину
+    # ("бот заблокирован", "chat not found", неверный токен и т.п.) вместо
+    # вводящего в заблуждение "✅ отправлено", когда на самом деле нет.
     bot = Bot(token=BOT_TOKEN)
     try:
         if ROLE_PROMOTION_GIF.exists():
@@ -86,8 +99,6 @@ async def send_role_promotion_notification(user_id, text):
                 await bot.send_animation(user_id, gif, caption=text, parse_mode="HTML")
         else:
             await bot.send_message(user_id, text, parse_mode="HTML")
-    except Exception as e:
-        print(f"Ошибка отправки уведомления о повышении роли: {e}")
     finally:
         await bot.close()
 
