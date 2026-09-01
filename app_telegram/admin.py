@@ -65,8 +65,7 @@ ROLE_PROMOTION_MESSAGES = {
     ),
     'organizer': (
         "🎉 <b>Tabriklaymiz!</b>\n\n"
-        "Sizga <b>Organizer</b> maqomi berildi! 🗂\n"
-        "Endi tadbirlarni tashkil etishda faol ishtirok etasiz.\n\n"
+        "Sizga <b>Organizer</b> maqomi berildi! 🗂\n\n"
         "Yashil Qo'llar jamoasi siz bilan faxrlanadi! 🌿"
     ),
     'head_coordinator': (
@@ -281,7 +280,10 @@ class TGUserAdmin(admin.ModelAdmin):
 
         super().save_model(request, obj, form, change)
 
-        if change and obj.tg_id and old_role and old_role != obj.role:
+        # 'volunteer' — дефолтная роль (в т.ч. при демоции с координатора
+        # и т.п.) — на неё сообщение никогда не шлём, только на реальное
+        # повышение.
+        if change and obj.tg_id and old_role and old_role != obj.role and obj.role != TGUser.Role.VOLUNTEER:
             text = ROLE_PROMOTION_MESSAGES.get(obj.role)
             if text:
                 try:
