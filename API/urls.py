@@ -6,10 +6,11 @@ from .api import (
     CommentCreateView, ArticleLikeView, CommentLikeView, CreateLoginTokenView, LoginTokenStatusView,
     RegisterView, PasswordLoginView, GoogleLoginView,  # НОВОЕ
 )
-from .api import EcoProjectViewSet, JoinProjectView 
- 
+from .api import EcoProjectViewSet, JoinProjectView
+
 
 from .api import EcoProjectLikeView, EcoProjectCommentCreateView, EcoProjectCommentLikeView, RegionTeamView, PublicProfileView,PartnerListView, LeaderboardView, RegionalTeamOverviewView
+from .api import CommentDeleteView, CommentEditView, EcoProjectCommentDeleteView, EcoProjectCommentEditView
 
 urlpatterns = [
     # ── Telegram bot login (без изменений) ──
@@ -32,6 +33,8 @@ urlpatterns = [
     path('blog/<slug:slug>/comment/', CommentCreateView.as_view(), name='article-comment'),
     path('blog/<slug:slug>/like/', ArticleLikeView.as_view(), name='article-like'),
     path('comment/<int:pk>/like/', CommentLikeView.as_view(), name='comment-like'),
+    path('comment/<int:pk>/edit/', CommentEditView.as_view(), name='comment-edit'),
+    path('comment/<int:pk>/delete/', CommentDeleteView.as_view(), name='comment-delete'),
 ]
 
 urlpatterns += [
@@ -45,6 +48,8 @@ urlpatterns += [
     path('projects/<int:pk>/like/', EcoProjectLikeView.as_view(), name='project-like'),
     path('projects/<int:pk>/comment/', EcoProjectCommentCreateView.as_view(), name='project-comment'),
     path('project-comment/<int:pk>/like/', EcoProjectCommentLikeView.as_view(), name='project-comment-like'),
+    path('project-comment/<int:pk>/edit/', EcoProjectCommentEditView.as_view(), name='project-comment-edit'),
+    path('project-comment/<int:pk>/delete/', EcoProjectCommentDeleteView.as_view(), name='project-comment-delete'),
 
     path('team/region/<str:region>/', RegionTeamView.as_view(), name='team-by-region'),
     path('users/<int:pk>/profile/', PublicProfileView.as_view(), name='public-profile'),

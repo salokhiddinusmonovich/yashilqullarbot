@@ -8,11 +8,11 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from django.db.models import Case, When, Value, IntegerField, Count, Exists, OuterRef, BooleanField, Q
 from app_telegram.models import TGUser, Article, TeamMemberYashilQullar, Comment
-from .serializers import ProfileSerializer, ArticleListSerializer, ArticleDetailSerializer, TeamMemberSerializer, CommentCreateSerializer
+from .serializers import ProfileSerializer, ArticleListSerializer, ArticleDetailSerializer, TeamMemberSerializer, CommentCreateSerializer, CommentEditSerializer
 from rest_framework import viewsets
 from app_telegram.models import ArticleLike, CommentLike, EcoProject, ProjectParticipation, Partner
 from app_telegram.models import EcoProjectComment, EcoProjectLike, EcoProjectCommentLike
-from .serializers import EcoProjectCommentCreateSerializer,EcoProjectSerializer, RegionTeamMemberSerializer, PartnerSerializer, LeaderboardEntrySerializer
+from .serializers import EcoProjectCommentCreateSerializer,EcoProjectSerializer, RegionTeamMemberSerializer, PartnerSerializer, LeaderboardEntrySerializer, EcoProjectCommentEditSerializer
 from .authentication import CustomRefreshToken, TGUserJWTAuthentication
 
 class TelegramLoginView(views.APIView):
@@ -499,26 +499,58 @@ class CommentDeleteView(generics.DestroyAPIView):
     queryset = Comment.objects.all()
     permission_classes = [IsAuthenticated]
     authentication_classes = [TGUserJWTAuthentication]
- 
+
     def get_object(self):
         obj = super().get_object()
         if obj.user_id != self.request.user.id and not self.request.user.is_admin:
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("You can only delete your own comments.")
         return obj
- 
- 
+
+
+class CommentEditView(generics.UpdateAPIView):
+    """PATCH /comment/<id>/edit/ — только автор комментария или админ, только текст."""
+    queryset = Comment.objects.all()
+    serializer_class = CommentEditSerializer
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [TGUserJWTAuthentication]
+    http_method_names = ['patch', 'options']
+
+    def get_object(self):
+        obj = super().get_object()
+        if obj.user_id != self.request.user.id and not self.request.user.is_admin:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("You can only edit your own comments.")
+        return obj
+
+
 class EcoProjectCommentDeleteView(generics.DestroyAPIView):
     """DELETE /project-comment/<id>/delete/ — то же самое для комментариев проектов."""
     queryset = EcoProjectComment.objects.all()
     permission_classes = [IsAuthenticated]
     authentication_classes = [TGUserJWTAuthentication]
- 
+
     def get_object(self):
         obj = super().get_object()
         if obj.user_id != self.request.user.id and not self.request.user.is_admin:
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("You can only delete your own comments.")
+        return obj
+
+
+class EcoProjectCommentEditView(generics.UpdateAPIView):
+    """PATCH /project-comment/<id>/edit/ — то же самое для комментариев проектов."""
+    queryset = EcoProjectComment.objects.all()
+    serializer_class = EcoProjectCommentEditSerializer
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [TGUserJWTAuthentication]
+    http_method_names = ['patch', 'options']
+
+    def get_object(self):
+        obj = super().get_object()
+        if obj.user_id != self.request.user.id and not self.request.user.is_admin:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("You can only edit your own comments.")
         return obj
 
 class RegionTeamView(generics.ListAPIView):

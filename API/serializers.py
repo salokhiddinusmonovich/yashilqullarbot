@@ -242,6 +242,14 @@ class CommentCreateSerializer(serializers.ModelSerializer):
         fields = ['text', 'parent']
 
 
+class CommentEditSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Comment
+        # Только текст — автора, статью, parent и лайки менять через
+        # редактирование нельзя, это не то же самое, что создать заново.
+        fields = ['text']
+
+
  
  
 class RegisterSerializer(serializers.ModelSerializer):
@@ -365,6 +373,12 @@ class EcoProjectCommentCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = EcoProjectComment
         fields = ['text', 'parent']
+
+
+class EcoProjectCommentEditSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EcoProjectComment
+        fields = ['text']
  
  
 class EcoProjectImageSerializer(serializers.ModelSerializer):
