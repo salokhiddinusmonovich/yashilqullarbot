@@ -6,7 +6,7 @@ from django.shortcuts import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
-from django.db.models import Case, When, Value, IntegerField
+from django.db.models import Case, When, Value, IntegerField, Count, Exists, OuterRef, BooleanField, Q
 from app_telegram.models import TGUser, Article, TeamMemberYashilQullar, Comment
 from .serializers import ProfileSerializer, ArticleListSerializer, ArticleDetailSerializer, TeamMemberSerializer, CommentCreateSerializer
 from rest_framework import viewsets
@@ -153,16 +153,34 @@ class TeamListView(generics.ListAPIView):
 
 
 class ArticleViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Article.objects.all().order_by('-created_at')
     permission_classes = [AllowAny]
     authentication_classes = [TGUserJWTAuthentication]  # НОВОЕ
     lookup_field = 'slug'
- 
+
+    def get_queryset(self):
+        # select_related('author') + prefetch_related('tags') убирают N+1 на
+        # каждую статью в списке; annotate() считает comments_count/
+        # is_liked_by_me одним запросом вместо отдельного SELECT на строку.
+        qs = Article.objects.select_related('author').prefetch_related('tags')
+        if self.action == 'retrieve':
+            qs = qs.prefetch_related('gallery_images')
+        qs = qs.annotate(comments_count_annotated=Count('comments', distinct=True))
+
+        user = self.request.user
+        if getattr(user, 'is_authenticated', False):
+            qs = qs.annotate(
+                is_liked_by_me_annotated=Exists(ArticleLike.objects.filter(article=OuterRef('pk'), user=user))
+            )
+        else:
+            qs = qs.annotate(is_liked_by_me_annotated=Value(False, output_field=BooleanField()))
+
+        return qs.order_by('-created_at')
+
     def get_serializer_class(self):
         if self.action == 'retrieve':
             return ArticleDetailSerializer
         return ArticleListSerializer
-    
+
 class CommentCreateView(generics.CreateAPIView):
     serializer_class = CommentCreateSerializer
     permission_classes = [IsAuthenticated]
@@ -372,10 +390,41 @@ class EcoProjectViewSet(viewsets.ReadOnlyModelViewSet):
     GET /projects/<id>/ — один проект с полной галереей
     title/description отдаются на языке из Accept-Language автоматически.
     """
-    queryset = EcoProject.objects.filter(is_active=True).order_by('date')
     serializer_class = EcoProjectSerializer
     permission_classes = [AllowAny]
     authentication_classes = [TGUserJWTAuthentication]
+
+    def get_queryset(self):
+        # Считаем participants_count/comments_count и проверяем is_joined/
+        # is_liked_by_me одним annotate() на весь список — раньше это было
+        # 4 отдельных запроса НА КАЖДЫЙ проект в списке.
+        # gallery_images нужен и в list, и в retrieve — EcoProjectSerializer
+        # (в отличие от Article) один и тот же для обоих экшенов, поэтому
+        # prefetch не может быть условным на self.action == 'retrieve'.
+        qs = EcoProject.objects.filter(is_active=True).prefetch_related('gallery_images')
+
+        qs = qs.annotate(
+            comments_count_annotated=Count('comments', distinct=True),
+            participants_count_annotated=Count(
+                'participants',
+                filter=Q(participants__status__in=['approved', 'attended']),
+                distinct=True,
+            ),
+        )
+
+        user = self.request.user
+        if getattr(user, 'is_authenticated', False):
+            qs = qs.annotate(
+                is_liked_by_me_annotated=Exists(EcoProjectLike.objects.filter(project=OuterRef('pk'), user=user)),
+                is_joined_annotated=Exists(ProjectParticipation.objects.filter(project=OuterRef('pk'), user=user)),
+            )
+        else:
+            qs = qs.annotate(
+                is_liked_by_me_annotated=Value(False, output_field=BooleanField()),
+                is_joined_annotated=Value(False, output_field=BooleanField()),
+            )
+
+        return qs.order_by('date')
  
  
 class JoinProjectView(views.APIView):
@@ -563,41 +612,51 @@ class RegionalTeamOverviewView(views.APIView):
             default=4,
             output_field=IntegerField(),
         )
- 
+
         TASHKENT_CODES = ['tashkent_s', 'tashkent_v']
+
+        # РАНЬШЕ: до 2 запросов НА КАЖДЫЙ регион (.exists() + сама выборка) —
+        # это ~28 запросов на один GET. ТЕПЕРЬ: один запрос на всех членов
+        # команды сразу, группировка по регионам делается в Python. Порядок
+        # role_rank/fullname не зависит от региона, поэтому глобальная
+        # сортировка ниже даёт тот же относительный порядок внутри каждой
+        # группы, что и раньше при поре-гионных запросах.
+        all_members = list(
+            TGUser.objects.filter(
+                Q(region__in=TASHKENT_CODES, role__in=['coordinator', 'mobilograph']) |
+                (~Q(region__in=TASHKENT_CODES) & Q(role__in=['main_coordinator', 'coordinator', 'organizer', 'mobilograph']))
+            ).annotate(role_rank=role_rank).order_by('role_rank', 'fullname')
+        )
+
+        buckets = {}
+        for member in all_members:
+            key = 'tashkent_combined' if member.region in TASHKENT_CODES else member.region
+            buckets.setdefault(key, []).append(member)
+
         results = []
- 
-        # ── Ташкент: объединённый, только coordinator + mobilograph ──
-        tashkent_qs = TGUser.objects.filter(
-            region__in=TASHKENT_CODES,
-            role__in=['coordinator', 'mobilograph'],
-        ).annotate(role_rank=role_rank).order_by('role_rank', 'fullname')
- 
-        if tashkent_qs.exists():
+
+        tashkent_members = buckets.get('tashkent_combined')
+        if tashkent_members:
             results.append({
                 'region': 'tashkent_combined',
                 'region_display': 'Tashkent',
-                'members': RegionTeamMemberSerializer(tashkent_qs, many=True, context={'request': request}).data,
+                'members': RegionTeamMemberSerializer(tashkent_members, many=True, context={'request': request}).data,
             })
- 
-        # ── Остальные регионы: все роли, кроме Founder ──
+
         for code, display in TGUser.Region.choices:
             if code in TASHKENT_CODES:
                 continue
-            qs = TGUser.objects.filter(
-                region=code,
-                role__in=['main_coordinator', 'coordinator', 'organizer', 'mobilograph'],
-            ).annotate(role_rank=role_rank).order_by('role_rank', 'fullname')
-            if qs.exists():
+            members = buckets.get(code)
+            if members:
                 results.append({
                     'region': code,
                     'region_display': display,
-                    'members': RegionTeamMemberSerializer(qs, many=True, context={'request': request}).data,
+                    'members': RegionTeamMemberSerializer(members, many=True, context={'request': request}).data,
                 })
- 
+
         # Регионы с бОльшим числом людей — выше (Самарканд, судя по твоим
         # данным, там больше всего координаторов — окажется одним из первых
         # естественным образом, без хардкода "Самарканд первым").
         results.sort(key=lambda r: -len(r['members']))
- 
+
         return Response(results)

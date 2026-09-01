@@ -98,6 +98,10 @@ DATABASES = {
         'PASSWORD': 'postgres',
         'HOST': 'db',
         'PORT': '5432',
+        # Reuse TCP connections across requests instead of reconnecting to
+        # Postgres on every single API call — this was previously unset,
+        # which meant every request paid a fresh-connection handshake.
+        'CONN_MAX_AGE': 60,
     }
 }
 

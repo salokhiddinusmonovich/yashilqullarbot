@@ -63,11 +63,11 @@ class TGUser(TimeBasedModel):
     username = models.CharField(max_length=255, blank=True, null=True, verbose_name='Username')
     experience = models.TextField(blank=True, null=True, verbose_name='tajribasi')
     photo = models.ImageField(upload_to='users_photos/', blank=True, null=True, verbose_name='Profil rasmi')
-    region = models.CharField(max_length=20, choices=Region.choices, blank=True, null=True, verbose_name='Hudud')
+    region = models.CharField(max_length=20, choices=Region.choices, blank=True, null=True, verbose_name='Hudud', db_index=True)
     education_place = models.CharField(max_length=255, blank=True, null=True, verbose_name='O‘qish joyi')
     is_admin = models.BooleanField(default=False)
-    balance = models.PositiveIntegerField(default=0, verbose_name="Эко-баллы")
-    role = models.CharField(max_length=20, choices=Role.choices, default=Role.VOLUNTEER, verbose_name='Статус / Роль')
+    balance = models.PositiveIntegerField(default=0, verbose_name="Эко-баллы", db_index=True)
+    role = models.CharField(max_length=20, choices=Role.choices, default=Role.VOLUNTEER, verbose_name='Статус / Роль', db_index=True)
  
     # НОВОЕ: хэш пароля для email-регистрации. Пусто у telegram-only юзеров.
     # Хранится через django.contrib.auth.hashers.make_password — НЕ plaintext.
@@ -163,6 +163,9 @@ class EcoProject(models.Model):
     class Meta:
         verbose_name = "Eco loyiha"
         verbose_name_plural = "Eco loyihalar"
+        indexes = [
+            models.Index(fields=['is_active', 'date'], name='ecoproj_active_date_idx'),
+        ]
 
 
 
@@ -305,9 +308,14 @@ class Comment(models.Model):
     likes_count = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=['article', 'parent'], name='comment_article_parent_idx'),
+        ]
+
     def __str__(self):
         return f"Comment by {self.user.fullname} on {self.article.title}"
-    
+
 
 
 class LoginToken(models.Model):
@@ -393,7 +401,12 @@ class EcoProjectComment(models.Model):
     text = models.TextField()
     likes_count = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
- 
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['project', 'parent'], name='ecoprojcomment_proj_par_idx'),
+        ]
+
     def __str__(self):
         return f"Comment by {self.user.fullname} on {self.project.title}"
  

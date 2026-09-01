@@ -1,6 +1,29 @@
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
-from app_telegram.models import TGUser, Article, Tag, Comment, TeamMemberYashilQullar, ArticleImage,EcoProject, EcoProjectImage, ProjectParticipation,EcoProjectComment, Partner
+from django.db.models import Exists, OuterRef, Value, BooleanField, Prefetch
+from app_telegram.models import (
+    TGUser, Article, Tag, Comment, TeamMemberYashilQullar, ArticleImage, EcoProject, EcoProjectImage,
+    ProjectParticipation, EcoProjectComment, Partner, ArticleLike, CommentLike, EcoProjectCommentLike,
+)
+
+
+def _comments_queryset_with_liked_flag(comment_model, like_model, like_fk_name, user, is_auth):
+    """
+    select_related('user') убирает N+1 на user_name/user_photo, а
+    annotate(is_liked_by_me_annotated) убирает по одному лишнему запросу
+    на КАЖДЫЙ комментарий, который раньше делал get_is_liked_by_me().
+    """
+    qs = comment_model.objects.select_related('user').order_by('-created_at')
+    if is_auth:
+        qs = qs.annotate(
+            is_liked_by_me_annotated=Exists(
+                like_model.objects.filter(**{like_fk_name: OuterRef('pk'), 'user': user})
+            )
+        )
+    else:
+        qs = qs.annotate(is_liked_by_me_annotated=Value(False, output_field=BooleanField()))
+    return qs
+
 
 class ProfileSerializer(serializers.ModelSerializer):
     # Добавляем кастомные поля для профиля, которые нужны на фронтенде
@@ -51,19 +74,28 @@ class CommentSerializer(serializers.ModelSerializer):
         return None
  
     def get_is_liked_by_me(self, obj):
+        # Заполняется через annotate() в get_comments() ниже — без него
+        # каждый комментарий бил бы по базе отдельным запросом (N+1).
+        annotated = getattr(obj, 'is_liked_by_me_annotated', None)
+        if annotated is not None:
+            return annotated
         request = self.context.get('request')
         user = getattr(request, 'user', None)
         if not request or not user or not getattr(user, 'is_authenticated', False):
             return False
         return obj.user_likes.filter(user=user).exists()
- 
+
     def get_replies(self, obj):
-        if obj.replies.exists():
+        # obj.replies.all() переиспользует prefetch_related-кэш, если он был
+        # проставлен в get_comments() — отдельный obj.replies.exists() здесь
+        # раньше удваивал число запросов без всякой пользы.
+        replies = obj.replies.all()
+        if replies:
             # ВАЖНО: context=self.context — без этого is_liked_by_me/user_photo
             # у вложенных ответов всегда были бы пустыми/False.
-            return CommentSerializer(obj.replies.all(), many=True, context=self.context).data
+            return CommentSerializer(replies, many=True, context=self.context).data
         return []
- 
+
 
 class ArticleListSerializer(serializers.ModelSerializer):
     tags = TagSerializer(many=True, read_only=True)
@@ -80,6 +112,11 @@ class ArticleListSerializer(serializers.ModelSerializer):
           'comments_count', 'created_at', 'is_featured', 'author_name', 'author_role', 'author_photo', 'has_video', 'author_id']
 
     def get_comments_count(self, obj):
+        # Проставляется через annotate(Count('comments')) в ArticleViewSet —
+        # иначе это отдельный SELECT COUNT на каждую статью в списке (N+1).
+        annotated = getattr(obj, 'comments_count_annotated', None)
+        if annotated is not None:
+            return annotated
         return obj.comments.count()
 
     def get_has_video(self, obj):
@@ -101,8 +138,13 @@ class ArticleListSerializer(serializers.ModelSerializer):
         return None
     
     is_liked_by_me = serializers.SerializerMethodField()
- 
+
     def get_is_liked_by_me(self, obj):
+        # Проставляется через annotate(Exists(...)) в ArticleViewSet.get_queryset —
+        # без него это отдельный SELECT ... EXISTS на каждую статью в списке (N+1).
+        annotated = getattr(obj, 'is_liked_by_me_annotated', None)
+        if annotated is not None:
+            return annotated
         request = self.context.get('request')
         user = getattr(request, 'user', None)
         if not request or not user or not getattr(user, 'is_authenticated', False):
@@ -132,7 +174,31 @@ class ArticleDetailSerializer(serializers.ModelSerializer):
           'author_name', 'author_role', 'author_photo', 'author_id']
 
     def get_comments(self, obj):
-        top_level_comments = obj.comments.filter(parent__isnull=True).order_by('-created_at')
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        is_auth = bool(request and user and getattr(user, 'is_authenticated', False))
+
+        # Глубина вложенности реплаев не ограничена схемой (parent — self-FK),
+        # но на практике треды редко уходят глубже пары уровней. Явно
+        # прогружаем 2 уровня replies через prefetch_related (article + 2
+        # уровня комментариев вместо N+1 SELECT'ов на каждый узел дерева);
+        # более глубокая вложенность просто упадёт обратно на обычный
+        # запрос внутри CommentSerializer.get_replies — работает всегда,
+        # просто без этой оптимизации на экстремальной глубине.
+        replies_qs = _comments_queryset_with_liked_flag(Comment, CommentLike, 'comment', user, is_auth)
+
+        top_level_comments = obj.comments.filter(parent__isnull=True).select_related('user').order_by('-created_at')
+        if is_auth:
+            top_level_comments = top_level_comments.annotate(
+                is_liked_by_me_annotated=Exists(CommentLike.objects.filter(comment=OuterRef('pk'), user=user))
+            )
+        else:
+            top_level_comments = top_level_comments.annotate(
+                is_liked_by_me_annotated=Value(False, output_field=BooleanField())
+            )
+        top_level_comments = top_level_comments.prefetch_related(
+            Prefetch('replies', queryset=replies_qs.prefetch_related(Prefetch('replies', queryset=replies_qs)))
+        )
         return CommentSerializer(top_level_comments, many=True, context=self.context).data
 
     def get_author_name(self, obj):
@@ -149,10 +215,13 @@ class ArticleDetailSerializer(serializers.ModelSerializer):
             url = obj.author.photo.url
             return request.build_absolute_uri(url) if request else url
         return None
-    
+
     is_liked_by_me = serializers.SerializerMethodField()
- 
+
     def get_is_liked_by_me(self, obj):
+        annotated = getattr(obj, 'is_liked_by_me_annotated', None)
+        if annotated is not None:
+            return annotated
         request = self.context.get('request')
         user = getattr(request, 'user', None)
         if not request or not user or not getattr(user, 'is_authenticated', False):
@@ -276,18 +345,22 @@ class EcoProjectCommentSerializer(serializers.ModelSerializer):
         return None
  
     def get_is_liked_by_me(self, obj):
+        annotated = getattr(obj, 'is_liked_by_me_annotated', None)
+        if annotated is not None:
+            return annotated
         request = self.context.get('request')
         user = getattr(request, 'user', None)
         if not request or not user or not getattr(user, 'is_authenticated', False):
             return False
         return obj.user_likes.filter(user=user).exists()
- 
+
     def get_replies(self, obj):
-        if obj.replies.exists():
-            return EcoProjectCommentSerializer(obj.replies.all(), many=True, context=self.context).data
+        replies = obj.replies.all()
+        if replies:
+            return EcoProjectCommentSerializer(replies, many=True, context=self.context).data
         return []
- 
- 
+
+
 class EcoProjectCommentCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = EcoProjectComment
@@ -324,30 +397,64 @@ class EcoProjectSerializer(serializers.ModelSerializer):
         ]
  
     def get_participants_count(self, obj):
+        annotated = getattr(obj, 'participants_count_annotated', None)
+        if annotated is not None:
+            return annotated
         return obj.participants.filter(status__in=['approved', 'attended']).count()
- 
+
     def get_is_joined(self, obj):
+        annotated = getattr(obj, 'is_joined_annotated', None)
+        if annotated is not None:
+            return annotated
         request = self.context.get('request')
         user = getattr(request, 'user', None)
         if not request or not user or not getattr(user, 'is_authenticated', False):
             return False
         return obj.participants.filter(user=user).exists()
- 
+
     def get_is_liked_by_me(self, obj):
+        annotated = getattr(obj, 'is_liked_by_me_annotated', None)
+        if annotated is not None:
+            return annotated
         request = self.context.get('request')
         user = getattr(request, 'user', None)
         if not request or not user or not getattr(user, 'is_authenticated', False):
             return False
         return obj.user_likes.filter(user=user).exists()
- 
+
     def get_comments_count(self, obj):
+        annotated = getattr(obj, 'comments_count_annotated', None)
+        if annotated is not None:
+            return annotated
         return obj.comments.count()
- 
+
     def get_comments(self, obj):
         # Для списка (/projects/) это довольно дорого при много проектов —
         # если список большой, можно позже отдавать comments только в detail.
         # Пока оставляем одинаково для простоты (мало проектов на старте).
-        top_level = obj.comments.filter(parent__isnull=True).order_by('-created_at')
+        # select_related('user') + annotate(is_liked_by_me) + 2 уровня
+        # prefetch на replies убирают N+1 запросов, которые раньше шли на
+        # каждый комментарий И на каждый его лайк-чек отдельно.
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        is_auth = bool(request and user and getattr(user, 'is_authenticated', False))
+
+        replies_qs = _comments_queryset_with_liked_flag(
+            EcoProjectComment, EcoProjectCommentLike, 'comment', user, is_auth
+        )
+
+        top_level = obj.comments.filter(parent__isnull=True).select_related('user').order_by('-created_at')
+        if is_auth:
+            top_level = top_level.annotate(
+                is_liked_by_me_annotated=Exists(EcoProjectCommentLike.objects.filter(comment=OuterRef('pk'), user=user))
+            )
+        else:
+            top_level = top_level.annotate(
+                is_liked_by_me_annotated=Value(False, output_field=BooleanField())
+            )
+        top_level = top_level.prefetch_related(
+            Prefetch('replies', queryset=replies_qs.prefetch_related(Prefetch('replies', queryset=replies_qs)))
+        )
         return EcoProjectCommentSerializer(top_level, many=True, context=self.context).data
  
 class RegionTeamMemberSerializer(serializers.ModelSerializer):
