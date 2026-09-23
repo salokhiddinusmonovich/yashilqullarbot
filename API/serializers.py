@@ -44,7 +44,18 @@ class ProfileSerializer(serializers.ModelSerializer):
     def get_projects_count(self, obj):
         # Подсчитываем количество проектов, где статус 'attended' (Келди)
         return obj.participations.filter(status='attended').count()
-    
+
+    # НОВОЕ: пустая строка "" — не то же самое, что "оставить как есть",
+    # но и сохранять её напрямую нельзя — email unique=True, а Postgres
+    # НЕ считает "" эквивалентом NULL для проверки уникальности. Как только
+    # два разных юзера через форму профиля сохраняют пустой email — второй
+    # ловит IntegrityError (duplicate key ... email=() already exists).
+    # Приводим "" к None — та же логика, что уже используется в
+    # TelegramLoginView/GoogleLoginView для этой же причины.
+    def validate_email(self, value):
+        if value == '':
+            return None
+        return value
 
 
 
@@ -494,4 +505,3 @@ class LeaderboardEntrySerializer(serializers.ModelSerializer):
     class Meta:
         model = TGUser
         fields = ['tg_id', 'fullname', 'photo', 'balance', 'rank', 'region']
- 
