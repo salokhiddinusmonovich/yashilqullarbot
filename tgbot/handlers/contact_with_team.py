@@ -7,7 +7,7 @@ async def join_project(message: Message):
         "🌱 <b>Barqaror kelajak uchun!</b>\n\n"
         "✨ Taklif yoki savollaringiz bormi?\n"
         "👥 Jamoamizga qo‘shilishni xohlaysizmi?\n"
-        "📩 Unda <b>@yashilqollar_admin</b> ga yozing\n\n"
+        "📩 Unda <b>@yqadmin</b> ga yozing\n\n"
         "🤝 Hamkorlik bo‘yicha:\n"
         "📩 <b>@abdulboriyw</b> ga murojaat qiling"
     )
