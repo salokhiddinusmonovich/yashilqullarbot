@@ -13,6 +13,7 @@ import hashlib
 import hmac
 import io
 import json
+import re
 import time
 from datetime import timedelta
 from html import escape
@@ -20,6 +21,8 @@ from urllib.parse import parse_qsl
 
 from django.conf import settings
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
 from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.utils import timezone
@@ -79,7 +82,17 @@ def _user_payload(request, user: TGUser, lang: str):
     return {
         "id": user.id,
         "tg_id": user.tg_id,
+        "username": user.username,
         "fullname": user.fullname,
+        # анкета — для экрана «Изменить профиль»
+        "email": user.email,
+        "phone": user.phone,
+        "age": user.age,
+        "education_place": user.education_place,
+        "experience": user.experience,
+        # привязка к сайту
+        "has_password": bool(user.password),
+        "auth_provider": user.auth_provider,
         "photo": _abs(request, thumb_url(user.photo, 300)),
         "role": user.role,
         "role_label": role_label(user.role, lang),
@@ -162,6 +175,7 @@ def bootstrap_data(request, user: TGUser, lang: str = None):
         ],
         "bot_username": settings.TELEGRAM_BOT_USERNAME,
         "community": community_stats(),
+        "regions": [[code, region_label(code, lang)] for code in TGUser.Region.values],
     }
 
 
@@ -210,6 +224,119 @@ class BootstrapView(_Auth):
 
     def get(self, request):
         return Response(bootstrap_data(request, request.user))
+
+
+class MeView(_Auth):
+    """
+    PATCH /webapp/me/ — изменить анкету из Mini App.
+    Ошибки: 400 {"errors": {поле: "required" | "invalid" | "taken" | "range"}}.
+    Ответ — свежий bootstrap, чтобы приложение сразу обновило все экраны.
+    """
+    FIELDS = ("fullname", "region", "phone", "email", "age", "education_place", "experience")
+
+    def patch(self, request):
+        user, data, errors = request.user, request.data, {}
+        changed = []
+
+        def clean(v):
+            return v.strip() if isinstance(v, str) else v
+
+        if "fullname" in data:
+            v = clean(data["fullname"]) or ""
+            if len(v) < 2:
+                errors["fullname"] = "required"
+            else:
+                user.fullname = v[:255]; changed.append("fullname")
+        if "region" in data:
+            v = clean(data["region"])
+            if v not in TGUser.Region.values:
+                errors["region"] = "invalid"
+            else:
+                user.region = v; changed.append("region")
+        if "phone" in data:
+            v = re.sub(r"[\s\-()]", "", clean(data["phone"]) or "")
+            if v and not re.fullmatch(r"\+?\d{7,15}", v):
+                errors["phone"] = "invalid"
+            else:
+                user.phone = v or None; changed.append("phone")
+        if "email" in data:
+            v = (clean(data["email"]) or "").lower()
+            if v:
+                try:
+                    validate_email(v)
+                except ValidationError:
+                    errors["email"] = "invalid"
+                else:
+                    if TGUser.objects.filter(email__iexact=v).exclude(id=user.id).exists():
+                        errors["email"] = "taken"
+            if "email" not in errors:
+                # None, а не "" — email unique, пустые строки у двух людей конфликтовали бы
+                user.email = v or None; changed.append("email")
+        if "age" in data:
+            v = data["age"]
+            if v in (None, ""):
+                user.age = None; changed.append("age")
+            else:
+                try:
+                    v = int(v)
+                    if not 5 <= v <= 120:
+                        raise ValueError
+                    user.age = v; changed.append("age")
+                except (TypeError, ValueError):
+                    errors["age"] = "range"
+        for f, limit in (("education_place", 255), ("experience", 2000)):
+            if f in data:
+                setattr(user, f, (clean(data[f]) or "")[:limit] or None); changed.append(f)
+
+        if errors:
+            return Response({"errors": errors}, status=status.HTTP_400_BAD_REQUEST)
+        if changed:
+            user.save(update_fields=changed)
+        return Response(bootstrap_data(request, user))
+
+
+class MePhotoView(_Auth):
+    """POST /webapp/me/photo/ (multipart, поле photo) — новое фото профиля."""
+    MAX_BYTES = 8 * 1024 * 1024
+
+    def post(self, request):
+        from PIL import Image, ImageOps
+        from django.core.files.base import ContentFile
+
+        f = request.FILES.get("photo")
+        if not f or f.size > self.MAX_BYTES:
+            return Response({"error": "too_big" if f else "required"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            with Image.open(f) as im:
+                im = ImageOps.exif_transpose(im).convert("RGB")
+                im.thumbnail((1024, 1024))
+                buf = io.BytesIO()
+                im.save(buf, "JPEG", quality=85, optimize=True)
+        except Exception:
+            return Response({"error": "not_image"}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = request.user
+        user.photo.save(f"user_{user.tg_id or user.id}_{int(time.time())}.jpg", ContentFile(buf.getvalue()), save=False)
+        user.save(update_fields=["photo"])
+        return Response(bootstrap_data(request, user))
+
+
+class MePasswordView(_Auth):
+    """
+    POST /webapp/me/password/ { password } — пароль для входа на сайт
+    (yashilqollar.uz) по email. Нужен email в профиле.
+    """
+
+    def post(self, request):
+        user = request.user
+        pw = request.data.get("password") or ""
+        if not user.email:
+            return Response({"error": "no_email"}, status=status.HTTP_400_BAD_REQUEST)
+        if len(pw) < 8:
+            return Response({"error": "short"}, status=status.HTTP_400_BAD_REQUEST)
+        user.set_password(pw)
+        user.save(update_fields=["password"])
+        return Response(bootstrap_data(request, user))
 
 
 class AllEventsView(_Auth):
