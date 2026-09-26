@@ -19,7 +19,8 @@ from html import escape
 from urllib.parse import parse_qsl
 
 from django.conf import settings
-from django.db.models import Q
+from django.core.cache import cache
+from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import status, views
@@ -113,9 +114,24 @@ def _event_payload(request, p, joined_status=None, lang="uz"):
     }
 
 
-def bootstrap_data(request, user: TGUser):
+def community_stats():
+    """Общий вклад проекта — для блока «Наш вклад». Кэш 5 минут."""
+    data = cache.get("webapp_community")
+    if data is None:
+        data = {
+            "volunteers": TGUser.objects.count(),
+            "events": EcoProject.objects.filter(date__lt=timezone.now()).count(),
+            "checkins": ProjectParticipation.objects.filter(status='attended').count(),
+            "regions": TGUser.objects.exclude(region__isnull=True).exclude(region='')
+                       .values('region').annotate(n=Count('id')).count(),
+        }
+        cache.set("webapp_community", data, 300)
+    return data
+
+
+def bootstrap_data(request, user: TGUser, lang: str = None):
     """Всё, что нужно главному экрану, — одним ответом."""
-    lang = lang_of_sync(user.tg_id) if user.tg_id else "uz"
+    lang = lang or (lang_of_sync(user.tg_id) if user.tg_id else "uz")
     now = timezone.now()
 
     my = {
@@ -145,6 +161,7 @@ def bootstrap_data(request, user: TGUser):
             for pp in history
         ],
         "bot_username": settings.TELEGRAM_BOT_USERNAME,
+        "community": community_stats(),
     }
 
 
@@ -195,6 +212,22 @@ class BootstrapView(_Auth):
         return Response(bootstrap_data(request, request.user))
 
 
+class AllEventsView(_Auth):
+    """GET /webapp/events/ — ближайшие мероприятия ВСЕХ регионов (фильтр «Все регионы»)."""
+
+    def get(self, request):
+        user = request.user
+        lang = lang_of_sync(user.tg_id) if user.tg_id else "uz"
+        my = dict(
+            ProjectParticipation.objects.filter(user=user).exclude(status='rejected')
+            .values_list('project_id', 'status')
+        )
+        qs = services.with_counts(
+            EcoProject.objects.filter(is_active=True, date__gte=timezone.now() - timedelta(hours=6))
+        ).order_by('date')[:60]
+        return Response({"events": [_event_payload(request, p, my.get(p.id), lang) for p in qs]})
+
+
 class JoinView(_Auth):
     """POST /webapp/events/<id>/join/ → { result: ok|already|gone|full|subscribe, event }"""
 
@@ -222,7 +255,7 @@ class LangView(_Auth):
         if lang not in LANGS or not request.user.tg_id:
             return Response({"error": "bad lang"}, status=status.HTTP_400_BAD_REQUEST)
         set_lang_sync(request.user.tg_id, lang)
-        return Response(bootstrap_data(request, request.user))
+        return Response(bootstrap_data(request, request.user, lang=lang))
 
 
 class QRView(_Auth):

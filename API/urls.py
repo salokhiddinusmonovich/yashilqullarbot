@@ -18,6 +18,7 @@ urlpatterns = [
     # ── Telegram Mini App (API/webapp.py) ──
     path('login/telegram-webapp/', webapp.WebAppLoginView.as_view(), name='webapp-login'),
     path('webapp/bootstrap/', webapp.BootstrapView.as_view(), name='webapp-bootstrap'),
+    path('webapp/events/', webapp.AllEventsView.as_view(), name='webapp-events'),
     path('webapp/events/<int:pk>/join/', webapp.JoinView.as_view(), name='webapp-join'),
     path('webapp/lang/', webapp.LangView.as_view(), name='webapp-lang'),
     path('webapp/qr.svg', webapp.QRView.as_view(), name='webapp-qr'),

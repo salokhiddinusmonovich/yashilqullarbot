@@ -11,9 +11,10 @@ from tgbot.i18n import t, variants
 
 @sync_to_async
 def _is_staff(tg_id: int) -> bool:
+    """Инструкция для координаторов — по роли, как и сам сканер (services.is_staff)."""
     from app_telegram.models import TGUser
-    user = TGUser.objects.filter(tg_id=tg_id).only("role", "is_admin").first()
-    return bool(user and (user.is_admin or user.role != TGUser.Role.VOLUNTEER))
+    from app_telegram.services import is_staff
+    return is_staff(TGUser.objects.filter(tg_id=tg_id).only("role", "is_admin").first())
 
 
 async def send_guide(message: types.Message, tg_id: int = None):

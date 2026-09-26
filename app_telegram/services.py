@@ -23,8 +23,16 @@ def region_group(region):
 
 
 def is_staff(user: TGUser) -> bool:
-    """Кто может сканировать QR: любая роль кроме волонтёра, плюс админы."""
-    return bool(user) and (user.is_admin or user.role != TGUser.Role.VOLUNTEER)
+    """
+    Кто может сканировать QR и видит аналитику мероприятия (бот, Mini App):
+    решает ТОЛЬКО роль — любая, кроме «Волонтёр» (координаторы, IT,
+    медиа, организаторы, основатель).
+
+    Галочка is_admin сюда НЕ даёт доступа — она только про админ-панель
+    со статистикой (/admin в боте). Админу, которому нужен сканер, нужно
+    дать роль.
+    """
+    return bool(user) and user.role != TGUser.Role.VOLUNTEER
 
 
 def with_counts(qs):

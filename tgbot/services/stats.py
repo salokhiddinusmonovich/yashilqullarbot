@@ -25,7 +25,6 @@ def _client():
         _redis = aioredis.Redis(
             host=os.environ.get("REDIS_HOST", "redis"),
             port=int(os.environ.get("REDIS_PORT", "6379")),
-            password=os.environ.get("REDIS_PASSWORD") or None,
             db=6,
             decode_responses=True,
         )

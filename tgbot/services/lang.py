@@ -38,11 +38,18 @@ _async = None
 _sync = None
 
 
+class LangUnavailable(Exception):
+    """Redis не ответил — язык неизвестен (это НЕ то же самое, что «не выбран»)."""
+
+
 def _params():
+    # Подключаемся ТАК ЖЕ, как FSM-хранилище бота (bot.py, RedisStorage2):
+    # без пароля. Redis в docker-compose пароля не имеет, а на AUTH с
+    # паролем отвечает ошибкой — из-за этого язык не сохранялся и через
+    # полминуты «возвращался» на узбекский.
     return dict(
         host=os.environ.get("REDIS_HOST", "redis"),
         port=int(os.environ.get("REDIS_PORT", "6379")),
-        password=os.environ.get("REDIS_PASSWORD") or None,
         db=6,
         decode_responses=True,
         socket_timeout=2,
@@ -64,7 +71,13 @@ def _sclient():
     return _sync
 
 
-async def get_lang(tg_id: int) -> str | None:
+async def get_lang(tg_id: int, strict: bool = False) -> str | None:
+    """
+    Язык юзера или None, если он его ещё не выбирал.
+    Если Redis недоступен — последний известный язык из памяти (даже
+    устаревший); при strict=True и пустой памяти — LangUnavailable,
+    чтобы вызывающий НЕ принял сбой за «язык не выбран».
+    """
     hit = _cached(tg_id)
     if hit:
         return hit
@@ -72,6 +85,11 @@ async def get_lang(tg_id: int) -> str | None:
         lang = await _aclient().get(f"lang:{tg_id}")
     except Exception as e:
         logger.warning("lang redis error: %s", e)
+        stale = _cache.get(tg_id)
+        if stale:
+            return stale[0]
+        if strict:
+            raise LangUnavailable from e
         return None
     if lang in LANGS:
         _remember(tg_id, lang)

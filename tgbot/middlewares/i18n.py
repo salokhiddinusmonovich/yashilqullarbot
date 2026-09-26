@@ -3,7 +3,7 @@ from aiogram.dispatcher.middlewares import BaseMiddleware
 from asgiref.sync import sync_to_async
 
 from tgbot.i18n import current_lang, lang_from_telegram, DEFAULT_LANG
-from tgbot.services.lang import get_lang, set_lang
+from tgbot.services.lang import get_lang, set_lang, LangUnavailable
 
 
 @sync_to_async
@@ -24,7 +24,14 @@ class I18nMiddleware(BaseMiddleware):
     """
 
     async def _setup(self, user: types.User, data: dict):
-        lang = await get_lang(user.id)
+        try:
+            lang = await get_lang(user.id, strict=True)
+        except LangUnavailable:
+            # Redis временно недоступен — отвечаем на языке Telegram-клиента,
+            # но НИЧЕГО не записываем, чтобы не затереть выбранный язык.
+            data["lang"] = None
+            current_lang.set(lang_from_telegram(user.language_code))
+            return
         if lang is None and await _is_registered(user.id):
             lang = DEFAULT_LANG
             await set_lang(user.id, lang)
