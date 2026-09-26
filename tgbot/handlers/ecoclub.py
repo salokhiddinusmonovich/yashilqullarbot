@@ -272,7 +272,7 @@ async def list_past_events(message: types.Message, state: FSMContext):
 async def handle_back(message: types.Message, state: FSMContext):
     await state.finish()
     from ..keyboards import reply
-    await message.answer("Asosiy menyu", reply_markup=reply.hi_there())
+    await message.answer("Asosiy menyu", reply_markup=await reply.main_menu(message.from_user.id))
 
 
 # --- РЕГИСТРАЦИЯ ---

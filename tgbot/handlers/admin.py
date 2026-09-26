@@ -6,6 +6,7 @@ from asgiref.sync import sync_to_async
 from app_telegram.models import TGUser
 from django.db.models import Q
 from aiogram.utils.exceptions import ChatNotFound, Unauthorized
+from tgbot.services import stats
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,7 @@ async def run_broadcast(message: types.Message):
             await asyncio.sleep(0.05) 
         except exceptions.BotBlocked:
             blocked += 1
+            await stats.mark_blocked(user.tg_id)
         except exceptions.RetryAfter as e:
             await asyncio.sleep(e.timeout)
             await message.reply_to_message.copy_to(chat_id=user.tg_id)

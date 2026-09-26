@@ -33,7 +33,11 @@ from tgbot.handlers.feedback import register_feedback
 from tgbot.handlers.contact_with_team import register_project_handlers
 # добавить к остальным импортам
 from tgbot.handlers.link_account import register_link_account_handlers, ask_if_registered
+from tgbot.handlers.admin_panel import register_admin_panel
+from tgbot.handlers.help import register_help
 from tgbot.middlewares.environment import EnvironmentMiddleware
+from tgbot.middlewares.activity import ActivityMiddleware
+from tgbot.services.daily_report import daily_report_loop
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +61,7 @@ USE_MINI_APP = False
 # --- 3. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
 def register_all_middlewares(dp, config):
     dp.setup_middleware(EnvironmentMiddleware(config=config))
+    dp.setup_middleware(ActivityMiddleware())
 
 
 def register_all_filters(dp):
@@ -74,6 +79,7 @@ def register_all_handlers(dp):
     register_feedback(dp)            # рейтинг после посещения (пуш от бота, не кнопка меню)
     # добавить внутрь register_all_handlers(dp), в блок "работает всегда"
     register_link_account_handlers(dp)
+    register_help(dp)                # ❓ Qo'llanma / /help
     if USE_MINI_APP:
         # ── РЕЖИМ MINI APP ──
         # Ничего из старых текстовых кнопок ниже НЕ регистрируется —
@@ -91,6 +97,11 @@ def register_all_handlers(dp):
         register_project_handlers(dp)
         register_shop(dp)
         register_qr_handlers(dp)
+
+    # Админка в боте (/admin) — регистрируется ПОСЛЕДНЕЙ: её хендлеры
+    # состояний ("введите @username") ловят любой текст, и так /start и
+    # кнопки меню продолжают работать, даже если админ бросил ввод на полпути.
+    register_admin_panel(dp)
 
     print(f"Handlers registered! (mode: {'MINI APP' if USE_MINI_APP else 'TEXT'})")
 
@@ -126,6 +137,9 @@ async def main():
     register_all_middlewares(dp, config)
     register_all_filters(dp)
     register_all_handlers(dp)
+
+    # Ежедневный отчёт админам (21:00 по Ташкенту, см. DAILY_REPORT_HOUR)
+    asyncio.create_task(daily_report_loop(bot))
 
     # Запуск polling
     try:

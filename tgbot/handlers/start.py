@@ -63,11 +63,11 @@ async def user_start(message: Message, state: FSMContext):
             await message.answer("❌ Malumotlar formati noto'g'ri (ID raqam bo'lishi kerak).")
             return
 
-        result_text, volunteer, project = await process_qr_logic(message.from_user.id, target_id)
+        result_text, volunteer, project, confirmed = await process_qr_logic(message.from_user.id, target_id)
 
         await message.answer(result_text, parse_mode="HTML")
 
-        if volunteer and "✅" in result_text:
+        if confirmed:
             try:
                 await message.bot.send_message(
                     chat_id=volunteer.tg_id,
@@ -95,7 +95,7 @@ async def user_start(message: Message, state: FSMContext):
         # Уже зарегистрирован (есть tg_id в базе) — обычное приветствие, без изменений
         await message.answer(
             f"👋 Salom, {hbold(user.fullname)}! @YashilQollar oilasiga xush kelibsiz.",
-            reply_markup=reply.hi_there(),
+            reply_markup=reply.hi_there(user.is_admin),
             parse_mode="HTML"
         )
     else:

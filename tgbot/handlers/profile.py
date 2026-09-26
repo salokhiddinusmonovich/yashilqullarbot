@@ -166,7 +166,7 @@ async def go_back_to_main(message: types.Message, state: FSMContext):
     await state.finish()
     await message.answer(
         "⬅️ Asosiy menyuga qaytdingiz", 
-        reply_markup=reply.hi_there() # Вызываем твоё главное меню
+        reply_markup=await reply.main_menu(message.from_user.id)
     )
 
 # --- РЕГИСТРАЦИЯ ХЕНДЛЕРОВ ---

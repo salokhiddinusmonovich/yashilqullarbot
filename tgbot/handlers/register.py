@@ -9,6 +9,8 @@ from django.db import IntegrityError
 from ..keyboards.text import register_text
 from ..keyboards.reply import contact_btn
 from ..keyboards import reply
+from .link_account import offer_link
+from .help import send_guide
 from app_telegram.models import TGUser
 from django.core.files import File
 from io import BytesIO
@@ -56,6 +58,14 @@ async def email_handler(message: Message, state: FSMContext):
     email = message.text.strip()
     if not EMAIL_REGEX.match(email):
         await message.answer("Iltimos, to‘g‘ri email kiriting (mas: user@gmail.com)")
+        return
+
+    # Email уже есть в базе (чаще всего — зарегистрировался на сайте):
+    # не гоним человека по всей анкете до "email band" в самом конце,
+    # а сразу предлагаем привязать существующий аккаунт.
+    existing = await sync_to_async(TGUser.objects.filter(email__iexact=email).first)()
+    if existing:
+        await offer_link(message, state, existing)
         return
 
     await state.update_data(email=email)
@@ -202,11 +212,14 @@ async def phone_handler(message: Message, state: FSMContext):
         error_text = str(e).lower()
 
         if "email" in error_text:
+            # Кто-то занял этот email, пока юзер заполнял анкету —
+            # предлагаем привязку, как и на шаге email.
+            existing = await sync_to_async(TGUser.objects.filter(email__iexact=new_user.email).first)()
+            if existing:
+                await offer_link(message, state, existing)
+                return
             await state.set_state(RegisterState.email.state)
-            await message.answer(
-                "⚠️ Bu email allaqachon ro'yxatdan o'tgan. "
-                "Iltimos, boshqa email manzilini kiriting 👇"
-            )
+            await message.answer("⚠️ Bu email band. Iltimos, boshqa email kiriting 👇")
             return
 
         if "tg_id" in error_text:
@@ -221,6 +234,7 @@ async def phone_handler(message: Message, state: FSMContext):
 
     await state.finish()
     await message.answer("✅ Ro'yxatdan o'tish muvaffaqiyatli yakunlandi!", reply_markup=reply.hi_there())
+    await send_guide(message)
 
 # Register all handlers
 def register_register(dp: Dispatcher):

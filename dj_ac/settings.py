@@ -208,6 +208,19 @@ TELEGRAM_BOT_TOKEN = os.environ.get("BOT_TOKEN")
 TELEGRAM_BOT_USERNAME = os.environ.get("BOT_USERNAME", "yashilqollarbot")
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
 
+# Почта — нужна боту, чтобы слать код подтверждения при привязке
+# аккаунта с сайта (когда юзер забыл пароль или входил через Google).
+# Для Gmail: EMAIL_HOST_USER=ящик, EMAIL_HOST_PASSWORD=пароль приложения
+# (https://myaccount.google.com/apppasswords), не обычный пароль.
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "smtp.gmail.com")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL") or f"Yashil Qo'llar <{EMAIL_HOST_USER}>"
+EMAIL_TIMEOUT = 15
+
 
 LOGGING = {
     'version': 1,
