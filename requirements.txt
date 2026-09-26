@@ -41,3 +41,4 @@ django-modeltranslation
 python-dotenv
 django-cors-headers
 google-auth
+gunicorn

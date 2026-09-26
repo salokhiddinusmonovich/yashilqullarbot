@@ -1,185 +1,166 @@
-from aiogram.dispatcher.filters.state import State, StatesGroup
-from aiogram import types
+from html import escape
+
+from aiogram import types, Dispatcher
 from aiogram.dispatcher import FSMContext
+from aiogram.dispatcher.filters.state import State, StatesGroup
 from asgiref.sync import sync_to_async
-from aiogram import Dispatcher
-from app_telegram.models import TGUser
-from ..keyboards import reply # Убедись, что путь к твоим главным кнопкам верный
+
+from app_telegram.models import TGUser, ProjectParticipation
+from tgbot.i18n import t, variants, region_label, role_label, rank_label, region_from_text
+from ..keyboards import reply
+from ..keyboards.known_buttons import is_menu_button_text
 from ..services.photo_cache import send_cached_photo, file_cache_key
+
 
 class ProfileUpdate(StatesGroup):
     waiting_for_name = State()
     waiting_for_photo = State()
-    waiting_for_region = State() # НОВОЕ: Состояние для изменения региона
+    waiting_for_region = State()
 
-# --- 1. ГЛАВНОЕ МЕНЮ ПРОФИЛЯ ---
-async def profile_menu(message: types.Message, state: FSMContext):
-    await state.finish() # Сбрасываем всё, чтобы кнопки работали сразу
+
+def profile_kb():
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add("📄 Profilni ko'rish")
-    kb.add("📸 Rasmni yangilash", "✍️ Ismni o'zgartirish")
-    kb.add("📍 Hududni o'zgartirish") # НОВОЕ: Кнопка смены региона
-    kb.add("⬅️ Orqaga")
-    
-    await message.answer(
-        "👤 <b>Shaxsiy kabinet</b>\n\n"
-        "Kerakli bo'limni tanlang:",
-        reply_markup=kb,
-        parse_mode="HTML"
-    )
+    kb.add(t("btn_view_profile"))
+    kb.add(t("btn_change_photo"), t("btn_change_name"))
+    kb.add(t("btn_change_region"))
+    kb.add(t("btn_back"))
+    return kb
 
+
+def _phone(phone: str) -> str:
+    if not phone:
+        return "—"
+    return phone if phone.startswith("+") else f"+{phone}"
+
+
+# --- 1. МЕНЮ ПРОФИЛЯ ---
+async def profile_menu(message: types.Message, state: FSMContext):
+    await state.finish()
+    await message.answer(t("profile_menu_title"), reply_markup=profile_kb())
+
+
+# --- 2. ПРОСМОТР ПРОФИЛЯ ---
 async def view_my_profile(message: types.Message):
-    # 1. Получаем юзера
     user = await sync_to_async(TGUser.objects.filter(tg_id=message.from_user.id).first)()
-    
     if not user:
-        await message.answer("Siz hali ro'yxatdan o'tmagansiz. ❗")
+        await message.answer(t("not_registered"))
         return
 
-    # 2. Получаем список посещенных ивентов (статус 'attended')
-    from app_telegram.models import ProjectParticipation
-    attended_projects = await sync_to_async(list)(
-        ProjectParticipation.objects.filter(user=user, status='attended').select_related('project')
+    attended = await sync_to_async(list)(
+        ProjectParticipation.objects.filter(user=user, status='attended')
+        .select_related('project').order_by('-project__date')
     )
-    
-    # Считаем количество
-    events_count = len(attended_projects)
-    
-    # Формируем список названий ивентов
-    projects_titles = "\n".join([f"✅ {p.project.title}" for p in attended_projects]) or "Hali tadbirlarda qatnashmadingiz 🌿"
+    titles = "\n".join(f"✅ {escape(p.project.title)}" for p in attended) or t("profile_no_events")
 
-    # НОВОЕ: Логика для Роли и Региона
-    role_display = user.get_role_display()
-    region_display = user.get_region_display() if user.region else "⚠️ Kiritilmagan!"
-
-    profile_text = (
-        f"🌟 <b>SIZNING PROFILINGIZ</b>\n"
-        f"━━━━━━━━━━━━━━\n"
-        f"🎭 <b>Rol:</b> {role_display}\n" # НОВОЕ: Отображение роли
-        f"🏆 <b>Daraja:</b> {user.rank}\n"
-        f"💰 <b>Balans:</b> {user.balance} eko-ball\n"
-        f"📅 <b>Tadbirlar:</b> {events_count} ta\n"
-        f"━━━━━━━━━━━━━━\n"
-        f"👤 <b>Ism:</b> {user.fullname}\n"
-        f"📞 <b>Tel:</b> +{user.phone}\n"
-        f"📍 <b>Hudud:</b> {region_display}\n\n"
+    text = t(
+        "profile_card",
+        role=role_label(user.role),
+        rank=rank_label(user.balance),
+        balance=user.balance,
+        events=len(attended),
+        name=escape(user.fullname or "—"),
+        phone=_phone(user.phone),
+        region=region_label(user.region),
     )
+    if user.region not in TGUser.Region.values:
+        text += t("profile_region_warning")
+    text += t("profile_events", list=titles)
 
-    # НОВОЕ: Напоминание, если регион не выбран
-    if not user.region:
-        profile_text += (
-            "❗ <b>DIQQAT:</b> Siz hududingizni tanlamagansiz! Loyihalarda ishtirok etish uchun "
-            "menyudagi <b>\"📍 Hududni o'zgartirish\"</b> tugmasini bosib hududingizni kiriting.\n\n"
-        )
-
-    profile_text += (
-        f"📜 <b>Ishtirok etgan tadbirlaringiz:</b>\n"
-        f"{projects_titles}\n\n"
-        f"🍀 <i>Yashil Qo'llar — birgalikda kuchmiz!</i>"
-    )
-
-    # Вывод фото
     if user.photo:
         try:
+            # Подпись к фото в Telegram — максимум 1024 символа
+            short = len(text) <= 1024
             await send_cached_photo(
                 message, file_cache_key(user.photo.path), lambda: open(user.photo.path, 'rb'),
-                caption=profile_text, parse_mode="HTML"
+                caption=text if short else None,
             )
+            if not short:
+                await message.answer(text)
+            return
         except Exception:
-            await message.answer(profile_text, parse_mode="HTML")
-    else:
-        await message.answer(profile_text, parse_mode="HTML")
+            pass
+    await message.answer(text)
 
-# --- 3. ИЗМЕНЕНИЕ ИМЕНИ ---
+
+# --- 3. ИМЯ ---
 async def ask_for_name(message: types.Message):
-    await message.answer("✍️ <b>Yangi ism va familiyangizni kiriting:</b>", parse_mode="HTML")
+    await message.answer(t("ask_new_name"), reply_markup=types.ReplyKeyboardRemove())
     await ProfileUpdate.waiting_for_name.set()
 
+
 async def save_new_name(message: types.Message, state: FSMContext):
-    new_name = message.text
-    user = await sync_to_async(TGUser.objects.get)(tg_id=message.from_user.id)
-    user.fullname = new_name
-    await sync_to_async(user.save)()
-    
-    await message.answer(f"✅ <b>Ism muvaffaqiyatli o'zgartirildi:</b> {new_name}", parse_mode="HTML")
+    if is_menu_button_text(message.text):
+        await profile_menu(message, state)
+        return
+    new_name = message.text.strip()[:255]
+    await sync_to_async(TGUser.objects.filter(tg_id=message.from_user.id).update)(fullname=new_name)
+    await message.answer(t("name_saved", name=escape(new_name)))
     await profile_menu(message, state)
 
-# --- 4. ИЗМЕНЕНИЕ ФОТО ---
+
+# --- 4. ФОТО ---
 async def ask_for_photo(message: types.Message):
-    await message.answer("📸 <b>Yangi profilingiz uchun rasm yuboring:</b>", parse_mode="HTML")
+    await message.answer(t("ask_new_photo"))
     await ProfileUpdate.waiting_for_photo.set()
+
 
 async def save_new_photo(message: types.Message, state: FSMContext):
     if not message.photo:
-        await message.answer("Iltimos, rasm yuboring! 📸")
+        await message.answer(t("send_photo"))
         return
 
     user = await sync_to_async(TGUser.objects.get)(tg_id=message.from_user.id)
-    photo = message.photo[-1]
-    
     photo_name = f"users_photos/user_{user.tg_id}.jpg"
-    await photo.download(destination_file=f"media/{photo_name}")
-    
+    await message.photo[-1].download(destination_file=f"media/{photo_name}")
+
     user.photo = photo_name
-    await sync_to_async(user.save)()
-    
-    await message.answer("✅ <b>Profilingiz rasmi yangilandi!</b>")
+    await sync_to_async(user.save)(update_fields=['photo'])
+
+    await message.answer(t("photo_saved"))
     await profile_menu(message, state)
 
-# --- 5. НОВОЕ: ИЗМЕНЕНИЕ РЕГИОНА ---
+
+# --- 5. РЕГИОН ---
 async def ask_for_region(message: types.Message):
-    # Динамически создаем клавиатуру со всеми регионами из БД
-    kb = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    regions = [choice[1] for choice in TGUser.Region.choices]
-    kb.add(*regions)
-    kb.add("⬅️ Orqaga")
-    
-    await message.answer("📍 <b>Yangi hududingizni tanlang:</b>", reply_markup=kb, parse_mode="HTML")
+    await message.answer(t("ask_new_region"), reply_markup=reply.region_kb(with_back=True, row_width=2))
     await ProfileUpdate.waiting_for_region.set()
 
+
 async def save_new_region(message: types.Message, state: FSMContext):
-    if message.text == "⬅️ Orqaga":
+    if message.text in variants("btn_back"):
         await profile_menu(message, state)
         return
 
-    # Ищем системное значение (db_value) выбранного региона
-    selected_region_db = None
-    for db_val, display_val in TGUser.Region.choices:
-        if message.text == display_val:
-            selected_region_db = db_val
-            break
-            
-    if not selected_region_db:
-        await message.answer("Iltimos, pastdagi tugmalardan foydalanib hududni tanlang! 📍")
+    region = region_from_text(message.text)
+    if not region:
+        await message.answer(t("use_buttons"))
         return
-        
-    # Сохраняем регион
-    user = await sync_to_async(TGUser.objects.get)(tg_id=message.from_user.id)
-    user.region = selected_region_db
-    await sync_to_async(user.save)()
-    
-    await message.answer(f"✅ <b>Hudud muvaffaqiyatli saqlandi:</b> {message.text}", parse_mode="HTML")
-    await profile_menu(message, state) # Возвращаем в главное меню профиля
 
-# --- 6. КНОПКА НАЗАД (ГЛАВНОЕ МЕНЮ) ---
+    await sync_to_async(TGUser.objects.filter(tg_id=message.from_user.id).update)(region=region)
+    await message.answer(t("region_saved", region=region_label(region)))
+    await profile_menu(message, state)
+
+
+# --- 6. НАЗАД В ГЛАВНОЕ МЕНЮ ---
 async def go_back_to_main(message: types.Message, state: FSMContext):
     await state.finish()
-    await message.answer(
-        "⬅️ Asosiy menyuga qaytdingiz", 
-        reply_markup=await reply.main_menu(message.from_user.id)
-    )
+    await message.answer(t("back_to_main"), reply_markup=await reply.main_menu(message.from_user.id))
 
-# --- РЕГИСТРАЦИЯ ХЕНДЛЕРОВ ---
+
 def register_profile(dp: Dispatcher):
-    # Основные кнопки меню профиля
-    dp.register_message_handler(profile_menu, text="👤 Mening profilim", state="*")
-    dp.register_message_handler(view_my_profile, text="📄 Profilni ko'rish", state="*")
-    dp.register_message_handler(ask_for_name, text="✍️ Ismni o'zgartirish", state="*")
-    dp.register_message_handler(ask_for_photo, text="📸 Rasmni yangilash", state="*")
-    dp.register_message_handler(ask_for_region, text="📍 Hududni o'zgartirish", state="*") # НОВОЕ
-    dp.register_message_handler(go_back_to_main, text="⬅️ Orqaga", state="*")
-    
-    # Состояния FSM
+    dp.register_message_handler(profile_menu, text=variants("btn_profile"), state="*")
+    dp.register_message_handler(view_my_profile, text=variants("btn_view_profile"), state="*")
+    dp.register_message_handler(ask_for_name, text=variants("btn_change_name"), state="*")
+    dp.register_message_handler(ask_for_photo, text=variants("btn_change_photo"), state="*")
+    dp.register_message_handler(ask_for_region, text=variants("btn_change_region"), state="*")
+
     dp.register_message_handler(save_new_name, state=ProfileUpdate.waiting_for_name)
     dp.register_message_handler(save_new_photo, content_types=['photo'], state=ProfileUpdate.waiting_for_photo)
-    dp.register_message_handler(save_new_region, state=ProfileUpdate.waiting_for_region) # НОВОЕ
+    dp.register_message_handler(save_new_photo, state=ProfileUpdate.waiting_for_photo)
+    dp.register_message_handler(save_new_region, state=ProfileUpdate.waiting_for_region)
+
+
+def register_back(dp: Dispatcher):
+    """Общая кнопка «Назад» → главное меню. Регистрируется ПОСЛЕ всех
+    хендлеров состояний, чтобы «Назад» внутри выбора региона вёл в профиль."""
+    dp.register_message_handler(go_back_to_main, text=variants("btn_back"), state="*")

@@ -1,3 +1,5 @@
+from html import escape
+
 from aiogram import types, Dispatcher
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
@@ -5,13 +7,21 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 from asgiref.sync import sync_to_async
 from django.db.models import Count, Q
 from django.utils import timezone
+
 from app_telegram.models import TGUser, EcoProject, ProjectParticipation
+from tgbot.i18n import t, variants
 from tgbot.services.photo_cache import send_cached_photo, file_cache_key
 
 CHANNEL_ID = "@yashilqollar"
+TASHKENT = ['tashkent_s', 'tashkent_v']
+PAST_LIMIT = 10
 
 
 class EventStates(StatesGroup):
+    # Старый сценарий (reply-кнопка "Ro'yxatdan o'tish" под последним
+    # показанным мероприятием). Оставлен только чтобы кнопки из старых
+    # сообщений не ломались — новые списки используют inline-кнопку
+    # под КАЖДЫМ мероприятием (evreg:<id>).
     waiting_for_registration = State()
 
 
@@ -19,271 +29,195 @@ class EventStates(StatesGroup):
 
 def get_events_menu():
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.row(KeyboardButton("📅 Kelgusi tadbirlar"), KeyboardButton("📜 O'tgan tadbirlar"))
-    kb.row(KeyboardButton("⬅️ Orqaga"))
+    kb.row(KeyboardButton(t("btn_upcoming")), KeyboardButton(t("btn_past")))
+    kb.row(KeyboardButton(t("btn_back")))
     return kb
 
-def get_registration_kb():
-    kb = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    kb.add(KeyboardButton("✅ Ro'yxatdan o'tish"))
-    kb.add(KeyboardButton("⬅️ Orqaga"))
-    return kb
+
+def channel_kb():
+    return InlineKeyboardMarkup().add(
+        InlineKeyboardButton(t("btn_join_channel"), url=f"https://t.me/{CHANNEL_ID.replace('@', '')}")
+    )
+
+
+async def _is_subscribed(bot, tg_id: int) -> bool:
+    try:
+        member = await bot.get_chat_member(chat_id=CHANNEL_ID, user_id=tg_id)
+        return member.status in ('creator', 'administrator', 'member')
+    except Exception as e:
+        print(f"Subscription check error: {e}")
+        return True  # не блокируем запись, если Telegram не ответил
+
+
+def _event_header(p) -> str:
+    date = timezone.localtime(p.date).strftime('%d.%m.%Y %H:%M')
+    text = f"🚀 <b>{escape(p.title)}</b>\n🗓 {date}"
+    if p.location_name:
+        text += f" · 📍 {escape(p.location_name)}"
+    text += "\n\n"
+    if p.description:
+        text += f"{escape(p.description)}\n\n"
+    return text
 
 
 # --- ХЕНДЛЕРЫ ---
 
 async def show_events_menu(message: types.Message, state: FSMContext):
     await state.finish()
-    await message.answer("<b>Tadbirlar bo'limi</b> ✨", reply_markup=get_events_menu(), parse_mode="HTML")
+    await message.answer(t("events_title"), reply_markup=get_events_menu())
 
 
 async def list_upcoming_events(message: types.Message, state: FSMContext):
     await state.finish()
 
-    user = await sync_to_async(TGUser.objects.get)(tg_id=message.from_user.id)
-
-    tashkent_regions = ['tashkent_s', 'tashkent_v']
-
-    # ИСПРАВЛЕНО: participants_count считаем одним annotate() сразу для
-    # всех проектов, а не отдельным count()-запросом на КАЖДЫЙ проект в
-    # цикле ниже — раньше список из 10 мероприятий делал 10 лишних
-    # круговых походов в базу просто чтобы узнать "сколько людей записано".
-    participants_count = Count('participants', filter=~Q(participants__status='rejected'))
-
-    if user.region in tashkent_regions:
-        projects = await sync_to_async(list)(
-            EcoProject.objects.filter(
-                is_active=True,
-                date__gt=timezone.now(),
-                region__in=tashkent_regions
-            ).annotate(participants_count=participants_count).order_by('date')
-        )
-    else:
-        projects = await sync_to_async(list)(
-            EcoProject.objects.filter(
-                is_active=True,
-                date__gt=timezone.now(),
-                region=user.region
-            ).annotate(participants_count=participants_count).order_by('date')
-        )
-
-    if not projects:
-        await message.answer(
-            "😊 Sizning hududingizda hozircha yangi tadbirlar yo'q.\n"
-            "Kuzatib boring, tez orada e'lon qilinadi!",
-            reply_markup=get_events_menu()
-        )
+    user = await sync_to_async(TGUser.objects.filter(tg_id=message.from_user.id).first)()
+    if not user:
+        await message.answer(t("not_registered"))
+        return
+    if user.region not in TGUser.Region.values:
+        await message.answer(t("events_no_region"), reply_markup=get_events_menu())
         return
 
-    # Проверка подписки один раз
-    is_subscribed = True
-    try:
-        member = await message.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=message.from_user.id)
-        if member.status not in ['creator', 'administrator', 'member']:
-            is_subscribed = False
-    except Exception as e:
-        print(f"Subscription check error: {e}")
-        is_subscribed = True
+    regions = TASHKENT if user.region in TASHKENT else [user.region]
+    # participants_count одним annotate() — без отдельного count() на каждое мероприятие
+    projects = await sync_to_async(list)(
+        EcoProject.objects.filter(is_active=True, date__gt=timezone.now(), region__in=regions)
+        .annotate(participants_count=Count('participants', filter=~Q(participants__status='rejected')))
+        .order_by('date')
+    )
 
-    # ИСПРАВЛЕНО: одним запросом получаем id всех проектов, на которые
-    # юзер уже подал заявку — чтобы для каждого проекта в списке сразу
-    # знать "уже записан" без похода в базу на каждой итерации цикла.
-    already_joined_ids = await sync_to_async(set)(
+    if not projects:
+        await message.answer(t("events_none"), reply_markup=get_events_menu())
+        return
+
+    # один запрос — на какие из этих мероприятий юзер уже записан
+    joined = await sync_to_async(set)(
         ProjectParticipation.objects.filter(user=user, project__in=projects).values_list('project_id', flat=True)
     )
 
     for p in projects:
-        current_count = p.participants_count
+        text = _event_header(p) + t("event_seats", count=p.participants_count, max=p.max_participants) + "\n"
 
-        text = f"🚀 <b>{p.title}</b>\n\n"
-        if p.description:
-            text += f"{p.description}\n\n"
-        text += f"👥 <b>Joylar:</b> {current_count}/{p.max_participants}\n"
-
-        if p.id in already_joined_ids:
-            # ИСПРАВЛЕНО: уже зарегистрирован — говорим об этом сразу,
-            # в самом списке мероприятий, даже не показывая кнопку регистрации.
-            text += "\n✅ <b>Siz bu tadbirga allaqachon yozilgansiz.</b>"
-            kb = get_events_menu()
-
-        elif current_count >= p.max_participants:
-            text += f"\n❌ <b>Afsuski, joylar tugadi.</b> Keyingi tadbirlarni kuzatib boring! 🌱"
-            kb = get_events_menu()
-
-        elif not is_subscribed:
-            text += (
-                f"\n⚠️ <b>Ro'yxatdan o'tish uchun avval kanalimizga a'zo bo'ling!</b>\n"
-                f"Kanalga a'zo bo'lib, ushbu bo'limga qaytadan kiring."
-            )
-            kb = InlineKeyboardMarkup().add(
-                InlineKeyboardButton(
-                    text="📢 Kanalga a'zo bo'lish",
-                    url=f"https://t.me/{CHANNEL_ID.replace('@', '')}"
-                )
-            )
-
+        kb = None
+        if p.id in joined:
+            text += "\n" + t("event_already")
+        elif p.participants_count >= p.max_participants:
+            text += "\n" + t("event_full")
         else:
-            text += f"\n<i>Ro'yxatdan o'tish uchun pastdagi tugmani bosing 👇</i>"
-            kb = get_registration_kb()
-            await state.update_data(project_id=p.id)
-            await EventStates.waiting_for_registration.set()
+            kb = InlineKeyboardMarkup().add(
+                InlineKeyboardButton(t("btn_event_register"), callback_data=f"evreg:{p.id}")
+            )
 
         if p.photo:
             try:
-                # Одна и та же фотка мероприятия шлётся ВСЕМ юзерам региона
-                # при каждом заходе в раздел — кэш file_id экономит повторную
-                # загрузку с диска и аплоад в Telegram на каждый показ.
+                # Одна и та же фотка шлётся всем юзерам региона — кэш file_id
+                # экономит повторную загрузку с диска и аплоад в Telegram.
                 await send_cached_photo(
                     message, file_cache_key(p.photo.path), lambda path=p.photo.path: open(path, 'rb'),
-                    caption=text, reply_markup=kb, parse_mode="HTML"
+                    caption=text if len(text) <= 1024 else None, reply_markup=kb,
                 )
+                if len(text) > 1024:
+                    await message.answer(text, reply_markup=kb)
+                continue
             except Exception:
-                await message.answer(text, reply_markup=kb, parse_mode="HTML")
-        else:
-            await message.answer(text, reply_markup=kb, parse_mode="HTML")
+                pass
+        await message.answer(text, reply_markup=kb)
+
+
+@sync_to_async
+def _register(tg_id: int, project_id: int):
+    """Возвращает (ключ_ответа, project). Ключ — перевод для t()."""
+    user = TGUser.objects.filter(tg_id=tg_id).first()
+    if not user:
+        return "not_registered", None
+    project = EcoProject.objects.filter(id=project_id, is_active=True).first()
+    if not project:
+        return "event_gone", None
+    if ProjectParticipation.objects.filter(user=user, project=project).exists():
+        return "event_already_applied", project
+    if project.participants.exclude(status='rejected').count() >= project.max_participants:
+        return "event_no_seats", project
+    _, created = ProjectParticipation.objects.get_or_create(
+        user=user, project=project, defaults={'status': 'approved'}
+    )
+    return ("ok" if created else "event_already_applied"), project
+
+
+async def _do_register(message: types.Message, tg_id: int, project_id: int, bot):
+    # Сначала быстрые проверки в БД, и только потом — сетевой запрос
+    # в Telegram на проверку подписки.
+    already = await sync_to_async(
+        ProjectParticipation.objects.filter(user__tg_id=tg_id, project_id=project_id).exists
+    )()
+    if already:
+        await message.answer(t("event_already_applied"), reply_markup=get_events_menu())
+        return
+
+    if not await _is_subscribed(bot, tg_id):
+        await message.answer(t("event_subscribe_first"), reply_markup=channel_kb())
+        return
+
+    result, project = await _register(tg_id, project_id)
+    if result != "ok":
+        await message.answer(t(result), reply_markup=get_events_menu())
+        return
+
+    # Регистрация сразу approved — ссылку на группу даём тут же.
+    text = t("event_accepted", title=escape(project.title))
+    if project.chat_link:
+        text += t("event_accepted_chat", link=project.chat_link)
+    await message.answer(text, reply_markup=get_events_menu(), disable_web_page_preview=True)
+
+
+async def register_callback(call: types.CallbackQuery):
+    await call.answer()
+    project_id = int(call.data.split(":", 1)[1])
+    await _do_register(call.message, call.from_user.id, project_id, call.bot)
 
 
 async def process_registration(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    project_id = data.get('project_id')
-
-    if not project_id:
-        await message.answer("Xatolik yuz berdi. Iltimos, qaytadan urinib ko'ring.", reply_markup=get_events_menu())
-        await state.finish()
-        return
-
-    user = await sync_to_async(TGUser.objects.get)(tg_id=message.from_user.id)
-
-    # ИСПРАВЛЕНО: ПЕРВЫМ ДЕЛОМ проверяем в базе, не зарегистрирован ли
-    # юзер уже на этот проект — это быстрый локальный запрос к БД.
-    # Раньше здесь СНАЧАЛА шёл сетевой запрос get_chat_member (проверка
-    # подписки на канал), и только потом — проверка "а не записан ли уже".
-    # Из-за этого уже зарегистрированный юзер каждый раз ждал лишний
-    # сетевой round-trip в Telegram API просто чтобы услышать "ты и так
-    # уже записан". Теперь для уже записанных — мгновенный ответ, без
-    # единого сетевого запроса.
-    existing = await sync_to_async(
-        ProjectParticipation.objects.filter(user=user, project_id=project_id).first
-    )()
-    if existing:
-        await state.finish()
-        await message.answer(
-            "Siz allaqachon ariza topshirgansiz. 👍",
-            reply_markup=get_events_menu()
-        )
-        return
-
-    # Проверка подписки — только для НОВОЙ регистрации
-    try:
-        member = await message.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=message.from_user.id)
-        if member.status not in ['creator', 'administrator', 'member']:
-            await message.answer(
-                "⚠️ <b>Ro'yxatdan o'tish rad etildi!</b>\n\n"
-                "Avval kanalimizga a'zo bo'ling.",
-                reply_markup=InlineKeyboardMarkup().add(
-                    InlineKeyboardButton(
-                        text="📢 Kanalga a'zo bo'lish",
-                        url=f"https://t.me/{CHANNEL_ID.replace('@', '')}"
-                    )
-                ),
-                parse_mode="HTML"
-            )
-            return
-    except Exception as e:
-        print(f"Subscription check error during registration: {e}")
-
-    project = await sync_to_async(
-        EcoProject.objects.filter(id=project_id, is_active=True).first
-    )()
-
-    if not project:
-        await message.answer("Bu tadbir endi mavjud emas.", reply_markup=get_events_menu())
-        await state.finish()
-        return
-
-    current_count = await sync_to_async(project.participants.exclude(status='rejected').count)()
-
-    if current_count >= project.max_participants:
-        await message.answer(
-            "❌ Kechirasiz, joylar qolmagan.",
-            reply_markup=get_events_menu()
-        )
-        await state.finish()
-        return
-
-    part, created = await sync_to_async(ProjectParticipation.objects.get_or_create)(
-        user=user, project=project
-    )
-
+    """Старая reply-кнопка из сообщений, отправленных до обновления."""
+    project_id = (await state.get_data()).get('project_id')
     await state.finish()
-
-    if created:
-        # ИЗМЕНЕНО: раньше тут просто говорили "ждите, вас проверят",
-        # а ссылку на чат отправлял админ отдельно, вручную запуская
-        # действие "approve_and_invite" в админке. Раз регистрация теперь
-        # СРАЗУ approved (без промежуточного "Ожидание") — ссылку кидаем
-        # сразу же, в этом самом сообщении, без ручного шага админа.
-        if project.chat_link:
-            text = (
-                "✅ <b>Arizangiz qabul qilindi!</b>\n\n"
-                f"Loyiha guruhiga qo'shiling: {project.chat_link}"
-            )
-        else:
-            text = (
-                "✅ <b>Arizangiz qabul qilindi!</b>\n\n"
-                "Tez orada tafsilotlar bilan bog'lanamiz. 🌱"
-            )
-        await message.answer(text, reply_markup=get_events_menu(), parse_mode="HTML")
-    else:
-        await message.answer(
-            "Siz allaqachon ariza topshirgansiz. 👍",
-            reply_markup=get_events_menu()
-        )
+    if not project_id:
+        await message.answer(t("error_retry"), reply_markup=get_events_menu())
+        return
+    await _do_register(message, message.from_user.id, project_id, message.bot)
 
 
 async def list_past_events(message: types.Message, state: FSMContext):
     await state.finish()
     past_events = await sync_to_async(lambda: list(
-        EcoProject.objects.filter(date__lt=timezone.now()).order_by('-date')
+        EcoProject.objects.filter(date__lt=timezone.now()).order_by('-date')[:PAST_LIMIT]
     ))()
 
     if not past_events:
-        await message.answer("📜 O'tgan tadbirlar arxivi hozircha bo'sh.")
+        await message.answer(t("past_empty"))
         return
 
     for event in past_events:
-        caption = f"<b>{event.title}</b>"
-        if event.description:
-            caption += f"\n\n{event.description}"
-
+        caption = _event_header(event).strip()
         if event.photo:
             try:
                 await send_cached_photo(
                     message, file_cache_key(event.photo.path), lambda path=event.photo.path: open(path, 'rb'),
-                    caption=caption, parse_mode="HTML"
+                    caption=caption[:1024],
                 )
+                continue
             except Exception as e:
                 print(f"Photo error: {e}")
-                await message.answer(caption, parse_mode="HTML")
-        else:
-            await message.answer(caption, parse_mode="HTML")
-
-
-async def handle_back(message: types.Message, state: FSMContext):
-    await state.finish()
-    from ..keyboards import reply
-    await message.answer("Asosiy menyu", reply_markup=await reply.main_menu(message.from_user.id))
+        await message.answer(caption)
 
 
 # --- РЕГИСТРАЦИЯ ---
 
 def register_eco_clubs(dp: Dispatcher):
-    dp.register_message_handler(show_events_menu, lambda m: "Tadbirlar" in m.text, state="*")
-    dp.register_message_handler(list_upcoming_events, lambda m: "Kelgusi" in m.text, state="*")
-    dp.register_message_handler(list_past_events, lambda m: "O'tgan" in m.text, state="*")
-    dp.register_message_handler(handle_back, lambda m: "Orqaga" in m.text, state="*")
+    dp.register_message_handler(show_events_menu, text=variants("btn_events"), state="*")
+    dp.register_message_handler(list_upcoming_events, text=variants("btn_upcoming"), state="*")
+    dp.register_message_handler(list_past_events, text=variants("btn_past"), state="*")
+    dp.register_callback_query_handler(register_callback, lambda c: c.data.startswith("evreg:"), state="*")
     dp.register_message_handler(
         process_registration,
-        lambda m: "Ro'yxatdan o'tish" in m.text,
-        state=EventStates.waiting_for_registration
+        text=variants("btn_event_register"),
+        state=EventStates.waiting_for_registration,
     )

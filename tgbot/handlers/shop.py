@@ -1,18 +1,11 @@
-from aiogram import types, Dispatcher 
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-async def shop_pass(message: types.Message):
-    # Текст на узбекском, который звучит официально и вежливо
-    text = (
-        "<b>🙃 Sahifa tayyorlanmoqda</b>"
-    )
-  
+from aiogram import types, Dispatcher
 
-    await message.answer(
-        text, 
-        parse_mode="HTML", 
-    )
+from tgbot.i18n import t, variants
+
+
+async def shop_pass(message: types.Message):
+    await message.answer(t("shop_soon"))
 
 
 def register_shop(dp: Dispatcher):
-    # Твои старые регистрации...
-    dp.register_message_handler(shop_pass, text="🛍️ Eko-Shop", state="*")
+    dp.register_message_handler(shop_pass, text=variants("btn_shop"), state="*")

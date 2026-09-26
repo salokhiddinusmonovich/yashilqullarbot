@@ -23,7 +23,7 @@ from tgbot.config import load_config
 from tgbot.filters.admin import AdminFilter
 from tgbot.handlers.admin import register_admin
 from tgbot.handlers.start import register_user
-from tgbot.handlers.profile import register_profile
+from tgbot.handlers.profile import register_profile, register_back
 from tgbot.handlers.register import register_register
 from tgbot.handlers.about import register_about_and_team
 from tgbot.handlers.ecoclub import register_eco_clubs
@@ -31,12 +31,13 @@ from tgbot.handlers.shop import register_shop
 from tgbot.handlers.qr_handler import register_qr_handlers
 from tgbot.handlers.feedback import register_feedback
 from tgbot.handlers.contact_with_team import register_project_handlers
-# добавить к остальным импортам
-from tgbot.handlers.link_account import register_link_account_handlers, ask_if_registered
+from tgbot.handlers.link_account import register_link_account_handlers
 from tgbot.handlers.admin_panel import register_admin_panel
 from tgbot.handlers.help import register_help
+from tgbot.handlers.language import register_language
 from tgbot.middlewares.environment import EnvironmentMiddleware
 from tgbot.middlewares.activity import ActivityMiddleware
+from tgbot.middlewares.i18n import I18nMiddleware
 from tgbot.services.daily_report import daily_report_loop
 
 logger = logging.getLogger(__name__)
@@ -62,6 +63,7 @@ USE_MINI_APP = False
 def register_all_middlewares(dp, config):
     dp.setup_middleware(EnvironmentMiddleware(config=config))
     dp.setup_middleware(ActivityMiddleware())
+    dp.setup_middleware(I18nMiddleware())      # язык юзера → t("...") в хендлерах
 
 
 def register_all_filters(dp):
@@ -72,14 +74,16 @@ def register_all_handlers(dp):
     # ── Работает ВСЕГДА, независимо от режима ──
     register_admin(dp)               # админ-панель — не относится к Mini App вообще
     register_user(dp)                # /start — точка входа
+    # Язык и инструкция — ДО хендлеров состояний: кнопки «🌐» и «❓»
+    # должны срабатывать даже посреди регистрации, а не сохраняться как ответ.
+    register_language(dp)
+    register_help(dp)                # ❓ Qo'llanma / /help
     register_register(dp)            # регистрация — СТАТИКА, всегда через бота,
                                       # не переключается флагом USE_MINI_APP
     register_about_and_team(dp)      # статичная инфа "о нас"/команда — не дублируется в Mini App
     register_eco_clubs(dp)           # инфо про эко-клубы — не дублируется в Mini App
     register_feedback(dp)            # рейтинг после посещения (пуш от бота, не кнопка меню)
-    # добавить внутрь register_all_handlers(dp), в блок "работает всегда"
     register_link_account_handlers(dp)
-    register_help(dp)                # ❓ Qo'llanma / /help
     if USE_MINI_APP:
         # ── РЕЖИМ MINI APP ──
         # Ничего из старых текстовых кнопок ниже НЕ регистрируется —
@@ -97,6 +101,10 @@ def register_all_handlers(dp):
         register_project_handlers(dp)
         register_shop(dp)
         register_qr_handlers(dp)
+
+    # «⬅️ Назад» → главное меню. После профиля: там «Назад» из выбора
+    # региона ведёт в меню профиля, а не в главное.
+    register_back(dp)
 
     # Админка в боте (/admin) — регистрируется ПОСЛЕДНЕЙ: её хендлеры
     # состояний ("введите @username") ловят любой текст, и так /start и

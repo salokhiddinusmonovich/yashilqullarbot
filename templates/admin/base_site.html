@@ -1,0 +1,252 @@
+{% extends "admin/base.html" %}
+{% load i18n %}
+{# Тема админки Yashil Qo'llar: зелёная палитра, карточки, тёмный режим, переключатель языка. #}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | Yashil Qo'llar{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌿</text></svg>">
+{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+  /* ── палитра: светлая ── */
+  :root, html[data-theme="light"] {
+    --yq-green: #15803d;
+    --yq-green-2: #16a34a;
+    --yq-green-soft: #dcfce7;
+    --yq-card: #ffffff;
+    --yq-shadow: 0 1px 2px rgba(16, 24, 20, .05), 0 4px 16px rgba(16, 24, 20, .06);
+    --yq-radius: 14px;
+
+    --primary: #15803d;
+    --secondary: #166534;
+    --accent: #facc15;
+    --primary-fg: #fff;
+    --body-fg: #1f2a24;
+    --body-bg: #f4f7f5;
+    --body-quiet-color: #64748b;
+    --body-loud-color: #0f1a14;
+    --header-color: #d1fae5;
+    --header-branding-color: #fff;
+    --header-bg: #14532d;
+    --header-link-color: #fff;
+    --breadcrumbs-fg: #bbf7d0;
+    --breadcrumbs-link-fg: #fff;
+    --breadcrumbs-bg: #166534;
+    --link-fg: #15803d;
+    --link-hover-color: #0f5f2c;
+    --link-selected-fg: #14532d;
+    --hairline-color: #e6ece8;
+    --border-color: #d9e2dc;
+    --darkened-bg: #f1f5f2;
+    --selected-bg: #e7f6ec;
+    --selected-row: #f0fbf3;
+    --button-bg: #15803d;
+    --button-hover-bg: #166534;
+    --default-button-bg: #0f5f2c;
+    --default-button-hover-bg: #14532d;
+    --object-tools-bg: #15803d;
+    --object-tools-hover-bg: #166534;
+    --message-success-bg: #dcfce7;
+    --message-warning-bg: #fef9c3;
+    --message-error-bg: #fee2e2;
+    --font-family-primary: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+
+  /* ── палитра: тёмная (и по системной теме, и по переключателю Django) ── */
+  html[data-theme="dark"] {
+    --yq-card: #121b16;
+    --yq-green-soft: rgba(34, 197, 94, .14);
+    --yq-shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 6px 20px rgba(0, 0, 0, .35);
+    --primary: #22c55e;
+    --secondary: #14532d;
+    --body-fg: #e3ece6;
+    --body-bg: #0a110d;
+    --body-quiet-color: #8fa39a;
+    --body-loud-color: #f4faf6;
+    --header-bg: #0d1f15;
+    --breadcrumbs-bg: #102a1b;
+    --link-fg: #4ade80;
+    --link-hover-color: #86efac;
+    --link-selected-fg: #bbf7d0;
+    --hairline-color: #1d2a23;
+    --border-color: #25352c;
+    --darkened-bg: #0f1813;
+    --selected-bg: #143321;
+    --selected-row: #10291a;
+    --button-bg: #16a34a;
+    --button-hover-bg: #15803d;
+    --default-button-bg: #22c55e;
+    --default-button-hover-bg: #16a34a;
+    --message-success-bg: #0f2e1b;
+    --message-warning-bg: #2e2a0f;
+    --message-error-bg: #3a1414;
+  }
+  @media (prefers-color-scheme: dark) {
+    html[data-theme="auto"] {
+      --yq-card: #121b16;
+      --yq-green-soft: rgba(34, 197, 94, .14);
+      --yq-shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 6px 20px rgba(0, 0, 0, .35);
+      --primary: #22c55e;
+      --secondary: #14532d;
+      --body-fg: #e3ece6;
+      --body-bg: #0a110d;
+      --body-quiet-color: #8fa39a;
+      --body-loud-color: #f4faf6;
+      --header-bg: #0d1f15;
+      --breadcrumbs-bg: #102a1b;
+      --link-fg: #4ade80;
+      --link-hover-color: #86efac;
+      --link-selected-fg: #bbf7d0;
+      --hairline-color: #1d2a23;
+      --border-color: #25352c;
+      --darkened-bg: #0f1813;
+      --selected-bg: #143321;
+      --selected-row: #10291a;
+      --button-bg: #16a34a;
+      --button-hover-bg: #15803d;
+      --default-button-bg: #22c55e;
+      --default-button-hover-bg: #16a34a;
+      --message-success-bg: #0f2e1b;
+      --message-warning-bg: #2e2a0f;
+      --message-error-bg: #3a1414;
+    }
+  }
+
+  /* ── база ── */
+  body { font-family: var(--font-family-primary); -webkit-font-smoothing: antialiased; }
+
+  #header {
+    background: linear-gradient(120deg, #0f3d22 0%, #14532d 45%, #15803d 100%);
+    padding: 14px 32px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, .12);
+    align-items: center;
+  }
+  #branding h1 { font-weight: 800; letter-spacing: -.02em; font-size: 1.35rem; }
+  #branding h1, #branding h1 a:link, #branding h1 a:visited { color: #fff; }
+  #branding h1 a { display: inline-flex; align-items: center; gap: 10px; }
+  .yq-logo {
+    width: 34px; height: 34px; border-radius: 10px; display: inline-grid; place-items: center;
+    background: rgba(255, 255, 255, .14); font-size: 19px;
+  }
+  .yq-logo-sub { font-weight: 500; font-size: .78rem; opacity: .75; letter-spacing: 0; }
+  #user-tools { font-size: .82rem; }
+  #user-tools a, #logout-form button { border-bottom: none; }
+
+  div.breadcrumbs { background: var(--breadcrumbs-bg); padding: 10px 32px; font-size: .82rem; }
+
+  /* переключатель языка */
+  .yq-lang { display: inline-flex; gap: 4px; margin-left: 14px; vertical-align: middle; }
+  .yq-lang form { display: contents; }
+  .yq-lang button {
+    background: rgba(255, 255, 255, .12); color: #fff; border: 0; border-radius: 8px;
+    padding: 5px 9px; font: 600 .72rem var(--font-family-primary); cursor: pointer; letter-spacing: .04em;
+  }
+  .yq-lang button:hover { background: rgba(255, 255, 255, .22); }
+  .yq-lang button[aria-current="true"] { background: #fff; color: #14532d; }
+
+  /* карточки */
+  #content { padding: 24px 32px; }
+  .module, #changelist .changelist-form-container, .inline-group, fieldset.module {
+    background: var(--yq-card); border-radius: var(--yq-radius); box-shadow: var(--yq-shadow);
+    border: 1px solid var(--hairline-color); overflow: hidden;
+  }
+  .module h2, .module caption, .inline-group h2 {
+    background: transparent; color: var(--body-loud-color); font-weight: 700; font-size: .92rem;
+    padding: 14px 16px; border-bottom: 1px solid var(--hairline-color); text-transform: none; letter-spacing: 0;
+  }
+  .module caption a.section { color: var(--body-loud-color); }
+  #content-related .module { margin-bottom: 16px; }
+
+  /* таблицы */
+  #result_list thead th, table thead th { background: var(--darkened-bg); color: var(--body-quiet-color);
+    text-transform: uppercase; font-size: .7rem; letter-spacing: .05em; border-bottom: 1px solid var(--border-color); }
+  #result_list tbody tr:hover { background: var(--selected-row); }
+  td, th { border-bottom-color: var(--hairline-color); vertical-align: middle; }
+  #changelist-filter { background: var(--yq-card); border-radius: var(--yq-radius); box-shadow: var(--yq-shadow);
+    border: 1px solid var(--hairline-color); overflow: hidden; }
+  #changelist-filter h2 { background: transparent; color: var(--body-loud-color); font-weight: 700; }
+  #changelist-filter li.selected a { color: var(--primary) !important; font-weight: 600; }
+  #toolbar { background: transparent; border: 0; padding: 0 0 12px; }
+  #toolbar #searchbar { border-radius: 10px; padding: 8px 12px; min-width: 260px; }
+  .paginator { border-top: 1px solid var(--hairline-color); padding: 12px 16px; }
+
+  /* кнопки */
+  .button, input[type=submit], input[type=button], .submit-row input, a.button {
+    border-radius: 10px !important; font-weight: 600; padding: 9px 16px;
+  }
+  .object-tools a { border-radius: 999px; padding: 6px 14px; font-weight: 600; }
+  .submit-row { border-radius: var(--yq-radius); border: 1px solid var(--hairline-color); background: var(--yq-card); }
+  input[type=text], input[type=password], input[type=email], input[type=url], input[type=number],
+  input[type=tel], textarea, select, .vTextField {
+    border-radius: 9px; border: 1px solid var(--border-color); padding: 7px 10px;
+  }
+  input:focus, textarea:focus, select:focus { border-color: var(--primary); outline: 2px solid var(--yq-green-soft); }
+
+  ul.messagelist li { border-radius: 12px; margin-bottom: 8px; box-shadow: var(--yq-shadow); }
+
+  /* бейджи и аватарки (используются в admin.py) */
+  .yq-badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: .72rem; font-weight: 700;
+    color: var(--c); background: var(--bg); white-space: nowrap;
+    background: color-mix(in srgb, var(--c) 16%, transparent);
+    border: 1px solid color-mix(in srgb, var(--c) 40%, transparent); }
+  html[data-theme="dark"] .yq-badge { color: color-mix(in srgb, var(--c) 55%, white); }
+  @media (prefers-color-scheme: dark) { html[data-theme="auto"] .yq-badge { color: color-mix(in srgb, var(--c) 55%, white); } }
+  .yq-badge--solid, html[data-theme] .yq-badge--solid { color: #fff; background: var(--c); border-color: transparent; }
+  .yq-avatar { width: 44px; height: 44px; border-radius: 12px; object-fit: cover; display: inline-grid;
+    place-items: center; border: 2px solid var(--yq-green-soft); }
+  .yq-avatar--empty { background: var(--yq-green-soft); color: var(--primary); font-weight: 800; }
+
+  /* логин */
+  .login #container { border-radius: 20px; box-shadow: 0 20px 60px rgba(0, 0, 0, .18); overflow: hidden;
+    border: 1px solid var(--hairline-color); background: var(--yq-card); }
+  .login #header { padding: 22px; justify-content: center; }
+  .login #content { padding: 24px 28px 28px; }
+  .login .submit-row { border: 0; background: transparent; padding: 1em 0 0; }
+  .login .submit-row input { width: 100%; }
+
+  /* боковая навигация Django */
+  #nav-sidebar { background: var(--yq-card); border-right: 1px solid var(--hairline-color); }
+  #nav-sidebar .current-model { background: var(--selected-bg); }
+  #nav-sidebar .current-app .section:link, #nav-sidebar .current-app .section:visited,
+  .module caption a.section:link, .module caption a.section:visited { color: var(--body-loud-color); }
+  .toggle-nav-sidebar { background: var(--yq-card); border-color: var(--hairline-color); }
+
+  @media (max-width: 767px) {
+    #header { padding: 12px 16px; }
+    #content { padding: 16px; }
+    div.breadcrumbs { padding: 10px 16px; }
+    .yq-lang { margin: 8px 0 0; }
+  }
+</style>
+{% endblock %}
+
+{% block branding %}
+<h1 id="site-name">
+  <a href="{% url 'admin:index' %}">
+    <span class="yq-logo">🌿</span>
+    <span>Yashil Qo'llar <span class="yq-logo-sub">admin</span></span>
+  </a>
+</h1>
+{% if user.is_anonymous %}{% include "admin/color_theme_toggle.html" %}{% endif %}
+{% endblock %}
+
+{% block nav-global %}
+{% get_current_language as LANG %}
+<div class="yq-lang" role="group" aria-label="Language">
+  <form action="{% url 'set_language' %}" method="post">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+    <button name="language" value="uz" {% if LANG == 'uz' %}aria-current="true"{% endif %}>UZ</button>
+    <button name="language" value="ru" {% if LANG == 'ru' or LANG == 'ru-ru' %}aria-current="true"{% endif %}>RU</button>
+    <button name="language" value="en" {% if LANG == 'en' %}aria-current="true"{% endif %}>EN</button>
+  </form>
+</div>
+{% endblock %}

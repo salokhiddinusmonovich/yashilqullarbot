@@ -1,96 +1,89 @@
 import asyncio
+import logging
+import threading
+from datetime import timedelta
+from html import escape
 from pathlib import Path
+
+from aiogram import Bot
+from asgiref.sync import async_to_sync
 from django.conf import settings
 from django.contrib import admin, messages
+from django.core.cache import cache
+from django.db import close_old_connections
+from django.db.models import Count, Q
+from django.utils import timezone
 from django.utils.html import format_html
-from aiogram import Bot
 from import_export import resources
 from import_export.admin import ExportMixin
 from import_export.fields import Field
-from asgiref.sync import async_to_sync # asyncio.run ўрнига хавфсизроқ
-from .models import ProjectNotification
-import requests
-from django.db.models import Q
 from modeltranslation.admin import TranslationAdmin
+
+from tgbot.i18n import t as bot_t, role_label
+from tgbot.services.lang import lang_of_sync, langs_of_sync
+from .i18n import tr, trn
 from .models import (
-    TGUser, TeamMemberYashilQullar, ProjectParticipation,
-    EcoProject, EcoProjectImage, Partner,          # ← добавлен EcoProjectImage
-    Article, Tag, Comment, LoginToken, EventFeedback, ArticleImage
+    TGUser, TeamMemberYashilQullar, ProjectParticipation, ProjectNotification,
+    EcoProject, EcoProjectImage, Partner,
+    Article, Tag, Comment, LoginToken, EventFeedback, ArticleImage,
 )
 
-# ИСПРАВЛЕНО: раньше здесь был захардкожен отдельный литерал токена,
-# независимый от реального токена бота (tgbot/config.py читает его из
-# .env через BOT_TOKEN). Если они когда-либо разошлись — например, токен
-# был перевыпущен — ЛЮБОЕ уведомление отсюда (эта функция, отметка
-# "пришёл на эвент", рассылка новым юзерам, уведомление о новой роли)
-# молча падало с 401 Unauthorized, а админка при этом бодро писала
-# "✅ отправлено". Теперь токен один на весь проект — из settings.py,
-# который сам берёт его из того же .env/BOT_TOKEN, что и сам бот.
+logger = logging.getLogger(__name__)
+
+# Токен один на весь проект — из settings.py (тот же BOT_TOKEN из .env,
+# что и у самого бота), иначе после перевыпуска токена уведомления
+# отсюда молча падали бы с 401.
 BOT_TOKEN = settings.TELEGRAM_BOT_TOKEN
 
-async def send_notification(user_id, text):
-    bot = Bot(token=BOT_TOKEN)
-    try:
-        await bot.send_message(user_id, text, parse_mode="HTML")
-    except Exception as e:
-        print(f"Ошибка отправки сообщения: {e}")
-    finally:
-        await bot.close()
-
-
-# ── Уведомление о повышении роли ──
-# Роняется, когда роль юзера меняется через карточку в Django admin (см.
-# TGUserAdmin.save_model ниже). Гифка не обязательна: если файла нет —
-# просто уходит текст без анимации, ничего не падает.
+# Гифка к поздравлению с ролью — необязательна: нет файла → просто текст.
 ROLE_PROMOTION_GIF = Path(__file__).resolve().parent.parent / "tgbot" / "assets" / "role_promotion.gif"
 
-ROLE_PROMOTION_MESSAGES = {
-    'coordinator': (
-        "🎉 <b>Tabriklaymiz!</b>\n\n"
-        "Sizga <b>Coordinator</b> maqomi berildi! 🧭\n"
-        "Endi hududingizdagi loyihalarni boshqarishda faol ishtirok etasiz.\n\n"
-        "Yashil Qo'llar jamoasi siz bilan faxrlanadi! 🌿"
-    ),
-    'main_coordinator': (
-        "🎉 <b>Tabriklaymiz!</b>\n\n"
-        "Sizga <b>Main Coordinator</b> maqomi berildi! 🧭✨\n"
-        "Endi hududingizdagi barcha koordinatorlar faoliyati uchun mas'ulsiz.\n\n"
-        "Yashil Qo'llar jamoasi siz bilan faxrlanadi! 🌿"
-    ),
-    'mobilograph': (
-        "🎉 <b>Tabriklaymiz!</b>\n\n"
-        "Sizga <b>Mobilographer</b> maqomi berildi! 📸\n"
-        "Endi tadbirlarni suratga olish va ijtimoiy tarmoqlarda yoritish sizning zimmangizda.\n\n"
-        "Yashil Qo'llar jamoasi siz bilan faxrlanadi! 🌿"
-    ),
-    'organizer': (
-        "🎉 <b>Tabriklaymiz!</b>\n\n"
-        "Sizga <b>Organizer</b> maqomi berildi! 🗂\n\n"
-        "Yashil Qo'llar jamoasi siz bilan faxrlanadi! 🌿"
-    ),
-    'head_coordinator': (
-        "🎉 <b>Tabriklaymiz!</b>\n\n"
-        "Sizga <b>Head of Coordinators</b> maqomi berildi! 👑\n\n"
-        "Yashil Qo'llar jamoasi siz bilan faxrlanadi! 🌿"
-    ),
-    'it': (
-        "🎉 <b>Tabriklaymiz!</b>\n\n"
-        "Sizga <b>IT Specialist</b> maqomi berildi! 💻\n\n"
-        "Yashil Qo'llar jamoasi siz bilan faxrlanadi! 🌿"
-    ),
-    'Founder': (
-        "🎉 <b>Tabriklaymiz!</b>\n\n"
-        "Siz <b>Founder</b> sifatida belgilandingiz! 🏆\n\n"
-        "Yashil Qo'llar jamoasi siz bilan faxrlanadi! 🌿"
-    ),
-}
+
+# ─────────────────────────── отправка в Telegram ───────────────────────────
+
+async def _send_many(messages_: list):
+    """
+    Шлёт [(tg_id, text), ...] через ОДНУ сессию бота — раньше на каждое
+    сообщение создавался и закрывался новый Bot, это было в разы медленнее.
+    Возвращает список tg_id, которым доставлено.
+    """
+    bot = Bot(token=BOT_TOKEN, parse_mode="HTML")
+    delivered = []
+    try:
+        for tg_id, text in messages_:
+            try:
+                await bot.send_message(tg_id, text)
+                delivered.append(tg_id)
+            except Exception as e:
+                logger.warning("Telegram send to %s failed: %s", tg_id, e)
+            await asyncio.sleep(0.05)  # ~20/сек, ниже лимита Telegram
+    finally:
+        await (await bot.get_session()).close()
+    return delivered
+
+
+def send_in_background(messages_: list, on_done=None):
+    """
+    Рассылка в фоне — админка отвечает сразу, а не висит минуту,
+    пока уходят сотни сообщений (и не падает по таймауту gunicorn).
+    on_done(delivered_ids) вызывается в том же фоновом потоке.
+    """
+    def run():
+        try:
+            delivered = asyncio.run(_send_many(messages_))
+            if on_done:
+                on_done(delivered)
+        except Exception:
+            logger.exception("Background send failed")
+        finally:
+            close_old_connections()
+
+    threading.Thread(target=run, daemon=True).start()
 
 
 async def send_role_promotion_notification(user_id, text):
-    # ВАЖНО: никакого try/except-и-проглотить здесь — ошибка должна
-    # долететь до save_model() ниже, чтобы админ увидел РЕАЛЬНУЮ причину
-    # ("бот заблокирован", "chat not found", неверный токен и т.п.) вместо
-    # вводящего в заблуждение "✅ отправлено", когда на самом деле нет.
+    # Без try/except: ошибка должна долететь до save_model(), чтобы админ
+    # увидел РЕАЛЬНУЮ причину ("бот заблокирован" и т.п.), а не ложное "✅".
     bot = Bot(token=BOT_TOKEN)
     try:
         if ROLE_PROMOTION_GIF.exists():
@@ -99,9 +92,17 @@ async def send_role_promotion_notification(user_id, text):
         else:
             await bot.send_message(user_id, text, parse_mode="HTML")
     finally:
-        await bot.close()
+        await (await bot.get_session()).close()
 
-# --- 1. RESOURCE ---
+
+def _badge(text, color, bg=None):
+    return format_html(
+        '<span class="yq-badge" style="--c:{};--bg:{}">{}</span>', color, bg or f"{color}1f", text,
+    )
+
+
+# ─────────────────────────── участники ───────────────────────────
+
 class ParticipationResource(resources.ModelResource):
     username = Field(attribute='user__username', column_name='Telegram Username')
     fullname = Field(attribute='user__fullname', column_name='F.I.SH (Имя)')
@@ -115,164 +116,129 @@ class ParticipationResource(resources.ModelResource):
         fields = ('username', 'fullname', 'phone', 'experience', 'photo_url', 'project_name', 'status')
         export_order = fields
 
+    def get_queryset(self):
+        return super().get_queryset().select_related('user', 'project')
+
     def dehydrate_photo_url(self, obj):
         if obj.user and obj.user.photo:
-            server_url = "http://173.249.19.32:8000" 
+            server_url = "http://173.249.19.32:8000"
             return f"{server_url}{obj.user.photo.url}"
-        return "Нет фото"
+        return "—"
 
-# --- 2. ГЛАВНАЯ АДМИНКА УЧАСТНИКОВ ---
+
+STATUS_COLORS = {'pending': '#d97706', 'approved': '#0284c7', 'attended': '#16a34a', 'rejected': '#dc2626'}
+
+
 @admin.register(ProjectParticipation)
 class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
     resource_class = ParticipationResource
-    
-    # Заменил 'status' на 'colored_status'
+
     list_display = ('display_face', 'get_fullname', 'get_project_title', 'colored_status', 'applied_at')
-    
     list_filter = (('project', admin.RelatedOnlyFieldListFilter), 'status', 'applied_at')
     search_fields = ('user__fullname', 'user__username', 'user__phone', 'project__title')
-    list_per_page = 500 
     autocomplete_fields = ['user', 'project']
     actions = ['make_attended_with_msg', 'make_rejected']
 
-    # --- ФУНКЦИЯ ДЛЯ ЦВЕТНОГО СТАТУСА ---
+    # СКОРОСТЬ: раньше 500 строк на страницу и без select_related —
+    # это ~1000 отдельных SQL-запросов (юзер + проект на каждую строку)
+    # и 500 фото за раз. Теперь 1 запрос и 100 строк.
+    list_select_related = ('user', 'project')
+    list_per_page = 100
+    show_full_result_count = False
+    ordering = ('-applied_at',)
+
+    @admin.display(description=tr('f_status'), ordering='status')
     def colored_status(self, obj):
-        colors = {
-            'pending': '#ffc107',  # Желтый (Ожидание)
-            'approved': '#17a2b8', # Бирюзовый (Одобрен)
-            'attended': '#28a745', # Зеленый (Пришел)
-            'rejected': '#dc3545', # Красный (Отказ)
-        }
-        color = colors.get(obj.status, '#6c757d') # Серый по умолчанию
-        
-        return format_html(
-            '<span style="background-color: {}; color: white; padding: 5px 12px; '
-            'border-radius: 20px; font-weight: bold; font-size: 11px; text-transform: uppercase;">'
-            '{}</span>',
-            color,
-            obj.get_status_display()
-        )
-    colored_status.short_description = 'Status'
+        return _badge(obj.get_status_display(), STATUS_COLORS.get(obj.status, '#64748b'))
 
-   
-
-    @admin.action(description='🌟 Пришёл на эвент (+10 баллов + Уведомление)')
-    def make_attended_with_msg(self, request, queryset):
-        success_count = 0
-        error_count = 0
-        for obj in queryset:
-            try:
-                if obj.status != 'attended':
-                    obj.status = 'attended'
-                    obj.save() 
-                    obj.user.refresh_from_db()
-                    if obj.user.tg_id:
-                        text = (
-                            f"🌟 <b>Rahmat!</b>\n\n"
-                            f"Siz bugungi loyihada faol qatnashdingiz va <b>10 eko-ball</b> oldingiz!\n"
-                            f"Hozirgi balansingiz: <b>{obj.user.balance}</b> ball.\n\n"
-                        )
-                        async_to_sync(send_notification)(obj.user.tg_id, text)
-                        success_count += 1
-                else:
-                    self.message_user(request, f"Пользователь {obj.user.fullname} уже отмечен.", messages.WARNING)
-            except Exception as e:
-                error_count += 1
-                self.message_user(request, f"Ошибка у {obj.user.fullname}: {str(e)}", messages.ERROR)
-        self.message_user(request, f"Успешно: {success_count}. Ошибок: {error_count}")
-
-    @admin.action(description='❌ Отменить участие (Удалить баллы)')
-    def make_rejected(self, request, queryset):
-        for obj in queryset:
-            obj.status = 'rejected'
-            obj.save()
-
-    # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
+    @admin.display(description=tr('project'), ordering='project__title')
     def get_project_title(self, obj):
         return obj.project.title
-    get_project_title.short_description = 'Loyiha nomi'
 
+    @admin.display(description=tr('col_face'))
     def display_face(self, obj):
         if obj.user and obj.user.photo:
             try:
                 return format_html(
-                    '<img src="{}" width="65" height="65" style="border-radius:10px; object-fit:cover; border:2px solid #28a745;"/>', 
-                    obj.user.photo.url
+                    '<img src="{}" width="44" height="44" loading="lazy" class="yq-avatar"/>', obj.user.photo.url
                 )
-            except:
-                return "Ошибка пути"
-        return "Нет фото"
-    display_face.short_description = 'ЛИЦО'
+            except Exception:
+                pass
+        initial = (obj.user.fullname or "?")[:1].upper() if obj.user else "?"
+        return format_html('<span class="yq-avatar yq-avatar--empty">{}</span>', initial)
 
+    @admin.display(description=tr('f_fullname'), ordering='user__fullname')
     def get_fullname(self, obj):
         return obj.user.fullname
-    get_fullname.short_description = 'F.I.SH'
+
+    @admin.action(description=tr('act_attended'))
+    def make_attended_with_msg(self, request, queryset):
+        to_notify, already = [], 0
+        for obj in queryset.select_related('user', 'project'):
+            if obj.status == 'attended':
+                already += 1
+                continue
+            obj.status = 'attended'
+            obj.save()  # +10 баллов внутри ProjectParticipation.save()
+            if obj.user.tg_id:
+                to_notify.append(obj)
+
+        langs = langs_of_sync([o.user.tg_id for o in to_notify])
+        msgs = []
+        for obj in to_notify:
+            obj.user.refresh_from_db(fields=['balance'])
+            lang = langs.get(obj.user.tg_id)
+            msgs.append((obj.user.tg_id, bot_t(
+                "attended_notify", lang, project=escape(obj.project.title), balance=obj.user.balance,
+            )))
+        if msgs:
+            send_in_background(msgs)
+
+        self.message_user(request, trn("msg_attended", n=len(to_notify)))
+        if already:
+            self.message_user(request, trn("msg_already", n=already), messages.WARNING)
+
+    @admin.action(description=tr('act_rejected'))
+    def make_rejected(self, request, queryset):
+        n = 0
+        for obj in queryset.select_related('user'):
+            obj.status = 'rejected'
+            obj.save()
+            n += 1
+        self.message_user(request, trn("msg_rejected", n=n))
+
+
+# ─────────────────────────── пользователи ───────────────────────────
+
+ROLE_COLORS = {
+    'volunteer': '#64748b', 'coordinator': '#0891b2', 'main_coordinator': '#2563eb',
+    'head_coordinator': '#7c3aed', 'mobilograph': '#ea580c', 'organizer': '#0d9488',
+    'it': '#db2777', 'Founder': '#ca8a04',
+}
+
 
 @admin.register(TGUser)
 class TGUserAdmin(admin.ModelAdmin):
-    # ── Список — что видно в таблице ──
-    list_display = (
-        'fullname', 'colored_role', 'region_badge', 'phone', 'balance',
-        'auth_provider', 'is_admin',
-    )
- 
-    # ── ФИЛЬТРЫ СПРАВА — это то, что ты просил: клик по региону/роли
-    # сразу фильтрует список, без ручного поиска ──
-    list_filter = (
-        'region',        # ← клик "Toshkent shahri" — видишь только их
-        'role',          # ← клик "Coordinator" — видишь только координаторов
-        'auth_provider', # telegram / email / google
-        'is_admin',
-    )
- 
-    # ── Поиск по имени/юзернейму/email/телефону ──
+    list_display = ('fullname', 'colored_role', 'region_badge', 'phone', 'balance', 'auth_provider', 'is_admin')
+    list_filter = ('region', 'role', 'auth_provider', 'is_admin')
     search_fields = ('fullname', 'username', 'email', 'phone', 'tg_id')
- 
-    # ── Быстрая правка роли прямо из списка, без захода в карточку юзера ──
-    list_editable = ('is_admin',) if 'is_admin' in list_display else ()
- 
-    # ── Пагинация — с ~1000 юзеров дефолтные 100/страница делают
-    # страницу тяжёлой и медленной. 50 — комфортный компромисс. ──
+    list_editable = ('is_admin',)
     list_per_page = 50
- 
-    # ── Цвет по роли — тот же паттерн, что уже используется для
-    # статусов участия в проектах (colored_status). ──
+    show_full_result_count = False
+
+    @admin.display(description=tr('f_role'), ordering='role')
     def colored_role(self, obj):
-        colors = {
-            'volunteer': '#6c757d',       # серый — обычные волонтёры (их больше всего)
-            'coordinator': '#17a2b8',     # бирюзовый
-            'main_coordinator': '#0d6efd',# синий — выделяется среди координаторов
-            'head_coordinator': '#6610f2',# фиолетовый
-            'mobilograph': '#fd7e14',     # оранжевый
-            'organizer': '#20c997',       # мятный
-            'it': '#e83e8c',              # розовый
-            'Founder': '#ffc107',         # жёлтый/золотой — основатели заметны сразу
-        }
-        color = colors.get(obj.role, '#6c757d')
-        return format_html(
-            '<span style="background-color: {}; color: white; padding: 4px 10px; '
-            'border-radius: 14px; font-weight: 700; font-size: 11px; white-space: nowrap;">{}</span>',
-            color, obj.get_role_display(),
-        )
-    colored_role.short_description = 'Rol'
-    colored_role.admin_order_field = 'role'  # позволяет сортировать по этой колонке
- 
-    # ── Регион тоже бейджем — проще визуально сканировать список ──
+        color = ROLE_COLORS.get(obj.role, '#64748b')
+        return format_html('<span class="yq-badge yq-badge--solid" style="--c:{}">{}</span>', color, obj.get_role_display())
+
+    @admin.display(description=tr('f_region'), ordering='region')
     def region_badge(self, obj):
         if not obj.region:
-            return format_html('<span style="color:#999;">—</span>')
-        return format_html(
-            '<span style="background: rgba(34,197,94,0.12); color:#22c55e; padding: 3px 9px; '
-            'border-radius: 10px; font-size: 11px; font-weight: 600;">{}</span>',
-            obj.get_region_display(),
-        )
-    region_badge.short_description = 'Hudud'
-    region_badge.admin_order_field = 'region'
+            return format_html('<span style="color:var(--body-quiet-color)">—</span>')
+        return _badge(obj.get_region_display(), '#16a34a')
 
-    # ── Уведомление юзеру, когда админ меняет ему роль из карточки ──
-    # (не сработает на list_editable — там Django admin сохраняет форму
-    # в обход save_model, но role в list_editable этой админки и не входит,
-    # так что здесь это не проблема).
+    # Уведомление юзеру, когда админ меняет ему роль из карточки
+    # (на его языке). На демоцию в волонтёры — не шлём.
     def save_model(self, request, obj, form, change):
         old_role = None
         if change and obj.pk:
@@ -280,85 +246,85 @@ class TGUserAdmin(admin.ModelAdmin):
 
         super().save_model(request, obj, form, change)
 
-        # 'volunteer' — дефолтная роль (в т.ч. при демоции с координатора
-        # и т.п.) — на неё сообщение никогда не шлём, только на реальное
-        # повышение.
         if change and obj.tg_id and old_role and old_role != obj.role and obj.role != TGUser.Role.VOLUNTEER:
-            text = ROLE_PROMOTION_MESSAGES.get(obj.role)
-            if text:
-                try:
-                    async_to_sync(send_role_promotion_notification)(obj.tg_id, text)
-                    self.message_user(request, f"{obj.fullname}ga yangi rol haqida xabar yuborildi. ✅")
-                except Exception as e:
-                    self.message_user(request, f"Xabar yuborishda xatolik: {e}", messages.WARNING)
+            lang = lang_of_sync(obj.tg_id)
+            text = bot_t("role_promo", lang, role=role_label(obj.role, lang))
+            try:
+                async_to_sync(send_role_promotion_notification)(obj.tg_id, text)
+                self.message_user(request, trn("msg_role_sent", name=obj.fullname))
+            except Exception as e:
+                self.message_user(request, trn("msg_role_failed", e=e), messages.WARNING)
+
+
+# ─────────────────────────── мероприятия ───────────────────────────
 
 class EcoProjectImageInline(admin.TabularInline):
     model = EcoProjectImage
-    extra = 3
-   
+    extra = 1
+
 
 @admin.register(EcoProject)
 class EcoProjectAdmin(admin.ModelAdmin):
     search_fields = ('title',)
-    list_display = ('title', 'date', 'location_name', 'is_active', 'likes_count')
-    list_filter = ('is_active', 'date')
+    list_display = ('title', 'date', 'region', 'location_name', 'registered', 'attended', 'has_group', 'is_active')
+    list_filter = ('is_active', 'region', 'date')
     list_editable = ('is_active',)
     inlines = [EcoProjectImageInline]
- 
     actions = ['remind_local_users']
- 
-    @admin.action(description='🔔 Рассылка: только новым юзерам')
-    def remind_local_users(self, request, queryset):
-        # ... (весь код действия остаётся без изменений, просто копия из твоего файла)
-        tashkent_group = ['tashkent_v', 'tashkent_s']
- 
-        for project in queryset:
-            project_region = getattr(project, 'region', 'tashkent_s')
- 
-            if project_region in tashkent_group:
-                target_regions = tashkent_group
-            else:
-                target_regions = [project_region]
- 
-            registered_ids = ProjectParticipation.objects.filter(
-                project=project
-            ).values_list('user__id', flat=True)
- 
-            already_notified_ids = ProjectNotification.objects.filter(
-                project=project
-            ).values_list('user__id', flat=True)
- 
-            new_users = TGUser.objects.filter(
-                region__in=target_regions
-            ).exclude(id__in=registered_ids).exclude(id__in=already_notified_ids)
- 
-            count = 0
-            for user in new_users:
-                if user.tg_id:
-                    text = (
-                        f"👋 Salom, {user.fullname}!\n\n"
-                        f"{project.title} loyihasi rejalashtirilgan! ✨\n"
-                        f"Ro'yxatdan o'tish uchun botga kiring! 👇\n\n"
-                        f"1️⃣ «Tadbirlar» bo'limiga kiring.\n"
-                        f"2️⃣ «Kelgusi tadbirlar» tugmasini bosing.\n"
-                        f"3️⃣ Loyihani tanlang va ro'yxatdan o'ting.\n\n"
-                        f"Sizni kutib qolamiz! 🌿"
-                    )
-                    try:
-                        async_to_sync(send_notification)(user.tg_id, text)
-                        ProjectNotification.objects.get_or_create(
-                            project=project, user=user
-                        )
-                        count += 1
-                    except Exception as e:
-                        print(f"Ошибка отправки {user.tg_id}: {e}")
- 
-            self.message_user(
-                request,
-                f"Проект '{project.title}': отправлено {count} новым юзерам."
-            )
+    ordering = ('-date',)
 
-        
+    def get_queryset(self, request):
+        # счётчики одним запросом, а не count() на каждую строку
+        return super().get_queryset(request).annotate(
+            _registered=Count('participants', filter=~Q(participants__status='rejected')),
+            _attended=Count('participants', filter=Q(participants__status='attended')),
+        )
+
+    @admin.display(description=tr('col_registered'), ordering='_registered')
+    def registered(self, obj):
+        return f"{obj._registered} / {obj.max_participants}"
+
+    @admin.display(description=tr('col_attended'), ordering='_attended')
+    def attended(self, obj):
+        return _badge(obj._attended, '#16a34a') if obj._attended else "0"
+
+    @admin.display(description="👥", boolean=True)
+    def has_group(self, obj):
+        # без ссылки на группу волонтёры не узнают, где ждать сертификат
+        return bool(obj.chat_link)
+
+    @admin.action(description=tr('act_remind'))
+    def remind_local_users(self, request, queryset):
+        tashkent_group = ['tashkent_v', 'tashkent_s']
+
+        for project in queryset:
+            region = getattr(project, 'region', 'tashkent_s')
+            target_regions = tashkent_group if region in tashkent_group else [region]
+
+            registered_ids = ProjectParticipation.objects.filter(project=project).values_list('user_id', flat=True)
+            notified_ids = ProjectNotification.objects.filter(project=project).values_list('user_id', flat=True)
+            users = list(
+                TGUser.objects.filter(region__in=target_regions, tg_id__isnull=False)
+                .exclude(id__in=registered_ids).exclude(id__in=notified_ids)
+                .only('id', 'tg_id', 'fullname')
+            )
+            langs = langs_of_sync([u.tg_id for u in users])
+            msgs = [
+                (u.tg_id, bot_t("new_event_invite", langs.get(u.tg_id),
+                                name=escape(u.fullname or ""), title=escape(project.title)))
+                for u in users
+            ]
+            by_tg = {u.tg_id: u.id for u in users}
+
+            def mark_notified(delivered, project_id=project.id, by_tg=by_tg):
+                ProjectNotification.objects.bulk_create(
+                    [ProjectNotification(project_id=project_id, user_id=by_tg[i]) for i in delivered],
+                    ignore_conflicts=True,
+                )
+
+            if msgs:
+                send_in_background(msgs, on_done=mark_notified)
+            self.message_user(request, trn("msg_remind", title=project.title, n=len(msgs)))
 
 
 @admin.register(TeamMemberYashilQullar)
@@ -367,23 +333,29 @@ class TeamMemberAdmin(admin.ModelAdmin):
     list_filter = ('focus',)
     search_fields = ('fullname', 'telegram_username')
 
+    @admin.display(description=tr('f_photo'))
     def display_photo(self, obj):
         if obj.photo:
-            return format_html('<img src="{}" width="50" height="50" style="border-radius:50%; object-fit:cover;"/>', obj.photo.url)
-        return "Нет фото"
-    display_photo.short_description = "Фото"
+            return format_html('<img src="{}" width="44" height="44" loading="lazy" class="yq-avatar"/>', obj.photo.url)
+        return "—"
 
 
 @admin.register(EventFeedback)
 class EventFeedbackAdmin(admin.ModelAdmin):
-    list_display = ['user', 'project', 'rating', 'created_at']
-    list_filter = ['rating', 'project']
+    list_display = ['user', 'project', 'stars', 'comment', 'created_at']
+    list_filter = ['rating', ('project', admin.RelatedOnlyFieldListFilter)]
     readonly_fields = ['user', 'project', 'rating', 'comment', 'created_at']
+    list_select_related = ('user', 'project')
+    show_full_result_count = False
+
+    @admin.display(description=tr('f_rating'), ordering='rating')
+    def stars(self, obj):
+        return "⭐" * obj.rating
+
 
 class ArticleImageInline(admin.TabularInline):
     model = ArticleImage
-    extra = 3  # сразу 3 пустых слота под фото при создании поста
-
+    extra = 1
 
 
 @admin.register(Article)
@@ -391,16 +363,103 @@ class ArticleAdmin(admin.ModelAdmin):
     list_display = ['title', 'author', 'created_at', 'is_featured']
     prepopulated_fields = {'slug': ('title',)}
     inlines = [ArticleImageInline]
-    autocomplete_fields = ['author'] 
+    autocomplete_fields = ['author']
+    list_select_related = ('author',)
+
 
 @admin.register(Tag)
-class TagAdmin(TranslationAdmin): # Изменили здесь
+class TagAdmin(TranslationAdmin):
     list_display = ('name', 'slug')
-admin.site.register(Comment)
-admin.site.register(Partner)
-admin.site.register(ProjectNotification)
-admin.site.register(LoginToken)
 
 
+@admin.register(Comment)
+class CommentAdmin(admin.ModelAdmin):
+    list_display = ('user', 'article', 'text', 'created_at')
+    list_select_related = ('user', 'article')
+    # без raw_id форма рендерила <select> со ВСЕМИ юзерами и комментариями
+    raw_id_fields = ('user', 'article', 'parent')
+    show_full_result_count = False
 
 
+@admin.register(Partner)
+class PartnerAdmin(admin.ModelAdmin):
+    list_display = ('name', 'is_active')
+    list_editable = ('is_active',)
+
+
+@admin.register(ProjectNotification)
+class ProjectNotificationAdmin(admin.ModelAdmin):
+    list_display = ('project', 'user', 'sent_at')
+    list_select_related = ('project', 'user')
+    list_filter = (('project', admin.RelatedOnlyFieldListFilter),)
+    raw_id_fields = ('project', 'user')
+    show_full_result_count = False
+
+
+@admin.register(LoginToken)
+class LoginTokenAdmin(admin.ModelAdmin):
+    list_display = ('token', 'status', 'tg_id', 'created_at')
+    show_full_result_count = False
+
+
+# ─────────────────────────── дашборд на главной админки ───────────────────────────
+
+def dashboard_context():
+    """Цифры для главной страницы админки. Кэш 60 сек — страница открывается мгновенно."""
+    data = cache.get("yq_admin_dashboard")
+    if data:
+        return data
+
+    now = timezone.now()
+    today = timezone.localdate()
+    upcoming = list(
+        EcoProject.objects.filter(is_active=True, date__gte=now - timedelta(hours=12))
+        .annotate(
+            registered=Count('participants', filter=~Q(participants__status='rejected')),
+            attended=Count('participants', filter=Q(participants__status='attended')),
+        ).order_by('date')[:6]
+    )
+    for p in upcoming:
+        p.fill = min(100, round(100 * p.registered / p.max_participants)) if p.max_participants else 0
+
+    by_region = list(
+        TGUser.objects.exclude(region__isnull=True).exclude(region='')
+        .values('region').annotate(n=Count('id')).order_by('-n')[:8]
+    )
+    region_names = dict(TGUser.Region.choices)
+    top = by_region[0]['n'] if by_region else 1
+    for r in by_region:
+        r['name'] = region_names.get(r['region'], r['region'])
+        r['pct'] = round(100 * r['n'] / top)
+
+    data = {
+        "yq_stats": {
+            "users": TGUser.objects.count(),
+            "new_today": TGUser.objects.filter(created__date=today).count(),
+            "new_week": TGUser.objects.filter(created__date__gte=today - timedelta(days=6)).count(),
+            "active_events": EcoProject.objects.filter(is_active=True, date__gte=now).count(),
+            "regs_today": ProjectParticipation.objects.filter(applied_at__date=today).count(),
+            "attended_total": ProjectParticipation.objects.filter(status='attended').count(),
+        },
+        "yq_upcoming": upcoming,
+        "yq_recent": list(
+            ProjectParticipation.objects.select_related('user', 'project').order_by('-applied_at')[:8]
+        ),
+        "yq_regions": by_region,
+    }
+    cache.set("yq_admin_dashboard", data, 60)
+    return data
+
+
+_original_index = admin.site.index
+
+
+def _index_with_dashboard(request, extra_context=None):
+    extra_context = {**(extra_context or {}), **dashboard_context()}
+    return _original_index(request, extra_context)
+
+
+admin.site.index = _index_with_dashboard
+admin.site.site_header = "Yashil Qo'llar"
+admin.site.site_title = "Yashil Qo'llar"
+admin.site.index_title = tr('dash_sub')

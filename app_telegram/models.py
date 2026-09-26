@@ -1,13 +1,15 @@
 from django.db import models
 from django.utils.html import format_html
 
+from .i18n import tr
+
 class TimeBasedModel(models.Model):
     class Meta:
         abstract = True
         ordering = ('-created',)
 
-    created = models.DateTimeField(auto_now_add=True, verbose_name='дата создания')
-    updated = models.DateTimeField(auto_now=True, verbose_name='дата обновления')
+    created = models.DateTimeField(auto_now_add=True, verbose_name=tr('f_created'))
+    updated = models.DateTimeField(auto_now=True, verbose_name=tr('f_updated'))
 
 
 class TGUser(TimeBasedModel):
@@ -48,37 +50,37 @@ class TGUser(TimeBasedModel):
     # ИЗМЕНЕНО: tg_id больше не обязателен — международный юзер его не имеет.
     # unique=True + null=True — Postgres допускает много NULL при unique-констрейнте.
     tg_id = models.BigIntegerField(
-        unique=True, null=True, blank=True, db_index=True, verbose_name='id Telegram'
+        unique=True, null=True, blank=True, db_index=True, verbose_name=tr('f_tg_id')
     )
  
-    fullname = models.CharField(max_length=255)
-    age = models.PositiveSmallIntegerField(blank=True, null=True)
+    fullname = models.CharField(max_length=255, verbose_name=tr('f_fullname'))
+    age = models.PositiveSmallIntegerField(blank=True, null=True, verbose_name=tr('f_age'))
  
     # ИЗМЕНЕНО: email теперь unique — это будет основной идентификатор
     # для email- и google-логина. null=True (не blank='') чтобы старые
     # telegram-юзера без email не конфликтовали друг с другом на unique.
     email = models.EmailField(max_length=255, unique=True, null=True, blank=True)
     bio = models.TextField(blank=True, null=True, verbose_name="Bio")
-    phone = models.CharField(max_length=20, blank=True, null=True)
-    username = models.CharField(max_length=255, blank=True, null=True, verbose_name='Username')
-    experience = models.TextField(blank=True, null=True, verbose_name='tajribasi')
-    photo = models.ImageField(upload_to='users_photos/', blank=True, null=True, verbose_name='Profil rasmi')
-    region = models.CharField(max_length=20, choices=Region.choices, blank=True, null=True, verbose_name='Hudud', db_index=True)
-    education_place = models.CharField(max_length=255, blank=True, null=True, verbose_name='O‘qish joyi')
-    is_admin = models.BooleanField(default=False)
-    balance = models.PositiveIntegerField(default=0, verbose_name="Эко-баллы", db_index=True)
-    role = models.CharField(max_length=20, choices=Role.choices, default=Role.VOLUNTEER, verbose_name='Статус / Роль', db_index=True)
+    phone = models.CharField(max_length=20, blank=True, null=True, verbose_name=tr('f_phone'))
+    username = models.CharField(max_length=255, blank=True, null=True, verbose_name=tr('f_username'))
+    experience = models.TextField(blank=True, null=True, verbose_name=tr('f_experience'))
+    photo = models.ImageField(upload_to='users_photos/', blank=True, null=True, verbose_name=tr('f_photo'))
+    region = models.CharField(max_length=20, choices=Region.choices, blank=True, null=True, verbose_name=tr('f_region'), db_index=True)
+    education_place = models.CharField(max_length=255, blank=True, null=True, verbose_name=tr('f_education'))
+    is_admin = models.BooleanField(default=False, verbose_name=tr('f_is_admin'))
+    balance = models.PositiveIntegerField(default=0, verbose_name=tr('f_balance'), db_index=True)
+    role = models.CharField(max_length=20, choices=Role.choices, default=Role.VOLUNTEER, verbose_name=tr('f_role'), db_index=True)
  
     # НОВОЕ: хэш пароля для email-регистрации. Пусто у telegram-only юзеров.
     # Хранится через django.contrib.auth.hashers.make_password — НЕ plaintext.
-    password = models.CharField(max_length=128, blank=True, null=True, verbose_name="Пароль (хэш)")
+    password = models.CharField(max_length=128, blank=True, null=True, verbose_name=tr('f_password'))
  
     auth_provider = models.CharField(
         max_length=20, choices=AuthProvider.choices, default=AuthProvider.TELEGRAM,
-        verbose_name="Способ регистрации",
+        verbose_name=tr('f_auth_provider'),
     )
  
-    is_tester = models.BooleanField(default=False, verbose_name="Тестировщик")
+    is_tester = models.BooleanField(default=False, verbose_name=tr('f_is_tester'))
  
     @property
     def rank(self):
@@ -110,8 +112,8 @@ class TGUser(TimeBasedModel):
         return False
  
     class Meta:
-        verbose_name = 'пользователь'
-        verbose_name_plural = 'пользователи'
+        verbose_name = tr('user')
+        verbose_name_plural = tr('users')
  
     def __str__(self):
         return f'{self.fullname} ({self.tg_id or self.email}) {self.role}'
@@ -140,29 +142,29 @@ class TeamMemberYashilQullar(models.Model):
         return self.fullname
 
 class EcoProject(models.Model):
-    title = models.CharField(max_length=255, verbose_name="Loyiha nomi")
-    description = models.TextField(verbose_name="Tavsif", blank=True, null=True)
-    date = models.DateTimeField(verbose_name="Sana va vaqt")
-    location_name = models.CharField(max_length=255, verbose_name="Manzil nomi")
-    photo = models.ImageField(upload_to='projects/', null=True, blank=True, verbose_name="Rasm")
-    is_active = models.BooleanField(default=True, verbose_name="Faolmi?")
-    max_participants = models.PositiveIntegerField(default=100, verbose_name="Макс. участников")
-    likes_count = models.PositiveIntegerField(default=0, verbose_name="Лайки")
+    title = models.CharField(max_length=255, verbose_name=tr('f_title'))
+    description = models.TextField(verbose_name=tr('f_description'), blank=True, null=True)
+    date = models.DateTimeField(verbose_name=tr('f_date'))
+    location_name = models.CharField(max_length=255, verbose_name=tr('f_location'))
+    photo = models.ImageField(upload_to='projects/', null=True, blank=True, verbose_name=tr('f_photo'))
+    is_active = models.BooleanField(default=True, verbose_name=tr('f_is_active'))
+    max_participants = models.PositiveIntegerField(default=100, verbose_name=tr('f_max'))
+    likes_count = models.PositiveIntegerField(default=0, verbose_name=tr('f_likes'))
     # НОВОЕ: Ссылка на чат для этого проекта
-    chat_link = models.URLField(blank=True, null=True, verbose_name="Ссылка на чат (для принятых)")
+    chat_link = models.URLField(blank=True, null=True, verbose_name=tr('f_chat_link'))
     region = models.CharField(
     max_length=20, 
     choices=TGUser.Region.choices, 
     default='tashkent_s', 
-    verbose_name="Qaysi viloyat uchun?"
+    verbose_name=tr('f_project_region')
     )
 
     def __str__(self):
         return self.title
 
     class Meta:
-        verbose_name = "Eco loyiha"
-        verbose_name_plural = "Eco loyihalar"
+        verbose_name = tr('project')
+        verbose_name_plural = tr('projects')
         indexes = [
             models.Index(fields=['is_active', 'date'], name='ecoproj_active_date_idx'),
         ]
@@ -171,15 +173,15 @@ class EcoProject(models.Model):
 
 class ProjectParticipation(models.Model):
     STATUS_CHOICES = [
-        ('approved', '✅ Қабул қилинди (Принят)'),
-        ('attended', '🌟 Келди (Пришел +10 баллов)'),
-        ('rejected', '❌ Рад этилди (Отклонен)'),
+        ('approved', tr('st_approved')),
+        ('attended', tr('st_attended')),
+        ('rejected', tr('st_rejected')),
     ]
 
-    user = models.ForeignKey(TGUser, on_delete=models.CASCADE, related_name='participations')
-    project = models.ForeignKey(EcoProject, on_delete=models.CASCADE, related_name='participants')
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', verbose_name="Status")
-    applied_at = models.DateTimeField(auto_now_add=True)
+    user = models.ForeignKey(TGUser, on_delete=models.CASCADE, related_name='participations', verbose_name=tr('user'))
+    project = models.ForeignKey(EcoProject, on_delete=models.CASCADE, related_name='participants', verbose_name=tr('project'))
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', verbose_name=tr('f_status'))
+    applied_at = models.DateTimeField(auto_now_add=True, verbose_name=tr('f_applied_at'))
 
     def save(self, *args, **kwargs):
         if self.pk:
@@ -201,8 +203,8 @@ class ProjectParticipation(models.Model):
 
     class Meta:
         unique_together = ('user', 'project')
-        verbose_name = "Ishtirokchi"
-        verbose_name_plural = "Ishtirokchilar"
+        verbose_name = tr('participation')
+        verbose_name_plural = tr('participations')
 
 
 # # НОВОЕ: Модели для Магазина (Shop)
@@ -221,17 +223,17 @@ class ProjectParticipation(models.Model):
 #         return self.name
 
 class Partner(TimeBasedModel):
-    name = models.CharField(max_length=255, verbose_name="Имя компании")
-    description = models.TextField(blank=True, null=True, verbose_name="Описание партнерства")
-    logo = models.ImageField(upload_to='partners_logos/', blank=True, null=True, verbose_name="Логотип")
+    name = models.CharField(max_length=255, verbose_name=tr('f_name'))
+    description = models.TextField(blank=True, null=True, verbose_name=tr('f_description'))
+    logo = models.ImageField(upload_to='partners_logos/', blank=True, null=True, verbose_name=tr('f_logo'))
     instagram = models.URLField(blank=True, null=True, verbose_name="Instagram Link")
     telegram = models.URLField(blank=True, null=True, verbose_name="Telegram Link")
     linkedin = models.URLField(blank=True, null=True, verbose_name="LinkedIn Link")
-    is_active = models.BooleanField(default=True, verbose_name="Показывать в боте")
+    is_active = models.BooleanField(default=True, verbose_name=tr('f_show_in_bot'))
 
     class Meta:
-        verbose_name = 'Партнер'
-        verbose_name_plural = 'Партнеры'
+        verbose_name = tr('partner')
+        verbose_name_plural = tr('partners')
 
     def __str__(self):
         return self.name
@@ -245,8 +247,8 @@ class ProjectNotification(models.Model):
 
     class Meta:
         unique_together = ('project', 'user')
-        verbose_name = "Уведомление"
-        verbose_name_plural = "Уведомления"
+        verbose_name = tr('notification')
+        verbose_name_plural = tr('notifications')
 
 
 
@@ -293,8 +295,8 @@ class ArticleImage(models.Model):
 
     class Meta:
         ordering = ['order']
-        verbose_name = "Rasm (galereya)"
-        verbose_name_plural = "Rasmlar (galereya)"
+        verbose_name = tr('article_image')
+        verbose_name_plural = tr('article_images')
 
 class Comment(models.Model):
     article = models.ForeignKey(Article, on_delete=models.CASCADE, related_name='comments')
@@ -329,21 +331,21 @@ class LoginToken(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        verbose_name = 'Токен входа'
-        verbose_name_plural = 'Токены входа'
+        verbose_name = tr('login_token')
+        verbose_name_plural = tr('login_tokens')
 
 
 class EventFeedback(models.Model):
     user = models.ForeignKey(TGUser, on_delete=models.CASCADE, related_name='feedbacks')
     project = models.ForeignKey(EcoProject, on_delete=models.CASCADE, related_name='feedbacks')
-    rating = models.PositiveSmallIntegerField(verbose_name="Baho (1-5)")
-    comment = models.TextField(blank=True, null=True, verbose_name="Fikr-mulohaza")
+    rating = models.PositiveSmallIntegerField(verbose_name=tr('f_rating'))
+    comment = models.TextField(blank=True, null=True, verbose_name=tr('f_comment'))
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         unique_together = ('user', 'project')
-        verbose_name = "Fikr-mulohaza"
-        verbose_name_plural = "Fikr-mulohazalar"
+        verbose_name = tr('feedback')
+        verbose_name_plural = tr('feedbacks')
 
     def __str__(self):
         return f"{self.user.fullname} — {self.project.title} ({self.rating}⭐)"
@@ -390,8 +392,8 @@ class EcoProjectImage(models.Model):
  
     class Meta:
         ordering = ['order']
-        verbose_name = "Loyiha rasmi (galereya)"
-        verbose_name_plural = "Loyiha rasmlari (galereya)"
+        verbose_name = tr('project_image')
+        verbose_name_plural = tr('project_images')
  
 
 class EcoProjectComment(models.Model):

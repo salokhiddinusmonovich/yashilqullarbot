@@ -1,30 +1,46 @@
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-from .text import register_text, phone_text
-# from app_telegram.models import TGUser
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
-guide_text = "❓ Qo'llanma"
-admin_panel_text = "🛠 Admin panel"
+from tgbot.i18n import t, LANG_BUTTON, LANG_NAMES, REGIONS, LANGS, current_lang
 
 
-def hi_there(is_admin: bool = False):
+def hi_there(is_admin: bool = False, lang: str = None):
+    # Самое нужное — сверху: мероприятия и QR.
     keyboard = [
-        # Запятая в конце каждой строки ряда обязательна!
-        [KeyboardButton(text="🌟 Biz haqimizda"), KeyboardButton(text="🚀 Loyihaga qo‘shilish")],
-        [KeyboardButton(text="🌿 Mening QR-kodim"), KeyboardButton(text=guide_text)],
-        [KeyboardButton(text="👤 Mening profilim")],
-        [KeyboardButton(text="🌱 Tadbirlar")],
+        [KeyboardButton(text=t("btn_events", lang)), KeyboardButton(text=t("btn_qr", lang))],
+        [KeyboardButton(text=t("btn_profile", lang)), KeyboardButton(text=t("btn_guide", lang))],
+        [KeyboardButton(text=t("btn_about", lang)), KeyboardButton(text=t("btn_join", lang))],
+        [KeyboardButton(text=LANG_BUTTON)],
     ]
     if is_admin:
-        keyboard.append([KeyboardButton(text=admin_panel_text)])
+        keyboard.append([KeyboardButton(text=t("btn_admin", lang))])
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
 
+
 def auth_btn():
-    register_btn = KeyboardButton(text=register_text)
-    return ReplyKeyboardMarkup(keyboard=[[register_btn]],resize_keyboard=True,  one_time_keyboard=True)
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=t("btn_register"))], [KeyboardButton(text=LANG_BUTTON)]],
+        resize_keyboard=True, one_time_keyboard=True,
+    )
+
 
 def contact_btn():
-    phone = KeyboardButton(text=phone_text, request_contact=True)
+    phone = KeyboardButton(text=t("btn_phone"), request_contact=True)
     return ReplyKeyboardMarkup(keyboard=[[phone]], resize_keyboard=True, one_time_keyboard=True)
+
+
+def region_kb(with_back: bool = False, row_width: int = 1):
+    lang_idx = LANGS.index(current_lang.get())
+    kb = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=not with_back, row_width=row_width)
+    kb.add(*[KeyboardButton(labels[lang_idx]) for labels in REGIONS.values()])
+    if with_back:
+        kb.add(KeyboardButton(t("btn_back")))
+    return kb
+
+
+def lang_kb() -> InlineKeyboardMarkup:
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(*[InlineKeyboardButton(LANG_NAMES[code], callback_data=f"setlang:{code}") for code in LANGS])
+    return kb
 
 
 async def main_menu(tg_id: int):

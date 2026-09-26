@@ -1,17 +1,18 @@
 """
 Админка прямо в боте — /admin или кнопка "🛠 Admin panel".
 Доступ: TGUser.is_admin=True или tg_id из ADMIN_IDS в .env.
+Все тексты — на языке админа (tgbot/i18n.py, ключи adm_*).
 
 Что умеет:
-  📊 Statistika        — тот же отчёт, что приходит каждый вечер
-  📅 Tadbirlar         — список мероприятий → карточка:
-                           📥 Excel участников (для сертификатов)
-                           ✅ список пришедших
-                           ➕ добавить участника (поиск по @username/телефону/имени/email/ID)
-                           ✉️ сообщение всем участникам мероприятия
-  🔎 Foydalanuvchi     — поиск юзера → карточка: роль, админка, добавить в мероприятие
-  📥 Barcha foydalanuvchilar — Excel всей базы
-  📢 Rassilka          — подсказка по командам /send, /regionsend и т.д.
+  📊 Статистика   — тот же отчёт, что приходит каждый вечер
+  📅 Мероприятия  — список → карточка:
+                      📥 Excel участников (для сертификатов)
+                      ✅ список пришедших
+                      ➕ добавить участника (поиск по @username/телефону/имени/email/ID)
+                      ✉️ сообщение всем участникам мероприятия
+  🔎 Поиск        — карточка человека: роль (с поздравлением), админка, добавить в мероприятие
+  📥 Excel        — вся база
+  📢 Рассылка     — подсказка по командам /send, /regionsend и т.д.
 
 Плюс здесь же ловим блокировку бота юзером (my_chat_member) для статистики.
 """
@@ -31,13 +32,14 @@ from django.db.models import Count, Q
 from django.utils import timezone
 
 from app_telegram.models import TGUser, EcoProject, ProjectParticipation
-from ..keyboards.reply import admin_panel_text
+from tgbot.i18n import (
+    t, variants, region_label, role_label, status_label, provider_label, LANG_NAMES, ROLES, REGIONS,
+)
 from ..services import stats
 from ..services.daily_report import build_report
+from ..services.lang import lang_of, langs_of
 
 logger = logging.getLogger(__name__)
-
-STATUS_LABELS = {'approved': 'Yozilgan', 'attended': 'Kelgan ✅', 'rejected': 'Rad etilgan', 'pending': 'Kutilmoqda'}
 
 
 class AdminStates(StatesGroup):
@@ -59,19 +61,19 @@ async def is_admin(bot, tg_id: int) -> bool:
 def main_kb() -> InlineKeyboardMarkup:
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
-        InlineKeyboardButton("📊 Statistika", callback_data="adm:stats"),
-        InlineKeyboardButton("📅 Tadbirlar", callback_data="adm:events"),
+        InlineKeyboardButton(t("adm_btn_stats"), callback_data="adm:stats"),
+        InlineKeyboardButton(t("adm_btn_events"), callback_data="adm:events"),
     )
     kb.add(
-        InlineKeyboardButton("🔎 Foydalanuvchi qidirish", callback_data="adm:find"),
-        InlineKeyboardButton("📥 Barcha foydalanuvchilar", callback_data="adm:usersx"),
+        InlineKeyboardButton(t("adm_btn_find"), callback_data="adm:find"),
+        InlineKeyboardButton(t("adm_btn_users_xlsx"), callback_data="adm:usersx"),
     )
-    kb.add(InlineKeyboardButton("📢 Rassilka buyruqlari", callback_data="adm:bchelp"))
+    kb.add(InlineKeyboardButton(t("adm_btn_bc"), callback_data="adm:bchelp"))
     return kb
 
 
-def back_kb(to: str = "adm:menu", label: str = "⬅️ Orqaga") -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup().add(InlineKeyboardButton(label, callback_data=to))
+def back_kb(to: str = "adm:menu", label_key: str = "adm_btn_menu") -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup().add(InlineKeyboardButton(t(label_key), callback_data=to))
 
 
 # ─────────────────────────── поиск юзеров ───────────────────────────
@@ -99,7 +101,7 @@ def _user_line(u: TGUser) -> str:
     if u.username:
         parts.append(f"@{u.username}")
     if u.region:
-        parts.append(u.get_region_display())
+        parts.append(region_label(u.region))
     return " · ".join(parts)
 
 
@@ -109,12 +111,12 @@ async def admin_entry(message: types.Message, state: FSMContext):
     if not await is_admin(message.bot, message.from_user.id):
         return
     await state.finish()
-    await message.answer("🛠 <b>Admin panel</b>\n\nNima qilamiz?", reply_markup=main_kb(), parse_mode="HTML")
+    await message.answer(t("adm_menu"), reply_markup=main_kb())
 
 
 async def admin_callback(call: types.CallbackQuery, state: FSMContext):
     if not await is_admin(call.bot, call.from_user.id):
-        await call.answer("Ruxsat yo'q", show_alert=True)
+        await call.answer(t("no_access"), show_alert=True)
         return
 
     parts = call.data.split(":")
@@ -135,53 +137,44 @@ async def admin_callback(call: types.CallbackQuery, state: FSMContext):
 
 async def _edit_or_send(call: types.CallbackQuery, text: str, kb=None):
     try:
-        await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML", disable_web_page_preview=True)
+        await call.message.edit_text(text, reply_markup=kb, disable_web_page_preview=True)
     except (exceptions.MessageCantBeEdited, exceptions.BadRequest):
-        await call.message.answer(text, reply_markup=kb, parse_mode="HTML", disable_web_page_preview=True)
+        await call.message.answer(text, reply_markup=kb, disable_web_page_preview=True)
 
 
 async def cb_menu(call, state):
     await state.finish()
-    await _edit_or_send(call, "🛠 <b>Admin panel</b>\n\nNima qilamiz?", main_kb())
+    await _edit_or_send(call, t("adm_menu"), main_kb())
 
 
 async def cb_stats(call, state):
-    await call.answer("Hisoblanmoqda…")
+    await call.answer(t("adm_preparing"))
     await _edit_or_send(call, await build_report(), back_kb())
 
 
 async def cb_bchelp(call, state):
-    text = (
-        "📢 <b>Rassilka buyruqlari</b>\n\n"
-        "Kerakli xabarni (matn/rasm) yozing, keyin unga <b>reply</b> qilib buyruq yuboring:\n\n"
-        "<code>/send</code> — hammaga\n"
-        "<code>/regionsend samarkand</code> — bitta hududga\n"
-        "<code>/targetsend @nick1 @nick2</code> — aniq odamlarga\n"
-        "<code>/adminsend</code> — faqat adminlarga\n"
-        "<code>/remindregion</code> — hududi noto'g'ri bo'lganlarga eslatma\n"
-        "<code>/check @nick</code> — kanalga obuna tekshirish\n\n"
-        "Bitta tadbir qatnashchilariga xabar — 📅 Tadbirlar → tadbir → ✉️"
-    )
-    await _edit_or_send(call, text, back_kb())
+    await _edit_or_send(call, t("adm_bc_help", regions=", ".join(REGIONS)), back_kb())
 
 
 # ─────────────────────────── мероприятия ───────────────────────────
 
+def _with_counts(qs):
+    return qs.annotate(
+        registered=Count('participants', filter=~Q(participants__status='rejected')),
+        attended=Count('participants', filter=Q(participants__status='attended')),
+    )
+
+
 @sync_to_async
 def _events(limit=15):
-    return list(
-        EcoProject.objects.annotate(
-            registered=Count('participants', filter=~Q(participants__status='rejected')),
-            attended=Count('participants', filter=Q(participants__status='attended')),
-        ).order_by('-date')[:limit]
-    )
+    return list(_with_counts(EcoProject.objects.all()).order_by('-date')[:limit])
 
 
 async def cb_events(call, state):
     await state.finish()
     events = await _events()
     if not events:
-        await _edit_or_send(call, "Tadbirlar yo'q.", back_kb())
+        await _edit_or_send(call, t("adm_no_events"), back_kb())
         return
     kb = InlineKeyboardMarkup(row_width=1)
     for p in events:
@@ -191,30 +184,24 @@ async def cb_events(call, state):
             f"{mark} {date} · {p.title[:30]} · {p.attended}/{p.registered}",
             callback_data=f"adm:ev:{p.id}",
         ))
-    kb.add(InlineKeyboardButton("⬅️ Orqaga", callback_data="adm:menu"))
-    await _edit_or_send(call, "📅 <b>Tadbirlar</b> (oxirgi 15)\n<i>kelgan / yozilgan</i>", kb)
+    kb.add(InlineKeyboardButton(t("adm_btn_menu"), callback_data="adm:menu"))
+    await _edit_or_send(call, t("adm_events_title"), kb)
 
 
 @sync_to_async
 def _event_card(project_id):
-    p = EcoProject.objects.filter(id=project_id).annotate(
-        registered=Count('participants', filter=~Q(participants__status='rejected')),
-        attended=Count('participants', filter=Q(participants__status='attended')),
-    ).first()
-    return p
+    return _with_counts(EcoProject.objects.filter(id=project_id)).first()
 
 
 def event_kb(pid) -> InlineKeyboardMarkup:
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
-        InlineKeyboardButton("📥 Excel", callback_data=f"adm:evx:{pid}"),
-        InlineKeyboardButton("✅ Kelganlar", callback_data=f"adm:eva:{pid}"),
+        InlineKeyboardButton(t("adm_btn_excel"), callback_data=f"adm:evx:{pid}"),
+        InlineKeyboardButton(t("adm_btn_attended"), callback_data=f"adm:eva:{pid}"),
     )
-    kb.add(
-        InlineKeyboardButton("➕ Qatnashchi qo'shish", callback_data=f"adm:evadd:{pid}"),
-        InlineKeyboardButton("✉️ Xabar yuborish", callback_data=f"adm:evmsg:{pid}"),
-    )
-    kb.add(InlineKeyboardButton("⬅️ Tadbirlar", callback_data="adm:events"))
+    kb.add(InlineKeyboardButton(t("adm_btn_add"), callback_data=f"adm:evadd:{pid}"))
+    kb.add(InlineKeyboardButton(t("adm_btn_msg"), callback_data=f"adm:evmsg:{pid}"))
+    kb.add(InlineKeyboardButton(t("adm_btn_events_back"), callback_data="adm:events"))
     return kb
 
 
@@ -222,15 +209,16 @@ async def cb_event(call, state, pid):
     await state.finish()
     p = await _event_card(int(pid))
     if not p:
-        await _edit_or_send(call, "Tadbir topilmadi.", back_kb("adm:events"))
+        await _edit_or_send(call, t("adm_event_not_found"), back_kb("adm:events", "adm_btn_events_back"))
         return
-    text = (
-        f"📅 <b>{escape(p.title)}</b>\n"
-        f"🗓 {timezone.localtime(p.date).strftime('%d.%m.%Y %H:%M')} · {p.get_region_display()}\n"
-        f"📍 {escape(p.location_name or '—')}\n"
-        f"{'🟢 Faol' if p.is_active else '⚪️ Faol emas'}\n\n"
-        f"📝 Yozilgan: <b>{p.registered}</b> / {p.max_participants}\n"
-        f"✅ Kelgan: <b>{p.attended}</b>"
+    text = t(
+        "adm_event_card",
+        title=escape(p.title),
+        date=timezone.localtime(p.date).strftime('%d.%m.%Y %H:%M'),
+        region=region_label(p.region),
+        place=escape(p.location_name or '—'),
+        active=t("adm_active") if p.is_active else t("adm_inactive"),
+        reg=p.registered, max=p.max_participants, att=p.attended,
     )
     await _edit_or_send(call, text, event_kb(p.id))
 
@@ -246,31 +234,33 @@ def _participants(project_id, status=None):
 async def cb_event_attended(call, state, pid):
     parts = await _participants(int(pid), 'attended')
     if not parts:
-        await call.message.answer("Hali hech kim tasdiqlanmagan.")
+        await call.message.answer(t("adm_no_attended"))
         return
-    lines = [f"✅ <b>{escape(parts[0].project.title)}</b> — kelganlar ({len(parts)}):", ""]
+    lines = [t("adm_attended_title", title=escape(parts[0].project.title), n=len(parts)), ""]
     lines += [f"{i}. {escape(_user_line(pp.user))}" for i, pp in enumerate(parts, 1)]
     text = "\n".join(lines)
     for x in range(0, len(text), 4000):
-        await call.message.answer(text[x:x + 4000], parse_mode="HTML")
+        await call.message.answer(text[x:x + 4000])
 
 
 def _xlsx(title: str, headers: list, rows: list) -> BytesIO:
     from openpyxl import Workbook
-    from openpyxl.styles import Font
+    from openpyxl.styles import Font, PatternFill
 
     wb = Workbook()
     ws = wb.active
     ws.title = title[:31]
     ws.append(headers)
     for cell in ws[1]:
-        cell.font = Font(bold=True)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="15803D")
     for row in rows:
         ws.append(row)
     for col in ws.columns:
         width = max(len(str(c.value or "")) for c in col)
         ws.column_dimensions[col[0].column_letter].width = min(max(width + 2, 8), 45)
     ws.freeze_panes = "A2"
+    ws.auto_filter.ref = ws.dimensions
     buf = BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -282,11 +272,10 @@ def _safe_filename(name: str) -> str:
 
 
 async def cb_event_excel(call, state, pid):
-    await call.answer("Tayyorlanmoqda…")
-    parts = await _participants(int(pid))
-    parts = [pp for pp in parts if pp.status != 'rejected']
+    await call.answer(t("adm_preparing"))
+    parts = [pp for pp in await _participants(int(pid)) if pp.status != 'rejected']
     if not parts:
-        await call.message.answer("Qatnashchilar yo'q.")
+        await call.message.answer(t("adm_no_participants"))
         return
     # сначала пришедшие — это и есть список на сертификаты
     parts.sort(key=lambda pp: (pp.status != 'attended', (pp.user.fullname or "").lower()))
@@ -296,25 +285,21 @@ async def cb_event_excel(call, state, pid):
         u = pp.user
         rows.append([
             i, u.fullname, u.phone, u.email, f"@{u.username}" if u.username else "",
-            u.get_region_display() if u.region else "", u.age, u.education_place,
-            STATUS_LABELS.get(pp.status, pp.status),
+            region_label(u.region) if u.region else "", u.age, u.education_place,
+            status_label(pp.status),
             timezone.localtime(pp.applied_at).strftime('%d.%m.%Y %H:%M') if pp.applied_at else "",
         ])
-    buf = await sync_to_async(_xlsx)(
-        "Qatnashchilar",
-        ["№", "F.I.Sh", "Telefon", "Email", "Telegram", "Hudud", "Yosh", "O'qish joyi", "Status", "Yozilgan vaqt"],
-        rows,
-    )
+    buf = await sync_to_async(_xlsx)(t("xl_sheet_participants"), t("xl_event_headers"), rows)
     attended = sum(1 for pp in parts if pp.status == 'attended')
     date = timezone.localtime(project.date).strftime('%Y-%m-%d')
     await call.message.answer_document(
         types.InputFile(buf, filename=f"{date}_{_safe_filename(project.title)}.xlsx"),
-        caption=f"📥 {escape(project.title)}\n✅ Kelgan: {attended} · 📝 Jami: {len(parts)}",
+        caption=t("adm_excel_caption", title=escape(project.title), att=attended, total=len(parts)),
     )
 
 
 async def cb_users_excel(call, state):
-    await call.answer("Tayyorlanmoqda…")
+    await call.answer(t("adm_preparing"))
 
     @sync_to_async
     def _rows():
@@ -323,21 +308,16 @@ async def cb_users_excel(call, state):
         ).order_by('-created')
         return [
             [u.id, u.fullname, u.phone, u.email, f"@{u.username}" if u.username else "", u.tg_id,
-             u.get_region_display() if u.region else "", u.age, u.get_role_display(), u.balance,
-             u.attended, u.get_auth_provider_display(), timezone.localtime(u.created).strftime('%d.%m.%Y')]
-            for u in users
+             region_label(u.region) if u.region else "", u.age, role_label(u.role), u.balance,
+             u.attended, provider_label(u.auth_provider), timezone.localtime(u.created).strftime('%d.%m.%Y')]
+            for u in users.iterator(chunk_size=500)
         ]
 
     rows = await _rows()
-    buf = await sync_to_async(_xlsx)(
-        "Foydalanuvchilar",
-        ["ID", "F.I.Sh", "Telefon", "Email", "Telegram", "TG ID", "Hudud", "Yosh", "Rol", "Ball",
-         "Tadbirlarda qatnashgan", "Ro'yxatdan o'tgan joyi", "Sana"],
-        rows,
-    )
+    buf = await sync_to_async(_xlsx)(t("xl_sheet_users"), t("xl_user_headers"), rows)
     await call.message.answer_document(
         types.InputFile(buf, filename=f"users_{timezone.localdate().isoformat()}.xlsx"),
-        caption=f"👥 Jami: {len(rows)}",
+        caption=t("adm_users_caption", n=len(rows)),
     )
 
 
@@ -346,25 +326,27 @@ async def cb_users_excel(call, state):
 @sync_to_async
 def add_to_event(user_id: int, project_id: int):
     """
-    Добавляет юзера в мероприятие. Если мероприятие уже началось/прошло —
+    Добавляет юзера в мероприятие. Если мероприятие сегодня или уже прошло —
     сразу "attended" (+10 баллов через ProjectParticipation.save), иначе "approved".
     Возвращает (text, user, project, newly_attended).
     """
     user = TGUser.objects.get(id=user_id)
     project = EcoProject.objects.get(id=project_id)
-    status = 'attended' if project.date <= timezone.now() or timezone.localtime(project.date).date() == timezone.localdate() else 'approved'
+    started = project.date <= timezone.now() or timezone.localtime(project.date).date() == timezone.localdate()
+    status = 'attended' if started else 'approved'
+    name = escape(user.fullname or "—")
 
     pp, created = ProjectParticipation.objects.get_or_create(user=user, project=project, defaults={'status': status})
     if created:
-        label = "qo'shildi va kelgan deb belgilandi ✅" if status == 'attended' else "tadbirga yozildi 📝"
-        return f"➕ <b>{escape(user.fullname)}</b> {label}", user, project, status == 'attended'
+        key = "adm_added_attended" if status == 'attended' else "adm_added_registered"
+        return t(key, name=name), user, project, status == 'attended'
 
     if pp.status != 'attended' and status == 'attended':
         pp.status = 'attended'
         pp.save()
-        return f"✅ <b>{escape(user.fullname)}</b> kelgan deb belgilandi", user, project, True
+        return t("adm_marked_attended", name=name), user, project, True
 
-    return f"ℹ️ <b>{escape(user.fullname)}</b> allaqachon ro'yxatda ({STATUS_LABELS.get(pp.status, pp.status)})", user, project, False
+    return t("adm_already_in", name=name, status=status_label(pp.status)), user, project, False
 
 
 async def _notify_attended(bot, user, project):
@@ -374,10 +356,7 @@ async def _notify_attended(bot, user, project):
     try:
         await bot.send_message(
             user.tg_id,
-            f"🌟 <b>«{escape(project.title)}» tadbirida ishtirok etganingiz tasdiqlandi!</b>\n\n"
-            f"Sizga 10 ball berildi. Hozirgi balansingiz: <b>{user.balance} ball</b>.\n\n"
-            "🎓 Sertifikatingiz tadbirdan keyin tadbir guruhiga tashlanadi.",
-            parse_mode="HTML",
+            t("attended_notify", await lang_of(user.tg_id), project=escape(project.title), balance=user.balance),
         )
     except Exception:
         pass
@@ -386,13 +365,7 @@ async def _notify_attended(bot, user, project):
 async def cb_event_add(call, state, pid):
     await AdminStates.add_participant.set()
     await state.update_data(project_id=int(pid))
-    await call.message.answer(
-        "➕ Kimni qo'shamiz? Yozing:\n"
-        "• <code>@username</code>\n• telefon raqam\n• ism familiya\n• email\n• Telegram ID\n\n"
-        "Bir nechta odamni ketma-ket qo'shish mumkin.",
-        reply_markup=back_kb(f"adm:ev:{pid}", "✔️ Tugatish"),
-        parse_mode="HTML",
-    )
+    await call.message.answer(t("adm_add_prompt"), reply_markup=back_kb(f"adm:ev:{pid}", "adm_btn_done"))
 
 
 async def add_participant_query(message: types.Message, state: FSMContext):
@@ -400,44 +373,39 @@ async def add_participant_query(message: types.Message, state: FSMContext):
         return
     pid = (await state.get_data()).get("project_id")
     users = await search_users(message.text or "")
-    done_kb = back_kb(f"adm:ev:{pid}", "✔️ Tugatish")
+    done_kb = back_kb(f"adm:ev:{pid}", "adm_btn_done")
 
     if not users:
-        await message.answer("❌ Topilmadi. Boshqacha yozib ko'ring (masalan @username yoki telefon).",
-                             reply_markup=done_kb)
+        await message.answer(t("adm_not_found"), reply_markup=done_kb)
         return
 
     if len(users) == 1:
         text, user, project, newly = await add_to_event(users[0].id, pid)
         if newly:
             await _notify_attended(message.bot, user, project)
-        await message.answer(text + "\n\nYana kimnidir qo'shasizmi? Yozing yoki «Tugatish».",
-                             reply_markup=done_kb, parse_mode="HTML")
+        await message.answer(text + t("adm_add_more"), reply_markup=done_kb)
         return
 
     kb = InlineKeyboardMarkup(row_width=1)
     for u in users:
         kb.add(InlineKeyboardButton(_user_line(u)[:60], callback_data=f"adm:addu:{pid}:{u.id}"))
-    kb.add(InlineKeyboardButton("✔️ Tugatish", callback_data=f"adm:ev:{pid}"))
-    await message.answer(f"Bir nechta odam topildi ({len(users)}). Keraklisini tanlang 👇", reply_markup=kb)
+    kb.add(InlineKeyboardButton(t("adm_btn_done"), callback_data=f"adm:ev:{pid}"))
+    await message.answer(t("adm_many_found", n=len(users)), reply_markup=kb)
 
 
 async def cb_add_user(call, state, pid, uid):
     text, user, project, newly = await add_to_event(int(uid), int(pid))
     if newly:
         await _notify_attended(call.bot, user, project)
-    await call.message.answer(text, parse_mode="HTML")
+    await call.message.answer(text)
 
 
-# ─────────────────────────── рассылка участникам ───────────────────────────
+# ─────────────────────────── сообщение участникам ───────────────────────────
 
 async def cb_event_msg(call, state, pid):
     await AdminStates.event_message.set()
     await state.update_data(project_id=int(pid))
-    await call.message.answer(
-        "✉️ Tadbir qatnashchilariga yuboriladigan xabarni yozing (matn, rasm, video — nima bo'lsa).",
-        reply_markup=back_kb(f"adm:ev:{pid}", "❌ Bekor qilish"),
-    )
+    await call.message.answer(t("adm_msg_prompt"), reply_markup=back_kb(f"adm:ev:{pid}", "adm_btn_cancel"))
 
 
 async def event_message_send(message: types.Message, state: FSMContext):
@@ -450,7 +418,7 @@ async def event_message_send(message: types.Message, state: FSMContext):
         ProjectParticipation.objects.filter(project_id=pid, user__tg_id__isnull=False)
         .exclude(status='rejected').values_list('user__tg_id', flat=True)
     )
-    await message.answer(f"🚀 Yuborilmoqda: {len(tg_ids)} kishi…")
+    await message.answer(t("adm_sending", n=len(tg_ids)))
     sent = blocked = 0
     for tg_id in tg_ids:
         try:
@@ -464,19 +432,15 @@ async def event_message_send(message: types.Message, state: FSMContext):
         except Exception as e:
             logger.warning("event msg to %s failed: %s", tg_id, e)
         await asyncio.sleep(0.05)
-    await message.answer(f"✅ Yuborildi: {sent} · 🚫 bloklagan: {blocked}",
-                         reply_markup=back_kb(f"adm:ev:{pid}", "⬅️ Tadbirga qaytish"))
+    await message.answer(t("adm_sent", sent=sent, blocked=blocked),
+                         reply_markup=back_kb(f"adm:ev:{pid}", "adm_btn_back_event"))
 
 
-# ─────────────────────────── юзеры ───────────────────────────
+# ─────────────────────────── люди ───────────────────────────
 
 async def cb_find(call, state):
     await AdminStates.search_user.set()
-    await call.message.answer(
-        "🔎 Kimni qidiramiz? <code>@username</code>, telefon, ism, email yoki Telegram ID yozing.",
-        reply_markup=back_kb("adm:menu", "❌ Bekor qilish"),
-        parse_mode="HTML",
-    )
+    await call.message.answer(t("adm_find_prompt"), reply_markup=back_kb("adm:menu", "adm_btn_cancel"))
 
 
 async def search_user_query(message: types.Message, state: FSMContext):
@@ -484,18 +448,18 @@ async def search_user_query(message: types.Message, state: FSMContext):
         return
     users = await search_users(message.text or "")
     if not users:
-        await message.answer("❌ Topilmadi. Boshqacha yozib ko'ring.")
+        await message.answer(t("adm_find_not_found"))
         return
     await state.finish()
     if len(users) == 1:
         text, kb = await _user_card(users[0].id)
-        await message.answer(text, reply_markup=kb, parse_mode="HTML")
+        await message.answer(text, reply_markup=kb)
         return
     kb = InlineKeyboardMarkup(row_width=1)
     for u in users:
         kb.add(InlineKeyboardButton(_user_line(u)[:60], callback_data=f"adm:u:{u.id}"))
-    kb.add(InlineKeyboardButton("⬅️ Orqaga", callback_data="adm:menu"))
-    await message.answer(f"Topildi: {len(users)}", reply_markup=kb)
+    kb.add(InlineKeyboardButton(t("adm_btn_menu"), callback_data="adm:menu"))
+    await message.answer(t("adm_found_n", n=len(users)), reply_markup=kb)
 
 
 @sync_to_async
@@ -504,36 +468,46 @@ def _user_data(user_id):
     parts = list(
         ProjectParticipation.objects.filter(user=u).select_related('project').order_by('-project__date')[:5]
     )
-    total = ProjectParticipation.objects.filter(user=u).exclude(status='rejected').count()
-    attended = ProjectParticipation.objects.filter(user=u, status='attended').count()
-    return u, parts, total, attended
+    counts = ProjectParticipation.objects.filter(user=u).aggregate(
+        total=Count('id', filter=~Q(status='rejected')),
+        att=Count('id', filter=Q(status='attended')),
+    )
+    return u, parts, counts['total'], counts['att']
 
 
 async def _user_card(user_id):
     u, parts, total, attended = await _user_data(user_id)
-    lines = [
-        f"👤 <b>{escape(u.fullname or '—')}</b>" + (" 👑" if u.is_admin else ""),
-        f"🎭 Rol: {u.get_role_display()}",
-        f"📱 {escape(u.phone or '—')} · ✉️ {escape(u.email or '—')}",
-        f"💬 {'@' + escape(u.username) if u.username else '—'} · ID: <code>{u.tg_id or '—'}</code>",
-        f"📍 {u.get_region_display() if u.region else '—'} · 🎂 {u.age or '—'}",
-        f"💰 {u.balance} ball · 📝 {total} tadbir · ✅ {attended} kelgan",
-        f"🔐 {u.get_auth_provider_display()} · {timezone.localtime(u.created).strftime('%d.%m.%Y')}",
-    ]
+    user_lang = await lang_of(u.tg_id) if u.tg_id else None
+    text = t(
+        "adm_user_card",
+        name=escape(u.fullname or '—'),
+        crown=" 👑" if u.is_admin else "",
+        role=role_label(u.role),
+        phone=escape(u.phone or '—'),
+        email=escape(u.email or '—'),
+        uname=f"@{escape(u.username)}" if u.username else "—",
+        tg=u.tg_id or '—',
+        region=region_label(u.region),
+        age=u.age or '—',
+        balance=u.balance, total=total, att=attended,
+        provider=provider_label(u.auth_provider),
+        date=timezone.localtime(u.created).strftime('%d.%m.%Y'),
+        ulang=LANG_NAMES.get(user_lang, "—"),
+    )
     if parts:
-        lines += ["", "<b>Oxirgi tadbirlar:</b>"]
-        lines += [f"• {escape(pp.project.title)} — {STATUS_LABELS.get(pp.status, pp.status)}" for pp in parts]
+        text += "\n\n" + t("adm_last_events") + "\n"
+        text += "\n".join(f"• {escape(pp.project.title)} — {status_label(pp.status)}" for pp in parts)
 
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
-        InlineKeyboardButton("📅 Tadbirga qo'shish", callback_data=f"adm:uev:{u.id}"),
-        InlineKeyboardButton("🎭 Rolni o'zgartirish", callback_data=f"adm:ur:{u.id}"),
+        InlineKeyboardButton(t("adm_btn_add_to_event"), callback_data=f"adm:uev:{u.id}"),
+        InlineKeyboardButton(t("adm_btn_role"), callback_data=f"adm:ur:{u.id}"),
     )
     kb.add(InlineKeyboardButton(
-        "👑 Adminlikni olish" if u.is_admin else "👑 Admin qilish", callback_data=f"adm:ua:{u.id}",
+        t("adm_btn_remove_admin") if u.is_admin else t("adm_btn_make_admin"), callback_data=f"adm:ua:{u.id}",
     ))
-    kb.add(InlineKeyboardButton("⬅️ Menyu", callback_data="adm:menu"))
-    return "\n".join(lines), kb
+    kb.add(InlineKeyboardButton(t("adm_btn_menu"), callback_data="adm:menu"))
+    return text, kb
 
 
 async def cb_user(call, state, uid):
@@ -544,30 +518,38 @@ async def cb_user(call, state, uid):
 
 async def cb_user_roles(call, state, uid):
     kb = InlineKeyboardMarkup(row_width=2)
-    kb.add(*[
-        InlineKeyboardButton(label, callback_data=f"adm:urs:{uid}:{value}")
-        for value, label in TGUser.Role.choices
-    ])
-    kb.add(InlineKeyboardButton("⬅️ Orqaga", callback_data=f"adm:u:{uid}"))
-    await _edit_or_send(call, "🎭 Yangi rolni tanlang:\n<i>Volunteer'dan boshqa har qanday rol QR skaner qila oladi.</i>", kb)
+    kb.add(*[InlineKeyboardButton(role_label(code), callback_data=f"adm:urs:{uid}:{code}") for code in ROLES])
+    kb.add(InlineKeyboardButton(t("btn_back"), callback_data=f"adm:u:{uid}"))
+    await _edit_or_send(call, t("adm_choose_role"), kb)
 
 
 async def cb_user_role_set(call, state, uid, role):
     if role not in TGUser.Role.values:
         return
-    await sync_to_async(TGUser.objects.filter(id=int(uid)).update)(role=role)
-    await call.answer("Saqlandi ✅")
+    user = await sync_to_async(TGUser.objects.get)(id=int(uid))
+    old_role = user.role
+    user.role = role
+    await sync_to_async(user.save)(update_fields=['role'])
+    await call.answer(t("adm_saved"))
+
+    # Как и в Django-админке: поздравляем только с повышением, не с демоцией в волонтёры.
+    if user.tg_id and old_role != role and role != TGUser.Role.VOLUNTEER:
+        lang = await lang_of(user.tg_id)
+        try:
+            await call.bot.send_message(user.tg_id, t("role_promo", lang, role=role_label(role, lang)))
+        except Exception as e:
+            logger.warning("role promo to %s failed: %s", user.tg_id, e)
     await cb_user(call, state, uid)
 
 
 async def cb_user_admin(call, state, uid):
     user = await sync_to_async(TGUser.objects.get)(id=int(uid))
     if user.tg_id == call.from_user.id and user.is_admin:
-        await call.answer("O'zingizdan adminlikni ola olmaysiz", show_alert=True)
+        await call.answer(t("adm_cant_self"), show_alert=True)
         return
     user.is_admin = not user.is_admin
     await sync_to_async(user.save)(update_fields=['is_admin'])
-    await call.answer("Saqlandi ✅")
+    await call.answer(t("adm_saved"))
     await cb_user(call, state, uid)
 
 
@@ -577,8 +559,8 @@ async def cb_user_events(call, state, uid):
     for p in events:
         date = timezone.localtime(p.date).strftime('%d.%m')
         kb.add(InlineKeyboardButton(f"{date} · {p.title[:40]}", callback_data=f"adm:addu:{p.id}:{uid}"))
-    kb.add(InlineKeyboardButton("⬅️ Orqaga", callback_data=f"adm:u:{uid}"))
-    await _edit_or_send(call, "📅 Qaysi tadbirga qo'shamiz?\n<i>Bugungi/o'tgan tadbir bo'lsa — darhol «kelgan» deb belgilanadi.</i>", kb)
+    kb.add(InlineKeyboardButton(t("btn_back"), callback_data=f"adm:u:{uid}"))
+    await _edit_or_send(call, t("adm_choose_event"), kb)
 
 
 # ─────────────────────────── блокировка бота ───────────────────────────
@@ -616,7 +598,7 @@ CALLBACKS = {
 
 def register_admin_panel(dp: Dispatcher):
     dp.register_message_handler(admin_entry, commands=["admin"], state="*")
-    dp.register_message_handler(admin_entry, text=admin_panel_text, state="*")
+    dp.register_message_handler(admin_entry, text=variants("btn_admin"), state="*")
     dp.register_callback_query_handler(admin_callback, lambda c: c.data.startswith("adm:"), state="*")
     dp.register_message_handler(add_participant_query, state=AdminStates.add_participant)
     dp.register_message_handler(search_user_query, state=AdminStates.search_user)

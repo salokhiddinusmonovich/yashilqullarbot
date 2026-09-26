@@ -1,0 +1,170 @@
+{% extends "admin/index.html" %}
+{% load i18n yq %}
+{# Дашборд на главной админки. Данные — dashboard_context() в app_telegram/admin.py (кэш 60 сек). #}
+
+{# на главной — дашборд во всю ширину, без узкой колонки Django и боковой «Недавние действия» #}
+{% block coltype %}colM{% endblock %}
+{% block content_title %}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+  .dashboard #content { width: auto; max-width: 1360px; }
+  /* стандартный список разделов Django — сеткой карточек под дашбордом */
+  .dashboard #content-main { float: none; width: auto; display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; align-items: start; }
+  .dashboard #content-main .module { margin: 0; }
+  .yq-dash { margin-bottom: 28px; }
+  .yq-hello { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+  .yq-hello h2 { margin: 0; font-size: 1.6rem; font-weight: 800; letter-spacing: -.02em; color: var(--body-loud-color); }
+  .yq-hello p { margin: 4px 0 0; color: var(--body-quiet-color); }
+  .yq-tip { background: var(--yq-green-soft); color: var(--link-selected-fg); border-radius: 12px; padding: 10px 14px; font-size: .82rem; font-weight: 500; }
+
+  .yq-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 18px; }
+  .yq-stat { background: var(--yq-card); border: 1px solid var(--hairline-color); border-radius: var(--yq-radius);
+    box-shadow: var(--yq-shadow); padding: 16px 18px; position: relative; overflow: hidden; }
+  .yq-stat::after { content: ""; position: absolute; right: -18px; top: -18px; width: 70px; height: 70px;
+    border-radius: 50%; background: var(--yq-green-soft); }
+  .yq-stat .ico { font-size: 1.1rem; position: relative; z-index: 1; }
+  .yq-stat .num { font-size: 1.9rem; font-weight: 800; letter-spacing: -.03em; color: var(--body-loud-color); margin-top: 6px; }
+  .yq-stat .lbl { color: var(--body-quiet-color); font-size: .8rem; font-weight: 500; }
+  .yq-stat--accent { background: linear-gradient(135deg, #15803d, #16a34a); border: 0; }
+  .yq-stat--accent .num, .yq-stat--accent .lbl { color: #fff; }
+  .yq-stat--accent::after { background: rgba(255, 255, 255, .12); }
+
+  .yq-grid { display: grid; grid-template-columns: 1.6fr 1fr; gap: 18px; }
+  @media (max-width: 1100px) { .yq-grid { grid-template-columns: 1fr; } }
+  .yq-card { background: var(--yq-card); border: 1px solid var(--hairline-color); border-radius: var(--yq-radius);
+    box-shadow: var(--yq-shadow); padding: 4px 0 8px; margin-bottom: 18px; }
+  .yq-card h3 { margin: 0; padding: 14px 18px 10px; font-size: .95rem; font-weight: 700; color: var(--body-loud-color); }
+
+  .yq-ev { display: grid; grid-template-columns: 58px 1fr auto; gap: 14px; align-items: center; padding: 11px 18px;
+    border-top: 1px solid var(--hairline-color); }
+  .yq-date { background: var(--yq-green-soft); color: var(--primary); border-radius: 12px; text-align: center; padding: 6px 0; line-height: 1.1; }
+  .yq-date b { display: block; font-size: 1.2rem; font-weight: 800; }
+  .yq-date span { font-size: .68rem; text-transform: uppercase; font-weight: 700; }
+  .yq-ev a.title:link, .yq-ev a.title:visited { font-weight: 700; color: var(--body-loud-color); }
+  .yq-ev .meta { color: var(--body-quiet-color); font-size: .78rem; margin-top: 2px; }
+  .yq-bar { height: 6px; border-radius: 99px; background: var(--darkened-bg); margin-top: 7px; overflow: hidden; }
+  .yq-bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #22c55e, #15803d); }
+  .yq-count { text-align: right; font-size: .78rem; color: var(--body-quiet-color); white-space: nowrap; }
+  .yq-count b { font-size: 1rem; color: var(--body-loud-color); }
+  .yq-warn { color: #dc2626; font-weight: 600; }
+  .yq-empty { padding: 16px 18px; color: var(--body-quiet-color); }
+
+  .yq-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 4px 18px 10px; }
+  .yq-actions a:link, .yq-actions a:visited { color: var(--body-loud-color); }
+  .yq-actions a.primary:link, .yq-actions a.primary:visited { color: #fff; }
+  .yq-actions a { display: flex; align-items: center; gap: 8px; padding: 11px 12px; border-radius: 12px;
+    background: var(--darkened-bg); color: var(--body-loud-color); font-weight: 600; font-size: .82rem;
+    border: 1px solid var(--hairline-color); transition: transform .12s, border-color .12s; }
+  .yq-actions a:hover { transform: translateY(-1px); border-color: var(--primary); text-decoration: none; }
+  .yq-actions a.primary { background: var(--primary); color: #fff; border-color: transparent; }
+
+  .yq-region { padding: 7px 18px; font-size: .8rem; }
+  .yq-region .row { display: flex; justify-content: space-between; color: var(--body-fg); }
+  .yq-region .row b { color: var(--body-loud-color); }
+
+  .yq-recent { padding: 8px 18px; border-top: 1px solid var(--hairline-color); display: flex; justify-content: space-between; gap: 10px; font-size: .8rem; }
+  .yq-recent .who { font-weight: 600; color: var(--body-loud-color); }
+  .yq-recent .what { color: var(--body-quiet-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .yq-section-title { font-size: .78rem; text-transform: uppercase; letter-spacing: .08em; color: var(--body-quiet-color);
+    font-weight: 700; margin: 8px 0 12px; }
+</style>
+{% endblock %}
+
+{% block content %}
+{% if yq_stats %}
+<div class="yq-dash">
+  <div class="yq-hello">
+    <div>
+      <h2>{% yq "dash_hello" %}{% if user.first_name %}, {{ user.first_name }}{% endif %} 👋</h2>
+      <p>{% yq "dash_sub" %}</p>
+    </div>
+    <div class="yq-tip">🤖 {% yq "dash_bot_tip" %}</div>
+  </div>
+
+  <div class="yq-stats">
+    <div class="yq-stat yq-stat--accent"><div class="ico">👥</div><div class="num">{{ yq_stats.users }}</div><div class="lbl">{% yq "dash_users" %}</div></div>
+    <div class="yq-stat"><div class="ico">🆕</div><div class="num">+{{ yq_stats.new_today }}</div><div class="lbl">{% yq "dash_new_today" %}</div></div>
+    <div class="yq-stat"><div class="ico">📈</div><div class="num">+{{ yq_stats.new_week }}</div><div class="lbl">{% yq "dash_new_week" %}</div></div>
+    <div class="yq-stat"><div class="ico">📅</div><div class="num">{{ yq_stats.active_events }}</div><div class="lbl">{% yq "dash_active_events" %}</div></div>
+    <div class="yq-stat"><div class="ico">📝</div><div class="num">{{ yq_stats.regs_today }}</div><div class="lbl">{% yq "dash_regs_today" %}</div></div>
+    <div class="yq-stat"><div class="ico">✅</div><div class="num">{{ yq_stats.attended_total }}</div><div class="lbl">{% yq "dash_attended_total" %}</div></div>
+  </div>
+
+  <div class="yq-grid">
+    <div>
+      <div class="yq-card">
+        <h3>📅 {% yq "dash_upcoming" %}</h3>
+        {% for p in yq_upcoming %}
+        <div class="yq-ev">
+          <div class="yq-date"><b>{{ p.date|date:"d" }}</b><span>{{ p.date|date:"M" }}</span></div>
+          <div>
+            <a class="title" href="{% url 'admin:app_telegram_ecoproject_change' p.id %}">{{ p.title }}</a>
+            <div class="meta">
+              🕒 {{ p.date|date:"H:i" }} · 📍 {{ p.location_name }} · {{ p.get_region_display }}
+              {% if not p.chat_link %} · <span class="yq-warn">⚠️ {% yq "dash_no_group" %}</span>{% endif %}
+            </div>
+            <div class="yq-bar"><i style="width: {{ p.fill }}%"></i></div>
+          </div>
+          <div class="yq-count">
+            <a href="{% url 'admin:app_telegram_projectparticipation_changelist' %}?project__id__exact={{ p.id }}">
+              <b>{{ p.registered }}</b> / {{ p.max_participants }}
+            </a><br>✅ {{ p.attended }}
+          </div>
+        </div>
+        {% empty %}
+        <div class="yq-empty">{% yq "dash_no_upcoming" %}</div>
+        {% endfor %}
+      </div>
+
+      <div class="yq-card">
+        <h3>🕒 {% yq "dash_recent" %}</h3>
+        {% for r in yq_recent %}
+        <div class="yq-recent">
+          <div style="min-width:0">
+            <div class="who">{{ r.user.fullname }}</div>
+            <div class="what">{{ r.project.title }}</div>
+          </div>
+          <div style="text-align:right;white-space:nowrap">
+            <span class="yq-badge" style="--c:{% if r.status == 'attended' %}#16a34a{% elif r.status == 'rejected' %}#dc2626{% else %}#0284c7{% endif %}">{{ r.get_status_display }}</span><br>
+            <small style="color:var(--body-quiet-color)">{{ r.applied_at|date:"d.m H:i" }}</small>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div>
+      <div class="yq-card">
+        <h3>⚡ {% yq "dash_quick" %}</h3>
+        <div class="yq-actions">
+          <a class="primary" href="{% url 'admin:app_telegram_ecoproject_add' %}">➕ {% yq "dash_add_event" %}</a>
+          <a href="{% url 'admin:app_telegram_projectparticipation_changelist' %}">🧾 {% yq "dash_participants" %}</a>
+          <a href="{% url 'admin:app_telegram_tguser_changelist' %}">👥 {% yq "dash_users_link" %}</a>
+          <a href="{% url 'admin:app_telegram_eventfeedback_changelist' %}">⭐ {% yq "dash_feedback" %}</a>
+        </div>
+      </div>
+
+      {% if yq_regions %}
+      <div class="yq-card">
+        <h3>🗺 {% yq "dash_regions" %}</h3>
+        {% for r in yq_regions %}
+        <div class="yq-region">
+          <div class="row"><span>{{ r.name }}</span><b>{{ r.n }}</b></div>
+          <div class="yq-bar"><i style="width: {{ r.pct }}%"></i></div>
+        </div>
+        {% endfor %}
+        <div style="height:8px"></div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+<div class="yq-section-title">{% yq "dash_all_sections" %}</div>
+{% endif %}
+{{ block.super }}
+{% endblock %}

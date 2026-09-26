@@ -21,6 +21,11 @@ services:
     image: redis:7-alpine
     container_name: yashilqollar-redis
     restart: always
+    # appendonly + volume — языки юзеров, статистика и состояния бота
+    # переживают пересоздание контейнера (docker compose down/up).
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
 
   web:
     container_name: yashilqollar-web
@@ -41,7 +46,8 @@ services:
     command: >
       sh -c "python manage.py migrate &&
              python manage.py collectstatic --noinput &&
-             python manage.py runserver 0.0.0.0:8000"
+             gunicorn dj_ac.wsgi:application --bind 0.0.0.0:8000
+               --workers 3 --threads 4 --timeout 120 --access-logfile -"
     depends_on:
       db:
         condition: service_healthy
@@ -72,3 +78,4 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:

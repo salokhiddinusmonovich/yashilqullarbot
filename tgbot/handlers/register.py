@@ -1,25 +1,27 @@
+import logging
+import re
+from io import BytesIO
+
 from aiogram import Dispatcher, types
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from asgiref.sync import sync_to_async
-import re
-
+from django.core.files.base import ContentFile
 from django.db import IntegrityError
-from ..keyboards.text import register_text
-from ..keyboards.reply import contact_btn
+
+from app_telegram.models import TGUser
+from tgbot.i18n import t, variants, region_from_text
 from ..keyboards import reply
+from ..keyboards.reply import contact_btn, region_kb
 from .link_account import offer_link
 from .help import send_guide
-from app_telegram.models import TGUser
-from django.core.files import File
-from io import BytesIO
-from django.core.files.base import ContentFile
 
-EMAIL_REGEX = re.compile(r"^[\w\.-]+@[\w\.-]+\.\w+$")
+logger = logging.getLogger(__name__)
+
+EMAIL_REGEX = re.compile(r"^[\w\.+-]+@[\w\.-]+\.\w+$")
 
 
-# FSM States
 class RegisterState(StatesGroup):
     fullname = State()
     age = State()
@@ -30,34 +32,35 @@ class RegisterState(StatesGroup):
     photo = State()
     phone = State()
 
-# Step 1: Fullname
+
+# Шаг 1: имя
 async def register_handler(message: Message, state: FSMContext):
     await state.set_state(RegisterState.fullname.state)
-    await message.answer("Ism va familiyangizni kiriting")
+    await message.answer(t("reg_ask_name"), reply_markup=types.ReplyKeyboardRemove())
 
 
 async def fullname_handler(message: Message, state: FSMContext):
     await state.update_data(fullname=message.text.strip())
     await state.set_state(RegisterState.age.state)
-    await message.answer("Yoshingizni kiriting 👇")
+    await message.answer(t("reg_ask_age"))
 
 
-# Step 2: Age
+# Шаг 2: возраст
 async def age_handle(message: Message, state: FSMContext):
     age_str = message.text.strip()
     if not age_str.isdigit() or not (5 <= int(age_str) <= 120):
-        await message.answer("Iltimos, yoshingizni 5 dan 120 gacha bo‘lgan raqam bilan kiriting.")
+        await message.answer(t("reg_bad_age"))
         return
     await state.update_data(age=int(age_str))
     await state.set_state(RegisterState.email.state)
-    await message.answer("Email manzilingizni kiriting 👇")
+    await message.answer(t("reg_ask_email"))
 
 
-# Step 3: Email
+# Шаг 3: email
 async def email_handler(message: Message, state: FSMContext):
-    email = message.text.strip()
+    email = message.text.strip().lower()
     if not EMAIL_REGEX.match(email):
-        await message.answer("Iltimos, to‘g‘ri email kiriting (mas: user@gmail.com)")
+        await message.answer(t("reg_bad_email"))
         return
 
     # Email уже есть в базе (чаще всего — зарегистрировался на сайте):
@@ -69,108 +72,66 @@ async def email_handler(message: Message, state: FSMContext):
         return
 
     await state.update_data(email=email)
-
-    # Step 4: Region input as text
-    kb = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    for value, label in TGUser.Region.choices:
-        kb.add(KeyboardButton(label))
-
     await state.set_state(RegisterState.region.state)
-    await message.answer("Qaysi hududdansiz? (shahar yoki viloyat nomini kiriting)", reply_markup=kb)
+    await message.answer(t("reg_ask_region"), reply_markup=region_kb())
 
 
-# Step 4: Region text handler
+# Шаг 4: регион — только кнопкой. Произвольный текст раньше давал в базе
+# "Toshkent shahri", "Toshkent  shahri", "Tashkent shahar" и т.д. —
+# ни один не совпадал с реальным кодом региона.
 async def region_handler(message: Message, state: FSMContext):
-    selected_label = message.text.strip()
-
-    # Ищем ключ (value) по тексту кнопки (label)
-    region_value = None
-    for value, label in TGUser.Region.choices:
-        if selected_label == label:
-            region_value = value
-            break
-
-    # ИСПРАВЛЕНО: если это не точное совпадение с кнопкой — просим выбрать
-    # заново, вместо того чтобы сохранять произвольный введённый текст.
-    # Именно из-за "final_region = region_value if region_value else
-    # selected_label" в базе накопился разнобой вида "Toshkent shahri",
-    # "Toshkent  shahri" (двойной пробел), "Tashkent shahar" и т.д. —
-    # семь разных вариантов одного и того же региона, ни один не совпадал
-    # с реальным кодом в TGUser.Region.choices.
+    region_value = region_from_text(message.text)
     if not region_value:
-        kb = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-        for value, label in TGUser.Region.choices:
-            kb.add(KeyboardButton(label))
-        await message.answer(
-            "Iltimos, pastdagi tugmalardan birini tanlang (matn kiritmang) 👇",
-            reply_markup=kb
-        )
+        await message.answer(t("use_buttons"), reply_markup=region_kb())
         return
 
     await state.update_data(region=region_value)
     await state.set_state(RegisterState.education.state)
-    await message.answer("O‘qish joyingizni kiriting 👇", reply_markup=types.ReplyKeyboardRemove())
+    await message.answer(t("reg_ask_education"), reply_markup=types.ReplyKeyboardRemove())
 
 
-# 2. Education handlerdan keyin ishlaydigan yangi funksiya
+# Шаг 5: учёба
 async def education_handler(message: Message, state: FSMContext):
     await state.update_data(education_place=message.text.strip())
     await state.set_state(RegisterState.experience.state)
 
     kb = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="Tajribaga ega emasman")]],
+        keyboard=[[KeyboardButton(text=t("btn_no_experience"))]],
         resize_keyboard=True,
-        one_time_keyboard=True
+        one_time_keyboard=True,
     )
+    await message.answer(t("reg_ask_experience"), reply_markup=kb)
 
-    await message.answer(
-        "<b>Volontyorlik tajribangiz haqida batafsil ma'lumot bering:</b>\n\n"
-        "Qaysi tashkilotlarda bo'lgansiz va nima ishlar qilgansiz? "
-        "Bu biz uchun juda muhim! 👇",
-        reply_markup=kb,
-        parse_mode="HTML"
-    )
 
+# Шаг 6: опыт
 async def experience_handler(message: Message, state: FSMContext):
     await state.update_data(experience=message.text.strip())
     await state.set_state(RegisterState.photo.state)
-    await message.answer(
-        "Profil rasmingizni yuklang 📸",
-        reply_markup=types.ReplyKeyboardRemove()
-    )
+    await message.answer(t("reg_ask_photo"), reply_markup=types.ReplyKeyboardRemove())
 
+
+# Шаг 7: фото
 async def photo_handler(message: Message, state: FSMContext):
     if not message.photo:
-        await message.answer("Iltimos, rasm yuboring!")
+        await message.answer(t("send_photo"))
         return
 
-    photo = message.photo[-1]
-    await state.update_data(photo_file_id=photo.file_id)
-
+    await state.update_data(photo_file_id=message.photo[-1].file_id)
     await state.set_state(RegisterState.phone.state)
-    await message.answer(
-        "Telefon raqamingizni yuboring 👇",
-        reply_markup=contact_btn()
-    )
+    await message.answer(t("reg_ask_phone"), reply_markup=contact_btn())
 
 
+async def photo_expected(message: Message):
+    await message.answer(t("send_photo"))
+
+
+# Шаг 8: телефон → сохраняем
 async def phone_handler(message: Message, state: FSMContext):
-    if not message.contact:
-        await message.answer("Iltimos, tugma orqali telefon raqam yuboring 👇")
-        return
-
-    # ИСПРАВЛЕНО: раньше проверка "message.contact.user_id != message.from_user.id"
-    # была слишком строгой — на некоторых клиентах Telegram user_id вообще
-    # не приходит (None) даже когда юзер честно жмёт кнопку "поделиться
-    # своим номером", и хендлер ложно отклонял настоящий номер, из-за чего
-    # выглядело, будто бот завис на этом шаге. Теперь отклоняем только если
-    # user_id реально пришёл И явно не совпадает.
+    # Отклоняем только если user_id реально пришёл И не совпадает: на
+    # некоторых клиентах Telegram его вообще не присылает (None) даже
+    # для своего номера.
     if message.contact.user_id is not None and message.contact.user_id != message.from_user.id:
-        await message.answer(
-            "⚠️ Bu boshqa odamning raqami ko'rinadi. Iltimos, faqat pastdagi "
-            "tugma orqali O'ZINGIZNING raqamingizni yuboring 👇",
-            reply_markup=contact_btn()
-        )
+        await message.answer(t("reg_other_phone"), reply_markup=contact_btn())
         return
 
     data = await state.get_data()
@@ -188,24 +149,17 @@ async def phone_handler(message: Message, state: FSMContext):
         experience=data.get("experience"),
     )
 
-    # ИСПРАВЛЕНО: раньше загрузка фото ничем не была защищена — если
-    # file_id устарел или Telegram на секунду не ответил, вся функция
-    # падала необработанным исключением, и юзер молча зависал на этом шаге
-    # без единого ответа от бота. Теперь при сбое загрузки фото регистрация
-    # всё равно продолжается — просто без фото, а не рвётся насмерть.
+    # Сбой загрузки фото не должен рвать регистрацию — сохраняем без фото.
     photo_file_id = data.get("photo_file_id")
     if photo_file_id:
         try:
             photo_buffer = BytesIO()
             await message.bot.download_file_by_id(photo_file_id, photo_buffer)
             photo_buffer.seek(0)
-            photo_name = f"user_{user_id}.jpg"
-            new_user.photo.save(photo_name, ContentFile(photo_buffer.read()), save=False)
+            new_user.photo.save(f"user_{user_id}.jpg", ContentFile(photo_buffer.read()), save=False)
         except Exception as e:
-            print(f"[register] Photo download failed for tg_id={user_id}: {e}")
-            # продолжаем без фото, не прерываем регистрацию целиком
+            logger.warning("[register] Photo download failed for tg_id=%s: %s", user_id, e)
 
-    # ── аккуратная обработка дубликата email/tg_id ──
     try:
         await sync_to_async(new_user.save)()
     except IntegrityError as e:
@@ -219,39 +173,34 @@ async def phone_handler(message: Message, state: FSMContext):
                 await offer_link(message, state, existing)
                 return
             await state.set_state(RegisterState.email.state)
-            await message.answer("⚠️ Bu email band. Iltimos, boshqa email kiriting 👇")
+            await message.answer(t("reg_email_taken"))
             return
 
         if "tg_id" in error_text:
             await state.finish()
-            await message.answer(
-                "Siz allaqachon ro'yxatdan o'tgansiz ✅",
-                reply_markup=reply.hi_there()
-            )
+            await message.answer(t("reg_already"), reply_markup=await reply.main_menu(user_id))
             return
 
         raise
 
     await state.finish()
-    await message.answer("✅ Ro'yxatdan o'tish muvaffaqiyatli yakunlandi!", reply_markup=reply.hi_there())
+    await message.answer(t("reg_done"), reply_markup=reply.hi_there())
     await send_guide(message)
 
-# Register all handlers
+
+async def phone_expected(message: Message):
+    await message.answer(t("phone_use_button"), reply_markup=contact_btn())
+
+
 def register_register(dp: Dispatcher):
-    dp.register_message_handler(register_handler, lambda m: m.text == register_text, state="*")
+    dp.register_message_handler(register_handler, text=variants("btn_register"), state="*")
     dp.register_message_handler(fullname_handler, state=RegisterState.fullname.state)
     dp.register_message_handler(age_handle, state=RegisterState.age.state)
     dp.register_message_handler(email_handler, state=RegisterState.email.state)
     dp.register_message_handler(region_handler, state=RegisterState.region.state)
     dp.register_message_handler(education_handler, state=RegisterState.education.state)
     dp.register_message_handler(experience_handler, state=RegisterState.experience.state)
-    dp.register_message_handler(
-        photo_handler,
-        content_types=['photo'],
-        state=RegisterState.photo.state
-    )
-    dp.register_message_handler(
-        phone_handler,
-        content_types=['contact'],
-        state=RegisterState.phone.state
-    )
+    dp.register_message_handler(photo_handler, content_types=['photo'], state=RegisterState.photo.state)
+    dp.register_message_handler(photo_expected, state=RegisterState.photo.state)
+    dp.register_message_handler(phone_handler, content_types=['contact'], state=RegisterState.phone.state)
+    dp.register_message_handler(phone_expected, state=RegisterState.phone.state)

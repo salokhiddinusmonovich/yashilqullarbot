@@ -1,10 +1,11 @@
 
 import qrcode
+from html import escape
 from io import BytesIO
 from aiogram import types, Dispatcher
 from asgiref.sync import sync_to_async
 from django.utils import timezone
-from django.db import models
+from tgbot.i18n import t, variants, region_label, role_label
 from tgbot.services.photo_cache import send_cached_photo
 
 # ==========================================
@@ -62,26 +63,22 @@ def process_qr_logic(scanner_tg_id, target_tg_id):
     scanner_user = TGUser.objects.filter(tg_id=scanner_tg_id).first()
 
     if not scanner_user or (scanner_user.role == TGUser.Role.VOLUNTEER and not scanner_user.is_admin):
-        return "❌ Sizda skanerlash huquqi yo'q! Bu imkoniyat faqat ishchi guruh uchun.", None, None, False
+        return t("qr_no_rights"), None, None, False
 
     volunteer = TGUser.objects.filter(tg_id=target_tg_id).first()
     if not volunteer:
-        return "❌ Foydalanuvchi topilmadi!", None, None, False
+        return t("qr_user_not_found"), None, None, False
 
     project = _pick_project(volunteer, scanner_user)
     if not project:
-        region = volunteer.get_region_display() if volunteer.region else "Hudud"
-        return f"❌ {region}da faol loyiha topilmadi!", None, None, False
+        return t("qr_no_project", region=region_label(volunteer.region)), None, None, False
 
     participation, created = ProjectParticipation.objects.get_or_create(
         project=project, user=volunteer, defaults={'status': 'attended'}
     )
 
     if not created and participation.status == 'attended':
-        return (
-            f"⚠️ <b>{volunteer.fullname}</b> «{project.title}» tadbirida allaqachon tasdiqlangan!",
-            volunteer, None, False,
-        )
+        return t("qr_already", name=escape(volunteer.fullname), project=escape(project.title)), volunteer, None, False
 
     if not created:
         participation.status = 'attended'
@@ -89,23 +86,21 @@ def process_qr_logic(scanner_tg_id, target_tg_id):
 
     volunteer.refresh_from_db()
 
-    note = ""
-    if created:
-        note = "\n➕ <i>Tadbirga yozilmagan edi — avtomatik qo'shildi.</i>"
-
-    success_text = (
-        f"✅ <b>Tayyor!</b>\n"
-        f"Foydalanuvchi: <b>{volunteer.fullname}</b> kelgani tasdiqlandi.\n"
-        f"📅 <b>Tadbir:</b> {project.title}{note}\n"
-        f"💰 <b>Yangi balans:</b> {volunteer.balance} ball\n"
-        f"👤 <b>Skaner qildi:</b> {scanner_user.fullname} ({scanner_user.get_role_display()})"
+    success_text = t(
+        "qr_success",
+        name=escape(volunteer.fullname),
+        project=escape(project.title),
+        note=t("qr_auto_added") if created else "",
+        balance=volunteer.balance,
+        scanner=escape(scanner_user.fullname),
+        role=role_label(scanner_user.role),
     )
     return success_text, volunteer, project, True
 
 
 async def show_qr_handler(message: types.Message):
     """Generates a personal QR code for the user"""
-    bot_info = await message.bot.get_me()
+    bot_info = await message.bot.me  # кэшируется aiogram'ом, без лишнего запроса
     qr_link = f"https://t.me/{bot_info.username}?start=qr_{message.from_user.id}"
 
     def _generate_qr():
@@ -124,8 +119,8 @@ async def show_qr_handler(message: types.Message):
     # заходах в раздел не генерировать картинку и не аплоадить её заново.
     await send_cached_photo(
         message, f"qr:{message.from_user.id}:{bot_info.username}", _generate_qr,
-        caption="🌿 <b>Sizning shaxsiy eko-kodingiz!</b>\n\nTadbirga kelganingizda mas'ul xodimga ko'rsating."
+        caption=t("qr_caption")
     )
 
 def register_qr_handlers(dp: Dispatcher):
-    dp.register_message_handler(show_qr_handler, text="🌿 Mening QR-kodim", state="*")
+    dp.register_message_handler(show_qr_handler, text=variants("btn_qr"), state="*")

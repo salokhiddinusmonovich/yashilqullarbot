@@ -24,12 +24,17 @@ import time
 from aiogram import types, Dispatcher
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
+from html import escape
+
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.db import IntegrityError
 
+from tgbot.i18n import t, region_from_text
+from tgbot.services.lang import langs_of, lang_of
 from ..keyboards import reply
+from ..keyboards.reply import region_kb
 from .help import send_guide
 
 logger = logging.getLogger(__name__)
@@ -52,8 +57,8 @@ class LinkAccountStates(StatesGroup):
 def already_registered_keyboard() -> InlineKeyboardMarkup:
     kb = InlineKeyboardMarkup(row_width=1)
     kb.add(
-        InlineKeyboardButton("✅ Ha, saytda ro'yxatdan o'tganman", callback_data="acc_has_website"),
-        InlineKeyboardButton("🆕 Yo'q, birinchi marta", callback_data="acc_new_user"),
+        InlineKeyboardButton(t("btn_has_site"), callback_data="acc_has_website"),
+        InlineKeyboardButton(t("btn_first_time"), callback_data="acc_new_user"),
     )
     return kb
 
@@ -65,20 +70,12 @@ def email_enabled() -> bool:
 def method_keyboard(has_password: bool) -> InlineKeyboardMarkup:
     kb = InlineKeyboardMarkup(row_width=1)
     if has_password:
-        kb.add(InlineKeyboardButton("🔑 Parol bilan kirish", callback_data="link_pw"))
+        kb.add(InlineKeyboardButton(t("btn_login_password"), callback_data="link_pw"))
     if email_enabled():
-        kb.add(InlineKeyboardButton("📧 Emailga kod yuborish (parolni unutdim)", callback_data="link_code"))
+        kb.add(InlineKeyboardButton(t("btn_email_code"), callback_data="link_code"))
     else:
-        kb.add(InlineKeyboardButton("🙋 Admin orqali tasdiqlash", callback_data="link_admin"))
-    kb.add(InlineKeyboardButton("✏️ Boshqa email kiritish", callback_data="link_other"))
-    return kb
-
-
-def region_keyboard() -> ReplyKeyboardMarkup:
-    from app_telegram.models import TGUser
-    kb = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    for _, label in TGUser.Region.choices:
-        kb.add(KeyboardButton(label))
+        kb.add(InlineKeyboardButton(t("btn_admin_confirm"), callback_data="link_admin"))
+    kb.add(InlineKeyboardButton(t("btn_other_email"), callback_data="link_other"))
     return kb
 
 
@@ -86,11 +83,7 @@ def region_keyboard() -> ReplyKeyboardMarkup:
 
 async def ask_if_registered(message: types.Message):
     """Вызывается из /start, если юзера с таким tg_id ещё нет в базе."""
-    await message.answer(
-        "👋 Assalomu alaykum!\n\n"
-        "Bizning saytimizda (yashilqollar.uz) allaqachon ro'yxatdan o'tganmisiz?",
-        reply_markup=already_registered_keyboard(),
-    )
+    await message.answer(t("ask_has_site_account"), reply_markup=already_registered_keyboard())
     await LinkAccountStates.waiting_for_choice.set()
 
 
@@ -98,17 +91,14 @@ async def process_choice(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
     if call.data == "acc_new_user":
         await state.finish()
-        from aiogram.utils.markdown import hbold
         await call.message.answer(
-            f"👋 Salom, {hbold(call.from_user.full_name)}! @YashilQollar oilasiga xush kelibsiz.\n\n"
-            "Ro'yxatdan o'tish uchun pastdagi tugmani bosing 👇",
+            t("new_user_welcome", name=escape(call.from_user.full_name)),
             reply_markup=reply.auth_btn(),
-            parse_mode="HTML",
         )
         return
 
     # acc_has_website
-    await call.message.answer("Saytda ro'yxatdan o'tgan email manzilingizni yozing 👇")
+    await call.message.answer(t("ask_site_email"))
     await LinkAccountStates.waiting_for_email.set()
 
 
@@ -124,13 +114,9 @@ async def process_email(message: types.Message, state: FSMContext):
 
     if not user:
         kb = InlineKeyboardMarkup().add(
-            InlineKeyboardButton("🆕 Yangi ro'yxatdan o'tish", callback_data="acc_new_user")
+            InlineKeyboardButton(t("btn_new_signup"), callback_data="acc_new_user")
         )
-        await message.answer(
-            "❌ Bunday email bilan hisob topilmadi.\n\n"
-            "Emailni tekshirib qayta yozing yoki yangi ro'yxatdan o'ting 👇",
-            reply_markup=kb,
-        )
+        await message.answer(t("email_not_found"), reply_markup=kb)
         return
 
     await offer_link(message, state, user)
@@ -145,27 +131,19 @@ async def offer_link(message: types.Message, state: FSMContext, user):
 
     if user.tg_id == tg_id:
         await state.finish()
-        await message.answer("✅ Bu hisob allaqachon sizning Telegramingizga bog'langan.",
-                             reply_markup=reply.hi_there(user.is_admin))
+        await message.answer(t("already_linked_self"), reply_markup=reply.hi_there(user.is_admin))
         return
 
     if user.tg_id:
         await state.finish()
-        await message.answer(
-            "⚠️ Bu email boshqa Telegram akkauntga bog'langan.\n"
-            "Agar bu sizning hisobingiz bo'lsa, admin bilan bog'laning.",
-            reply_markup=reply.auth_btn(),
-        )
+        await message.answer(t("linked_other_tg"), reply_markup=reply.auth_btn())
         return
 
     await state.set_state(LinkAccountStates.waiting_for_method.state)
     await state.update_data(link_user_id=user.id, link_email=user.email)
     await message.answer(
-        f"🔎 Saytda hisob topildi: <b>{user.fullname}</b> ({user.email})\n\n"
-        "Qayta ro'yxatdan o'tish shart emas — shu hisobni Telegramga bog'laymiz. "
-        "Bu sizning hisobingiz ekanini tasdiqlang 👇",
+        t("account_found", name=escape(user.fullname or "—"), email=escape(user.email)),
         reply_markup=method_keyboard(bool(user.password)),
-        parse_mode="HTML",
     )
 
 
@@ -173,16 +151,16 @@ async def process_method(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
     data = await state.get_data()
     if not data.get("link_user_id"):
-        await call.message.answer("Sessiya tugadi. /start ni bosing.")
+        await call.message.answer(t("session_expired"))
         await state.finish()
         return
 
     if call.data == "link_pw":
         await LinkAccountStates.waiting_for_password.set()
         kb = InlineKeyboardMarkup().add(
-            InlineKeyboardButton("📧 Parolni unutdim — emailga kod", callback_data="link_code")
+            InlineKeyboardButton(t("btn_forgot_password"), callback_data="link_code")
         ) if email_enabled() else None
-        await call.message.answer("Saytdagi parolingizni yozing 👇", reply_markup=kb)
+        await call.message.answer(t("ask_password"), reply_markup=kb)
 
     elif call.data == "link_code":
         await _send_code(call.message, state, call.from_user.id)
@@ -190,13 +168,11 @@ async def process_method(call: types.CallbackQuery, state: FSMContext):
     elif call.data == "link_admin":
         await _ask_admins(call.message.bot, call.from_user, data)
         await state.finish()
-        await call.message.answer(
-            "🙋 So'rovingiz adminlarga yuborildi. Tasdiqlashlari bilan sizga xabar keladi."
-        )
+        await call.message.answer(t("admin_request_sent"))
 
     elif call.data == "link_other":
         await LinkAccountStates.waiting_for_email.set()
-        await call.message.answer("Email manzilingizni yozing 👇")
+        await call.message.answer(t("ask_email_again"))
 
 
 # ─────────────────────────── пароль ───────────────────────────
@@ -207,7 +183,7 @@ async def process_password(message: types.Message, state: FSMContext):
     user = await sync_to_async(TGUser.objects.filter(id=data.get("link_user_id")).first)()
     if not user:
         await state.finish()
-        await message.answer("Xatolik. /start ni bosing.")
+        await message.answer(t("session_expired"))
         return
 
     try:
@@ -216,10 +192,7 @@ async def process_password(message: types.Message, state: FSMContext):
         pass
 
     if not user.check_password(message.text or ""):
-        await message.answer(
-            "❌ Parol noto'g'ri. Qayta yozing yoki boshqa usulni tanlang 👇",
-            reply_markup=method_keyboard(bool(user.password)),
-        )
+        await message.answer(t("wrong_password"), reply_markup=method_keyboard(bool(user.password)))
         return
 
     await _link_and_continue(message, state, data["link_user_id"])
@@ -231,12 +204,8 @@ async def process_password(message: types.Message, state: FSMContext):
 def _mail_code(email: str, code: str):
     from django.core.mail import send_mail
     send_mail(
-        subject="Yashil Qo'llar — tasdiqlash kodi",
-        message=(
-            f"Sizning tasdiqlash kodingiz: {code}\n\n"
-            "Kodni @YashilQollar botiga yuboring. Kod 10 daqiqa amal qiladi.\n"
-            "Agar siz so'ramagan bo'lsangiz — bu xatni e'tiborsiz qoldiring."
-        ),
+        subject=t("code_email_subject"),
+        message=t("code_email_body", code=code),
         from_email=None,
         recipient_list=[email],
     )
@@ -247,7 +216,7 @@ async def _send_code(message: types.Message, state: FSMContext, tg_id: int):
     sent_at = data.get("code_sent_at", 0)
     if time.time() - sent_at < CODE_RESEND_AFTER:
         wait = int(CODE_RESEND_AFTER - (time.time() - sent_at))
-        await message.answer(f"⏳ Kod yaqinda yuborildi. Qayta yuborish uchun {wait} soniya kuting.")
+        await message.answer(t("code_wait", sec=wait))
         return
 
     code = f"{secrets.randbelow(1_000_000):06d}"
@@ -257,23 +226,16 @@ async def _send_code(message: types.Message, state: FSMContext, tg_id: int):
     except Exception as e:
         logger.error("Failed to send link code to %s: %s", email, e)
         kb = InlineKeyboardMarkup().add(
-            InlineKeyboardButton("🙋 Admin orqali tasdiqlash", callback_data="link_admin")
+            InlineKeyboardButton(t("btn_admin_confirm"), callback_data="link_admin")
         )
-        await message.answer("⚠️ Emailga xat yuborib bo'lmadi. Admin orqali tasdiqlashingiz mumkin 👇",
-                             reply_markup=kb)
+        await message.answer(t("email_send_failed"), reply_markup=kb)
         return
 
     await state.update_data(code=code, code_sent_at=time.time(), code_attempts=0)
     await LinkAccountStates.waiting_for_code.set()
 
-    kb = InlineKeyboardMarkup().add(InlineKeyboardButton("🔁 Qayta yuborish", callback_data="link_code"))
-    await message.answer(
-        f"📧 <b>{_mask_email(email)}</b> manziliga 6 xonali kod yubordik.\n"
-        "Kodni shu yerga yozing 👇\n\n"
-        "<i>Xat kelmasa — «Spam» papkasini tekshiring.</i>",
-        reply_markup=kb,
-        parse_mode="HTML",
-    )
+    kb = InlineKeyboardMarkup().add(InlineKeyboardButton(t("btn_resend"), callback_data="link_code"))
+    await message.answer(t("code_sent", email=escape(_mask_email(email))), reply_markup=kb)
 
 
 def _mask_email(email: str) -> str:
@@ -287,17 +249,17 @@ async def process_code(message: types.Message, state: FSMContext):
     entered = "".join(ch for ch in (message.text or "") if ch.isdigit())
 
     if not data.get("code") or time.time() - data.get("code_sent_at", 0) > CODE_TTL:
-        await message.answer("⌛ Kod eskirgan. «🔁 Qayta yuborish» tugmasini bosing.")
+        await message.answer(t("code_expired"))
         return
 
     if entered != data["code"]:
         attempts = data.get("code_attempts", 0) + 1
         if attempts >= CODE_MAX_ATTEMPTS:
             await state.update_data(code=None)
-            await message.answer("❌ Juda ko'p noto'g'ri urinish. «🔁 Qayta yuborish» bilan yangi kod oling.")
+            await message.answer(t("code_too_many"))
             return
         await state.update_data(code_attempts=attempts)
-        await message.answer(f"❌ Kod noto'g'ri. Qolgan urinishlar: {CODE_MAX_ATTEMPTS - attempts}")
+        await message.answer(t("code_wrong", left=CODE_MAX_ATTEMPTS - attempts))
         return
 
     await _link_and_continue(message, state, data["link_user_id"])
@@ -319,20 +281,23 @@ def _admin_ids(bot) -> set:
 
 
 async def _ask_admins(bot, tg_user: types.User, data: dict):
-    uname = f"@{tg_user.username}" if tg_user.username else "username yo'q"
-    kb = InlineKeyboardMarkup().add(
-        InlineKeyboardButton("✅ Bog'lash", callback_data=f"admlink:{data['link_user_id']}:{tg_user.id}"),
-        InlineKeyboardButton("❌ Rad etish", callback_data=f"admlink_no:{tg_user.id}"),
-    )
-    text = (
-        "🙋 <b>Hisobni bog'lash so'rovi</b>\n\n"
-        f"Telegram: {tg_user.full_name} ({uname}, <code>{tg_user.id}</code>)\n"
-        f"Saytdagi hisob: <b>{data.get('link_email')}</b>\n\n"
-        "Bu shu odamning hisobi ekaniga ishonchingiz komilmi?"
-    )
-    for admin_id in await _admin_ids(bot):
+    admin_ids = await _admin_ids(bot)
+    langs = await langs_of(admin_ids)
+    for admin_id in admin_ids:
+        lang = langs.get(admin_id)
+        kb = InlineKeyboardMarkup().add(
+            InlineKeyboardButton(t("btn_link_yes", lang), callback_data=f"admlink:{data['link_user_id']}:{tg_user.id}"),
+            InlineKeyboardButton(t("btn_link_no", lang), callback_data=f"admlink_no:{tg_user.id}"),
+        )
+        text = t(
+            "adm_link_request", lang,
+            tg=escape(tg_user.full_name),
+            uname=f"@{tg_user.username}" if tg_user.username else t("no_username", lang),
+            tg_id=tg_user.id,
+            email=escape(data.get("link_email") or ""),
+        )
         try:
-            await bot.send_message(admin_id, text, reply_markup=kb, parse_mode="HTML")
+            await bot.send_message(admin_id, text, reply_markup=kb)
         except Exception:
             pass
 
@@ -341,14 +306,14 @@ async def admin_link_decision(call: types.CallbackQuery):
     from app_telegram.models import TGUser
     admin = await sync_to_async(TGUser.objects.filter(tg_id=call.from_user.id, is_admin=True).first)()
     if not admin and call.from_user.id not in call.bot["config"].tg_bot.admin_ids:
-        await call.answer("Ruxsat yo'q", show_alert=True)
+        await call.answer(t("no_access"), show_alert=True)
         return
 
     if call.data.startswith("admlink_no:"):
         tg_id = int(call.data.split(":")[1])
-        await call.message.edit_text(call.message.html_text + "\n\n❌ <b>Rad etildi</b>", parse_mode="HTML")
+        await call.message.edit_text(call.message.html_text + "\n\n" + t("adm_link_declined_mark"))
         try:
-            await call.bot.send_message(tg_id, "❌ Hisobni bog'lash so'rovi rad etildi. Admin bilan bog'laning.")
+            await call.bot.send_message(tg_id, t("link_declined_user", await lang_of(tg_id)))
         except Exception:
             pass
         await call.answer()
@@ -357,18 +322,14 @@ async def admin_link_decision(call: types.CallbackQuery):
     _, user_id, tg_id = call.data.split(":")
     user, error = await _link_user(int(user_id), int(tg_id), None)
     if error:
-        await call.answer(error, show_alert=True)
+        await call.answer(t(error), show_alert=True)
         return
     await call.message.edit_text(
-        call.message.html_text + f"\n\n✅ <b>Bog'landi</b> ({call.from_user.full_name})", parse_mode="HTML"
+        call.message.html_text + "\n\n" + t("adm_link_done_mark", admin=escape(call.from_user.full_name))
     )
-    await call.answer("Bog'landi")
+    await call.answer(t("linked_short"))
     try:
-        await call.bot.send_message(
-            int(tg_id),
-            f"✅ Admin tasdiqladi! Hisobingiz ({user.email}) Telegramga bog'landi.\n"
-            "Davom etish uchun /start ni bosing.",
-        )
+        await call.bot.send_message(int(tg_id), t("link_approved_user", await lang_of(int(tg_id)), email=escape(user.email)))
     except Exception:
         pass
 
@@ -377,16 +338,16 @@ async def admin_link_decision(call: types.CallbackQuery):
 
 @sync_to_async
 def _link_user(user_id: int, tg_id: int, tg_username):
-    """Возвращает (user, error_text)."""
+    """Возвращает (user, error_key) — error_key это ключ перевода для t()."""
     from app_telegram.models import TGUser
 
     user = TGUser.objects.filter(id=user_id).first()
     if not user:
-        return None, "❌ Hisob topilmadi."
+        return None, "err_account_not_found"
     if user.tg_id and user.tg_id != tg_id:
-        return None, "⚠️ Bu hisob allaqachon boshqa Telegram akkauntga bog'langan."
+        return None, "err_account_other_tg"
     if TGUser.objects.filter(tg_id=tg_id).exclude(id=user_id).exists():
-        return None, "⚠️ Bu Telegram akkaunt boshqa hisobga bog'langan. Admin bilan bog'laning."
+        return None, "err_tg_other_account"
 
     user.tg_id = tg_id
     if tg_username:
@@ -394,7 +355,7 @@ def _link_user(user_id: int, tg_id: int, tg_username):
     try:
         user.save(update_fields=["tg_id", "username"])
     except IntegrityError:
-        return None, "⚠️ Bu Telegram akkaunt boshqa hisobga bog'langan. Admin bilan bog'laning."
+        return None, "err_tg_other_account"
     return user, None
 
 
@@ -402,11 +363,11 @@ async def _link_and_continue(message: types.Message, state: FSMContext, user_id:
     user, error = await _link_user(user_id, message.from_user.id, message.from_user.username)
     if error:
         await state.finish()
-        await message.answer(error)
+        await message.answer(t(error))
         return
 
     await state.update_data(link_user_id=user.id, code=None)
-    await message.answer(f"✅ Xush kelibsiz, {user.fullname}! Hisobingiz Telegram bilan bog'landi.")
+    await message.answer(t("link_success", name=escape(user.fullname or "")))
     await _ask_missing(message, state, user)
 
 
@@ -415,26 +376,23 @@ async def _ask_missing(message: types.Message, state: FSMContext, user):
 
     if not user.phone:
         await LinkAccountStates.waiting_for_phone.set()
-        await message.answer("📱 Telefon raqamingizni yuboring 👇", reply_markup=reply.contact_btn())
+        await message.answer(t("ask_phone"), reply_markup=reply.contact_btn())
         return
 
     if user.region not in TGUser.Region.values:
         await LinkAccountStates.waiting_for_region.set()
-        await message.answer(
-            "📍 Qaysi hududdansiz? Tadbirlar hudud bo'yicha ko'rsatiladi 👇",
-            reply_markup=region_keyboard(),
-        )
+        await message.answer(t("ask_region"), reply_markup=region_kb())
         return
 
     await state.finish()
-    await message.answer("🎉 Profilingiz tayyor!", reply_markup=reply.hi_there(user.is_admin))
+    await message.answer(t("profile_ready"), reply_markup=reply.hi_there(user.is_admin))
     await send_guide(message)
 
 
 async def process_phone(message: types.Message, state: FSMContext):
     from app_telegram.models import TGUser
     if not message.contact:
-        await message.answer("Iltimos, tugma orqali telefon raqam yuboring 👇")
+        await message.answer(t("phone_use_button"), reply_markup=reply.contact_btn())
         return
 
     data = await state.get_data()
@@ -446,9 +404,9 @@ async def process_phone(message: types.Message, state: FSMContext):
 
 async def process_region(message: types.Message, state: FSMContext):
     from app_telegram.models import TGUser
-    region = next((v for v, label in TGUser.Region.choices if label == (message.text or "").strip()), None)
+    region = region_from_text(message.text)
     if not region:
-        await message.answer("Iltimos, pastdagi tugmalardan birini tanlang 👇", reply_markup=region_keyboard())
+        await message.answer(t("use_buttons"), reply_markup=region_kb())
         return
 
     data = await state.get_data()
@@ -481,4 +439,5 @@ def register_link_account_handlers(dp: Dispatcher):
         process_phone, content_types=types.ContentType.CONTACT,
         state=LinkAccountStates.waiting_for_phone,
     )
+    dp.register_message_handler(process_phone, state=LinkAccountStates.waiting_for_phone)  # текст вместо кнопки
     dp.register_message_handler(process_region, state=LinkAccountStates.waiting_for_region)

@@ -3,25 +3,23 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 from asgiref.sync import sync_to_async
 from pathlib import Path
 from app_telegram.models import Partner
+from tgbot.i18n import t, variants
 from tgbot.services.photo_cache import send_cached_photo, file_cache_key
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 
 
-ABOUT_REPLY_KB = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="🤝 Hamkorlarimiz")],
-        [KeyboardButton(text="⬅️ Orqaga")]
-    ],
-    resize_keyboard=True
-)
+def about_kb():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=t("btn_partners"))],
+            [KeyboardButton(text=t("btn_back"))],
+        ],
+        resize_keyboard=True,
+    )
 
 async def about_us(message: types.Message):
-    main_text = (
-        "🌿 <b>Yashil Qo'llar</b> — barqaror kelajak sari!\n\n"
-        "Maqsadimiz — yoshlar orasida ekologik madaniyatni rivojnatirish.  "
-        "Safimizda <b>1400+</b> faol ko'ngillilar bor! 💪\n\n"
-    )
+    main_text = t("about_text")
     poster_path = BASE_DIR / "tgbot" / "assets" / "poster.png"
     try:
         # Постер один и тот же для всех — после первой отправки Telegram
@@ -29,18 +27,18 @@ async def about_us(message: types.Message):
         # вместо повторной загрузки файла с диска на каждый /about.
         await send_cached_photo(
             message, file_cache_key(poster_path), lambda: open(poster_path, 'rb'),
-            caption=main_text, reply_markup=ABOUT_REPLY_KB, parse_mode="HTML"
+            caption=main_text, reply_markup=about_kb(), parse_mode="HTML"
         )
     except Exception:
-        await message.answer(main_text, reply_markup=ABOUT_REPLY_KB, parse_mode="HTML")
+        await message.answer(main_text, reply_markup=about_kb(), parse_mode="HTML")
 
 async def show_partners_list(message: types.Message):
     partners = await sync_to_async(lambda: list(Partner.objects.filter(is_active=True)))()
     if not partners:
-        await message.answer("Hozircha hamkorlar ro'yxati bo'sh.")
+        await message.answer(t("partners_empty"))
         return
 
-    await message.answer("🤝 <b>Hamkorlarimiz: </b>", parse_mode="HTML")
+    await message.answer(t("partners_title"))
     for p in partners:
         caption = f"<b>{p.name}</b>\n"
         if p.description: caption += f"\n{p.description}\n"
@@ -66,5 +64,5 @@ async def show_partners_list(message: types.Message):
 
 # --- РЕГИСТРАЦИЯ ---
 def register_about_and_team(dp: Dispatcher):
-    dp.register_message_handler(about_us, text="🌟 Biz haqimizda", state="*")
-    dp.register_message_handler(show_partners_list, text="🤝 Hamkorlarimiz", state="*")
+    dp.register_message_handler(about_us, text=variants("btn_about"), state="*")
+    dp.register_message_handler(show_partners_list, text=variants("btn_partners"), state="*")

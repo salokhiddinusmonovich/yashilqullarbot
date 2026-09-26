@@ -71,7 +71,7 @@ ROOT_URLCONF = 'dj_ac.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / 'templates'],  # тема админки + главная страница
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
