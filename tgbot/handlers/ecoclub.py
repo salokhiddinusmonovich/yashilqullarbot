@@ -124,23 +124,18 @@ async def list_upcoming_events(message: types.Message, state: FSMContext):
         await message.answer(text, reply_markup=kb)
 
 
+_JOIN_TEXT = {"gone": "event_gone", "already": "event_already_applied", "full": "event_no_seats"}
+
+
 @sync_to_async
 def _register(tg_id: int, project_id: int):
-    """Возвращает (ключ_ответа, project). Ключ — перевод для t()."""
+    """Возвращает (ключ_ответа, project). Логика общая с Mini App — app_telegram/services.py."""
+    from app_telegram.services import join_event
     user = TGUser.objects.filter(tg_id=tg_id).first()
     if not user:
         return "not_registered", None
-    project = EcoProject.objects.filter(id=project_id, is_active=True).first()
-    if not project:
-        return "event_gone", None
-    if ProjectParticipation.objects.filter(user=user, project=project).exists():
-        return "event_already_applied", project
-    if project.participants.exclude(status='rejected').count() >= project.max_participants:
-        return "event_no_seats", project
-    _, created = ProjectParticipation.objects.get_or_create(
-        user=user, project=project, defaults={'status': 'approved'}
-    )
-    return ("ok" if created else "event_already_applied"), project
+    code, project = join_event(user, project_id)
+    return ("ok" if code == "ok" else _JOIN_TEXT[code]), project
 
 
 async def _do_register(message: types.Message, tg_id: int, project_id: int, bot):
@@ -166,7 +161,9 @@ async def _do_register(message: types.Message, tg_id: int, project_id: int, bot)
     text = t("event_accepted", title=escape(project.title))
     if project.chat_link:
         text += t("event_accepted_chat", link=project.chat_link)
-    await message.answer(text, reply_markup=get_events_menu(), disable_web_page_preview=True)
+    from .miniapp import open_app_kb
+    app_kb = open_app_kb(bot, "btn_open_event_app", event=project.id)
+    await message.answer(text, reply_markup=app_kb or get_events_menu(), disable_web_page_preview=True)
 
 
 async def register_callback(call: types.CallbackQuery):

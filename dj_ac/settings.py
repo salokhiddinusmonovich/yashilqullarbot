@@ -23,7 +23,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = '123456qwerty'
+# ВАЖНО: задай DJANGO_SECRET_KEY в .env (длинная случайная строка).
+# Этим ключом подписываются JWT-токены входа (сайт, Mini App): старое
+# значение лежит в git, и с ним любой может подделать токен любого юзера.
+# После смены все просто перелогинятся (Mini App — автоматически).
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY") or '123456qwerty'
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False

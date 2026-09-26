@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import threading
 from datetime import timedelta
 from html import escape
 from pathlib import Path
@@ -10,7 +9,6 @@ from asgiref.sync import async_to_sync
 from django.conf import settings
 from django.contrib import admin, messages
 from django.core.cache import cache
-from django.db import close_old_connections
 from django.db.models import Count, Q
 from django.utils import timezone
 from django.utils.html import format_html
@@ -22,6 +20,7 @@ from modeltranslation.admin import TranslationAdmin
 from tgbot.i18n import t as bot_t, role_label
 from tgbot.services.lang import lang_of_sync, langs_of_sync
 from .i18n import tr, trn
+from .telegram import send_in_background
 from .models import (
     TGUser, TeamMemberYashilQullar, ProjectParticipation, ProjectNotification,
     EcoProject, EcoProjectImage, Partner,
@@ -40,46 +39,6 @@ ROLE_PROMOTION_GIF = Path(__file__).resolve().parent.parent / "tgbot" / "assets"
 
 
 # ─────────────────────────── отправка в Telegram ───────────────────────────
-
-async def _send_many(messages_: list):
-    """
-    Шлёт [(tg_id, text), ...] через ОДНУ сессию бота — раньше на каждое
-    сообщение создавался и закрывался новый Bot, это было в разы медленнее.
-    Возвращает список tg_id, которым доставлено.
-    """
-    bot = Bot(token=BOT_TOKEN, parse_mode="HTML")
-    delivered = []
-    try:
-        for tg_id, text in messages_:
-            try:
-                await bot.send_message(tg_id, text)
-                delivered.append(tg_id)
-            except Exception as e:
-                logger.warning("Telegram send to %s failed: %s", tg_id, e)
-            await asyncio.sleep(0.05)  # ~20/сек, ниже лимита Telegram
-    finally:
-        await (await bot.get_session()).close()
-    return delivered
-
-
-def send_in_background(messages_: list, on_done=None):
-    """
-    Рассылка в фоне — админка отвечает сразу, а не висит минуту,
-    пока уходят сотни сообщений (и не падает по таймауту gunicorn).
-    on_done(delivered_ids) вызывается в том же фоновом потоке.
-    """
-    def run():
-        try:
-            delivered = asyncio.run(_send_many(messages_))
-            if on_done:
-                on_done(delivered)
-        except Exception:
-            logger.exception("Background send failed")
-        finally:
-            close_old_connections()
-
-    threading.Thread(target=run, daemon=True).start()
-
 
 async def send_role_promotion_notification(user_id, text):
     # Без try/except: ошибка должна долететь до save_model(), чтобы админ

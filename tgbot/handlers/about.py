@@ -1,3 +1,5 @@
+import time
+
 from aiogram import types, Dispatcher
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from asgiref.sync import sync_to_async
@@ -7,6 +9,26 @@ from tgbot.i18n import t, variants
 from tgbot.services.photo_cache import send_cached_photo, file_cache_key
 
 BASE_DIR = Path(__file__).resolve().parents[2]
+
+_count_cache = {"value": None, "at": 0.0}
+
+
+async def volunteers_count() -> str:
+    """
+    Реальное число волонтёров из базы (раньше было зашито «1400+»).
+    Округляем вниз до десятков/сотен со знаком «+», кэш 10 минут.
+    """
+    if _count_cache["value"] is None or time.monotonic() - _count_cache["at"] > 600:
+        from app_telegram.models import TGUser
+        n = await sync_to_async(TGUser.objects.count)()
+        if n >= 1000:
+            text = f"{n // 100 * 100}+"
+        elif n >= 100:
+            text = f"{n // 10 * 10}+"
+        else:
+            text = str(n)
+        _count_cache.update(value=text, at=time.monotonic())
+    return _count_cache["value"]
 
 
 def about_kb():
@@ -19,7 +41,7 @@ def about_kb():
     )
 
 async def about_us(message: types.Message):
-    main_text = t("about_text")
+    main_text = t("about_text", count=await volunteers_count())
     poster_path = BASE_DIR / "tgbot" / "assets" / "poster.png"
     try:
         # Постер один и тот же для всех — после первой отправки Telegram

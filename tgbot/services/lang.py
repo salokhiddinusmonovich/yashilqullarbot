@@ -10,6 +10,7 @@
 """
 import logging
 import os
+import time
 
 import redis
 from redis import asyncio as aioredis
@@ -18,7 +19,21 @@ from tgbot.i18n import LANGS, DEFAULT_LANG
 
 logger = logging.getLogger(__name__)
 
-_cache: dict[int, str] = {}
+# tg_id -> (lang, когда закэшировано). Короткий TTL: язык может поменяться
+# и из Mini App (через Redis), бот должен это увидеть почти сразу.
+_cache: dict[int, tuple] = {}
+_TTL = 30
+
+
+def _cached(tg_id):
+    hit = _cache.get(tg_id)
+    if hit and time.monotonic() - hit[1] < _TTL:
+        return hit[0]
+    return None
+
+
+def _remember(tg_id, lang):
+    _cache[tg_id] = (lang, time.monotonic())
 _async = None
 _sync = None
 
@@ -50,15 +65,16 @@ def _sclient():
 
 
 async def get_lang(tg_id: int) -> str | None:
-    if tg_id in _cache:
-        return _cache[tg_id]
+    hit = _cached(tg_id)
+    if hit:
+        return hit
     try:
         lang = await _aclient().get(f"lang:{tg_id}")
     except Exception as e:
         logger.warning("lang redis error: %s", e)
         return None
     if lang in LANGS:
-        _cache[tg_id] = lang
+        _remember(tg_id, lang)
         return lang
     return None
 
@@ -66,7 +82,7 @@ async def get_lang(tg_id: int) -> str | None:
 async def set_lang(tg_id: int, lang: str):
     if lang not in LANGS:
         return
-    _cache[tg_id] = lang
+    _remember(tg_id, lang)
     try:
         await _aclient().set(f"lang:{tg_id}", lang)
     except Exception as e:
@@ -81,7 +97,7 @@ async def lang_of(tg_id: int) -> str:
 async def langs_of(tg_ids) -> dict[int, str]:
     """Языки сразу для многих — одним запросом в Redis (для рассылок)."""
     tg_ids = [i for i in tg_ids if i]
-    result = {i: _cache[i] for i in tg_ids if i in _cache}
+    result = {i: _cached(i) for i in tg_ids if _cached(i)}
     missing = [i for i in tg_ids if i not in result]
     if missing:
         try:
@@ -91,7 +107,7 @@ async def langs_of(tg_ids) -> dict[int, str]:
             values = [None] * len(missing)
         for i, v in zip(missing, values):
             if v in LANGS:
-                _cache[i] = v
+                _remember(i, v)
             result[i] = v if v in LANGS else DEFAULT_LANG
     return result
 
@@ -105,6 +121,15 @@ def lang_of_sync(tg_id: int) -> str:
         logger.warning("lang redis error: %s", e)
         return DEFAULT_LANG
     return lang if lang in LANGS else DEFAULT_LANG
+
+
+def set_lang_sync(tg_id: int, lang: str):
+    if lang not in LANGS:
+        return
+    try:
+        _sclient().set(f"lang:{tg_id}", lang)
+    except Exception as e:
+        logger.warning("lang redis error: %s", e)
 
 
 def langs_of_sync(tg_ids) -> dict[int, str]:

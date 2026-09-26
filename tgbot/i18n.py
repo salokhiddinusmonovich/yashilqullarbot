@@ -150,6 +150,14 @@ TEXTS = {
     "btn_shop": {"uz": "🛍️ Eko-Shop", "ru": "🛍️ Эко-магазин", "en": "🛍️ Eco Shop"},
     "btn_skip": {"uz": "⏭ O'tkazib yuborish", "ru": "⏭ Пропустить", "en": "⏭ Skip"},
 
+    "btn_open_app": {"uz": "📱 Ilovani ochish", "ru": "📱 Открыть приложение", "en": "📱 Open the app"},
+    "btn_open_event_app": {"uz": "📱 Ilovada ko'rish", "ru": "📱 Открыть в приложении", "en": "📱 View in the app"},
+    "app_intro": {
+        "uz": "📱 <b>Yashil Qo'llar ilovasi</b>\n\nTadbirlar rasmlari bilan, bir bosishda yozilish, QR-kod, reyting va profil — hammasi bir joyda.",
+        "ru": "📱 <b>Приложение Yashil Qo'llar</b>\n\nМероприятия с фото, запись в одно касание, QR-код, рейтинг и профиль — всё в одном месте.",
+        "en": "📱 <b>Yashil Qo'llar app</b>\n\nEvents with photos, one-tap registration, your QR code, leaderboard and profile — all in one place.",
+    },
+
     # ── общее ──
     "lang_choose": {
         "uz": "🌐 Tilni tanlang · Выберите язык · Choose your language",
@@ -540,13 +548,13 @@ TEXTS = {
     "about_text": {
         "uz": "🌿 <b>Yashil Qo'llar</b> — barqaror kelajak sari!\n\n"
               "Maqsadimiz — yoshlar orasida ekologik madaniyatni rivojlantirish. "
-              "Safimizda <b>1400+</b> faol ko'ngillilar bor! 💪",
+              "Safimizda <b>{count}</b> faol ko'ngillilar bor! 💪",
         "ru": "🌿 <b>Yashil Qo'llar</b> — к устойчивому будущему!\n\n"
               "Наша цель — развивать экологическую культуру среди молодёжи. "
-              "В наших рядах <b>1400+</b> активных волонтёров! 💪",
+              "В наших рядах <b>{count}</b> активных волонтёров! 💪",
         "en": "🌿 <b>Yashil Qo'llar</b> — towards a sustainable future!\n\n"
               "Our goal is to grow an eco-culture among young people. "
-              "We have <b>1400+</b> active volunteers! 💪",
+              "We have <b>{count}</b> active volunteers! 💪",
     },
     "partners_empty": {"uz": "Hozircha hamkorlar ro'yxati bo'sh.", "ru": "Список партнёров пока пуст.", "en": "No partners yet."},
     "partners_title": {"uz": "🤝 <b>Hamkorlarimiz:</b>", "ru": "🤝 <b>Наши партнёры:</b>", "en": "🤝 <b>Our partners:</b>"},

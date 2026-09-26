@@ -12,7 +12,20 @@ from .api import EcoProjectViewSet, JoinProjectView
 from .api import EcoProjectLikeView, EcoProjectCommentCreateView, EcoProjectCommentLikeView, RegionTeamView, PublicProfileView,PartnerListView, LeaderboardView, RegionalTeamOverviewView
 from .api import CommentDeleteView, CommentEditView, EcoProjectCommentDeleteView, EcoProjectCommentEditView
 
+from . import webapp
+
 urlpatterns = [
+    # ── Telegram Mini App (API/webapp.py) ──
+    path('login/telegram-webapp/', webapp.WebAppLoginView.as_view(), name='webapp-login'),
+    path('webapp/bootstrap/', webapp.BootstrapView.as_view(), name='webapp-bootstrap'),
+    path('webapp/events/<int:pk>/join/', webapp.JoinView.as_view(), name='webapp-join'),
+    path('webapp/lang/', webapp.LangView.as_view(), name='webapp-lang'),
+    path('webapp/qr.svg', webapp.QRView.as_view(), name='webapp-qr'),
+    path('webapp/top/', webapp.LeaderboardView.as_view(), name='webapp-top'),
+    path('webapp/staff/events/', webapp.StaffEventsView.as_view(), name='webapp-staff-events'),
+    path('webapp/staff/checkin/', webapp.StaffCheckInView.as_view(), name='webapp-staff-checkin'),
+    path('webapp/staff/search/', webapp.StaffSearchView.as_view(), name='webapp-staff-search'),
+
     # ── Telegram bot login (без изменений) ──
     path('login/', TelegramLoginView.as_view(), name='login'),
     path('login/token/', CreateLoginTokenView.as_view(), name='create-login-token'),

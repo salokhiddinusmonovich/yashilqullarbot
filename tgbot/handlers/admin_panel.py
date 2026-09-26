@@ -78,17 +78,7 @@ def back_kb(to: str = "adm:menu", label_key: str = "adm_btn_menu") -> InlineKeyb
 
 # ─────────────────────────── поиск юзеров ───────────────────────────
 
-def _user_query(text: str):
-    text = text.strip()
-    compact = re.sub(r"[\s+\-()]", "", text)
-    if text.startswith("@"):
-        return Q(username__iexact=text[1:])
-    if "@" in text and "." in text:
-        return Q(email__iexact=text)
-    if compact.isdigit() and len(compact) >= 5:
-        # только цифры — это tg_id или телефон (ищем по хвосту: формат телефона в базе бывает разный)
-        return Q(phone__endswith=compact[-9:]) | Q(tg_id=int(compact))
-    return Q(fullname__icontains=text) | Q(username__iexact=text)
+from app_telegram.services import user_search_q as _user_query
 
 
 @sync_to_async

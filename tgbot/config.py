@@ -19,6 +19,7 @@ class TgBot:
 @dataclass
 class Miscellaneous:
     other_params: str = None
+    miniapp_url: str = None  # https-адрес Mini App (Vercel); пусто — кнопки приложения не показываются
 
 @dataclass
 class Config:
@@ -41,5 +42,5 @@ def load_config(path: str = None):
             password=os.environ.get("REDIS_PASSWORD") or None,
             use_redis=True,
         ),
-        misc=Miscellaneous()
+        misc=Miscellaneous(miniapp_url=(os.environ.get("MINIAPP_URL") or "").rstrip("/") or None)
     )

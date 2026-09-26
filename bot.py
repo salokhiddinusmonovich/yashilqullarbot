@@ -35,6 +35,7 @@ from tgbot.handlers.link_account import register_link_account_handlers
 from tgbot.handlers.admin_panel import register_admin_panel
 from tgbot.handlers.help import register_help
 from tgbot.handlers.language import register_language
+from tgbot.handlers.miniapp import register_miniapp, setup_menu_button
 from tgbot.middlewares.environment import EnvironmentMiddleware
 from tgbot.middlewares.activity import ActivityMiddleware
 from tgbot.middlewares.i18n import I18nMiddleware
@@ -77,6 +78,7 @@ def register_all_handlers(dp):
     # Язык и инструкция — ДО хендлеров состояний: кнопки «🌐» и «❓»
     # должны срабатывать даже посреди регистрации, а не сохраняться как ответ.
     register_language(dp)
+    register_miniapp(dp)             # /app — открыть Mini App
     register_help(dp)                # ❓ Qo'llanma / /help
     register_register(dp)            # регистрация — СТАТИКА, всегда через бота,
                                       # не переключается флагом USE_MINI_APP
@@ -145,6 +147,9 @@ async def main():
     register_all_middlewares(dp, config)
     register_all_filters(dp)
     register_all_handlers(dp)
+
+    # Кнопка Mini App рядом с полем ввода (если задан MINIAPP_URL)
+    await setup_menu_button(bot)
 
     # Ежедневный отчёт админам (21:00 по Ташкенту, см. DAILY_REPORT_HOUR)
     asyncio.create_task(daily_report_loop(bot))
