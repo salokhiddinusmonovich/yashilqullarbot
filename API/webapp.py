@@ -214,6 +214,21 @@ class WebAppLoginView(views.APIView):
         })
 
 
+class PublicStatsView(views.APIView):
+    """
+    GET /stats/ — реальные цифры проекта для сайта (без входа):
+    { volunteers, events, checkins, regions }. Кэш 5 минут.
+    Вместо захардкоженных «1,000+ / 25+» на главной.
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request):
+        resp = Response(community_stats())
+        resp["Cache-Control"] = "public, max-age=300"
+        return resp
+
+
 class _Auth(views.APIView):
     permission_classes = [IsAuthenticated]
     authentication_classes = [TGUserJWTAuthentication]

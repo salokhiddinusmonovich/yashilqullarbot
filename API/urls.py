@@ -16,6 +16,7 @@ from . import webapp
 
 urlpatterns = [
     # ── Telegram Mini App (API/webapp.py) ──
+    path('stats/', webapp.PublicStatsView.as_view(), name='public-stats'),
     path('login/telegram-webapp/', webapp.WebAppLoginView.as_view(), name='webapp-login'),
     path('webapp/bootstrap/', webapp.BootstrapView.as_view(), name='webapp-bootstrap'),
     path('webapp/me/', webapp.MeView.as_view(), name='webapp-me'),
