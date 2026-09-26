@@ -74,6 +74,7 @@ async def user_start(message: Message, state: FSMContext):
                     text=(
                         f"🌟 <b>Tadbirda ishtirok etganingiz tasdiqlandi!</b>\n\n"
                         f"Sizga 10 ball berildi. Hozirgi balansingiz: <b>{volunteer.balance} ball</b>.\n"
+                        f"🎓 Sertifikatingiz tadbirdan keyin tadbir guruhiga tashlanadi.\n\n"
                         f"Rahmat, tabiat himoyachisi! 🌿"
                     ),
                     parse_mode="HTML"

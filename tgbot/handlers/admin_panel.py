@@ -375,7 +375,8 @@ async def _notify_attended(bot, user, project):
         await bot.send_message(
             user.tg_id,
             f"🌟 <b>«{escape(project.title)}» tadbirida ishtirok etganingiz tasdiqlandi!</b>\n\n"
-            f"Sizga 10 ball berildi. Hozirgi balansingiz: <b>{user.balance} ball</b>.",
+            f"Sizga 10 ball berildi. Hozirgi balansingiz: <b>{user.balance} ball</b>.\n\n"
+            "🎓 Sertifikatingiz tadbirdan keyin tadbir guruhiga tashlanadi.",
             parse_mode="HTML",
         )
     except Exception:
