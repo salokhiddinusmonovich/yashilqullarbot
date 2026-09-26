@@ -97,7 +97,9 @@ def parse_qr(text: str):
 def join_event(user: TGUser, project_id: int):
     """
     Запись на мероприятие. Возвращает (code, project):
-    ok / already / gone / full.
+    ok / already / gone / full / region.
+    "region" — мероприятие не в регионе человека: записываться можно только
+    в своём (Ташкент-город и область — один регион). Смотреть чужие можно.
     Проверку подписки на канал делает вызывающий (это сетевой запрос).
     """
     project = EcoProject.objects.filter(id=project_id, is_active=True).first()
@@ -105,6 +107,8 @@ def join_event(user: TGUser, project_id: int):
         return "gone", None
     if ProjectParticipation.objects.filter(user=user, project=project).exists():
         return "already", project
+    if project.region not in region_group(user.region):
+        return "region", project
     if project.participants.exclude(status='rejected').count() >= project.max_participants:
         return "full", project
     _, created = ProjectParticipation.objects.get_or_create(

@@ -356,12 +356,16 @@ class AllEventsView(_Auth):
 
 
 class JoinView(_Auth):
-    """POST /webapp/events/<id>/join/ → { result: ok|already|gone|full|subscribe, event }"""
+    """POST /webapp/events/<id>/join/ → { result: ok|already|gone|full|region|subscribe, event }"""
 
     def post(self, request, pk):
         user = request.user
         if ProjectParticipation.objects.filter(user=user, project_id=pk).exists():
             return Response({"result": "already"})
+        # регион проверяем ДО сетевого запроса к Telegram (подписка на канал)
+        other = EcoProject.objects.filter(id=pk).values_list('region', flat=True).first()
+        if other and other not in services.region_group(user.region):
+            return Response({"result": "region"})
         if user.tg_id and not is_channel_member(user.tg_id):
             return Response({"result": "subscribe", "channel": "yashilqollar"})
 

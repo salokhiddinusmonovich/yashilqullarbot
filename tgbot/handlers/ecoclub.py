@@ -124,7 +124,7 @@ async def list_upcoming_events(message: types.Message, state: FSMContext):
         await message.answer(text, reply_markup=kb)
 
 
-_JOIN_TEXT = {"gone": "event_gone", "already": "event_already_applied", "full": "event_no_seats"}
+_JOIN_TEXT = {"gone": "event_gone", "already": "event_already_applied", "full": "event_no_seats", "region": "event_other_region"}
 
 
 @sync_to_async

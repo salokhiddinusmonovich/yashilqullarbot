@@ -617,6 +617,11 @@ TEXTS = {
         "ru": "Это мероприятие больше недоступно.",
         "en": "This event is no longer available.",
     },
+    "event_other_region": {
+        "uz": "📍 Bu tadbir boshqa hudud uchun. Faqat o'z hududingizdagi tadbirlarga yozilish mumkin.",
+        "ru": "📍 Это мероприятие другого региона. Записываться можно только в своём регионе.",
+        "en": "📍 This event is for another region. You can only register for events in your own region.",
+    },
     "event_no_seats": {"uz": "❌ Kechirasiz, joylar qolmagan.", "ru": "❌ Извините, мест не осталось.", "en": "❌ Sorry, no spots left."},
     "event_accepted": {
         "uz": "✅ <b>«{title}» tadbiriga yozildingiz!</b>\n\n"
