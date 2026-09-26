@@ -421,19 +421,83 @@ class QRView(_Auth):
         return resp
 
 
+ROLE_ORDER = ["Founder", "head_coordinator", "main_coordinator", "coordinator", "organizer", "it", "mobilograph"]
+
+
+def _person(request, u: TGUser, lang: str):
+    """Карточка человека для списков (рейтинг, команда) — только публичные поля."""
+    return {
+        "id": u.id,
+        "fullname": u.fullname,
+        "photo": _abs(request, thumb_url(u.photo, 160)),
+        "role": u.role,
+        "role_label": role_label(u.role, lang),
+        "balance": u.balance,
+    }
+
+
+class PublicProfileView(_Auth):
+    """
+    GET /webapp/users/<id>/ — паспорт другого человека в Mini App.
+    Только публичное: без телефона, email, username и Telegram ID.
+    """
+
+    def get(self, request, pk):
+        u = TGUser.objects.filter(id=pk).first()
+        if not u:
+            return Response({"error": "not_found"}, status=status.HTTP_404_NOT_FOUND)
+        lang = lang_of_sync(request.user.tg_id) if request.user.tg_id else "uz"
+        history = list(
+            ProjectParticipation.objects.filter(user=u, status='attended')
+            .select_related('project').order_by('-project__date')[:24]
+        )
+        next_at = next((s for s in RANK_STEPS if u.balance < s), None)
+        return Response({
+            **_person(request, u, lang),
+            "photo": _abs(request, thumb_url(u.photo, 300)),
+            "rank": rank_label(u.balance, lang),
+            "rank_next_at": next_at,
+            "region": u.region,
+            "region_label": region_label(u.region, lang) if u.region else None,
+            "attended_count": ProjectParticipation.objects.filter(user=u, status='attended').count(),
+            "is_staff": services.is_staff(u),
+            "history": [
+                {"id": pp.project_id, "title": pp.project.title,
+                 "date": timezone.localtime(pp.project.date).isoformat()}
+                for pp in history
+            ],
+        })
+
+
+class TeamView(_Auth):
+    """
+    GET /webapp/team/ — к кому обращаться: основатели (все) + команда
+    своего региона (любая роль, кроме волонтёра). Основатели — первыми.
+    """
+
+    def get(self, request):
+        lang = lang_of_sync(request.user.tg_id) if request.user.tg_id else "uz"
+        regions = services.region_group(request.user.region)
+        qs = TGUser.objects.exclude(role=TGUser.Role.VOLUNTEER).filter(
+            Q(role="Founder") | Q(region__in=regions)
+        ).only("id", "fullname", "photo", "role", "balance")
+        people = sorted(qs, key=lambda u: (ROLE_ORDER.index(u.role) if u.role in ROLE_ORDER else 99, u.fullname))
+        return Response({"team": [_person(request, u, lang) for u in people]})
+
+
 class LeaderboardView(_Auth):
     """GET /webapp/top/ — топ-50 и моё место."""
 
     def get(self, request):
         top = list(
             TGUser.objects.filter(balance__gt=0).order_by('-balance', 'id')
-            .only('id', 'fullname', 'photo', 'balance', 'region')[:50]
+            .only('id', 'fullname', 'photo', 'balance', 'region', 'role')[:50]
         )
         me = request.user
         my_place = TGUser.objects.filter(Q(balance__gt=me.balance) | Q(balance=me.balance, id__lt=me.id)).count() + 1
         return Response({
             "top": [
-                {"id": u.id, "fullname": u.fullname, "balance": u.balance,
+                {"id": u.id, "fullname": u.fullname, "balance": u.balance, "role": u.role,
                  "photo": _abs(request, thumb_url(u.photo, 120)), "me": u.id == me.id}
                 for u in top
             ],
