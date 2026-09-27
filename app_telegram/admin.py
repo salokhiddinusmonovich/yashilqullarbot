@@ -109,6 +109,7 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
         return [
             path('report/', self.admin_site.admin_view(self.report_view), name='app_telegram_projectparticipation_report'),
             path('certificate/', self.admin_site.admin_view(self.certificate_view), name='app_telegram_projectparticipation_certificate'),
+            path('assistant/', self.admin_site.admin_view(self.assistant_view), name='app_telegram_projectparticipation_assistant'),
         ] + super().get_urls()
 
     def certificate_view(self, request):
@@ -166,6 +167,29 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
             "show_number": lay.get("show_number"), "custom": (C.CUSTOM / "template.png").exists(),
         }
         return TemplateResponse(request, "admin/yq_certificate.html", ctx)
+
+    def assistant_view(self, request):
+        """🤖 Что знает ИИ-помощник: свои заметки (media/assistant/extra.txt) + то, что берётся из базы."""
+        from django.core.exceptions import PermissionDenied
+        from django.http import HttpResponseRedirect
+        from django.template.response import TemplateResponse
+        from tgbot.services import ai
+
+        if not request.user.is_superuser and not self.has_change_permission(request):
+            raise PermissionDenied
+        path = ai.extra_path()
+        if request.method == "POST":
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text((request.POST.get("extra") or "").strip()[:6000], encoding="utf-8")
+            self.message_user(request, trn("ai_saved"))
+            return HttpResponseRedirect(request.path)
+        try:
+            extra = path.read_text(encoding="utf-8")
+        except OSError:
+            extra = ""
+        ctx = {**self.admin_site.each_context(request), "title": trn("ai_title"), "opts": self.model._meta,
+               "extra": extra, "info": ai._project_info_sync(), "enabled": ai.enabled()}
+        return TemplateResponse(request, "admin/yq_assistant.html", ctx)
 
     def _announce_past(self, request):
         from tgbot.services.lang import _sclient

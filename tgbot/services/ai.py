@@ -184,13 +184,80 @@ def _audio_part(audio: bytes, mime="audio/ogg"):
     return {"inline_data": {"mime_type": mime, "data": base64.b64encode(audio).decode()}}
 
 
+# ─────────────────────────── знания о проекте (команда, партнёры, свои заметки) ───────────────────────────
+
+import time
+from pathlib import Path
+_KB_CACHE = {"at": 0.0, "text": ""}
+EXTRA_FILE = "assistant/extra.txt"      # media/assistant/extra.txt — правится в админке «🤖 AI bilimlari»
+
+
+def extra_path() -> Path:
+    from django.conf import settings
+    return Path(settings.MEDIA_ROOT) / EXTRA_FILE
+
+
+def _project_info_sync() -> str:
+    """Публичная информация о проекте из базы. Телефонов и юзернеймов волонтёров здесь нет — только команда."""
+    from app_telegram.models import TGUser, TeamMemberYashilQullar, Partner, EcoProject, ProjectParticipation
+    from tgbot.i18n import region_label, role_label
+    lines = ["Yashil Qo'llar — eco-volunteering youth project in Uzbekistan: tree planting, plogging, clean-ups, eco events. "
+             "Goal: grow ecological culture among young people. Website yashilqollar.uz, Telegram bot @yashilqollarbot.",
+             f"Numbers now: {TGUser.objects.count()} registered volunteers, {EcoProject.objects.count()} events held/planned, "
+             f"{ProjectParticipation.objects.filter(status='attended').count()} confirmed check-ins.",
+             "The Telegram bot, the Mini App «Ilova» and the certificate system were developed by Salokhiddin Usmonov (Usmonov Salohiddin).",
+             "Certificates are signed by the founder of Yashil Qo'llar — Abdulboriy Akbarov."]
+    site_team = list(TeamMemberYashilQullar.objects.all()[:60])
+    if site_team:
+        lines.append("\nTEAM (from the website):")
+        for m in site_team:
+            bio = " ".join((m.bio or "").split())[:220]
+            tg = f", Telegram @{m.telegram_username.lstrip('@')}" if m.telegram_username else ""
+            lines.append(f"- {m.fullname} — {m.get_focus_display()}{tg}{'. ' + bio if bio else ''}")
+    staff = list(TGUser.objects.exclude(role=TGUser.Role.VOLUNTEER).order_by('role', 'region', 'fullname')[:250])
+    if staff:
+        lines.append("\nTEAM IN THE BOT (role, region):")
+        for u in staff:
+            lines.append(f"- {u.fullname} — {role_label(u.role, 'en')}" + (f", {region_label(u.region, 'en')}" if u.region else ""))
+    partners = list(Partner.objects.filter(is_active=True)[:30])
+    if partners:
+        lines.append("\nPARTNERS / SPONSORS:")
+        for pr in partners:
+            lines.append(f"- {pr.name}" + (f": {' '.join((pr.description or '').split())[:150]}" if pr.description else ""))
+    try:
+        extra = extra_path().read_text(encoding="utf-8").strip()
+        if extra:
+            lines.append("\nEXTRA NOTES FROM THE ADMINS (trust these):\n" + extra[:6000])
+    except OSError:
+        pass
+    return "\n".join(lines)
+
+
+async def knowledge() -> str:
+    """Справочник для ИИ: FAQ + информация о проекте (кэш 10 минут)."""
+    if time.time() - _KB_CACHE["at"] > 600 or not _KB_CACHE["text"]:
+        from asgiref.sync import sync_to_async
+        try:
+            info = await sync_to_async(_project_info_sync)()
+        except Exception:
+            log.exception("project info")
+            info = ""
+        _KB_CACHE.update(at=time.time(), text=faq.knowledge_text() + "\n\n## PROJECT INFO\n" + info)
+    return _KB_CACHE["text"]
+
+
+def reset_knowledge_cache():
+    _KB_CACHE["at"] = 0.0
+
+
 # ─────────────────────────── помощник для волонтёров ───────────────────────────
 
 _SYSTEM = """You are the help assistant of «Yashil Qo'llar» — an eco-volunteering project in Uzbekistan (Telegram bot @yashilqollarbot, website yashilqollar.uz, Mini App «Ilova» inside the bot).
 
 Rules:
-- Answer ONLY about using the bot, the website, the Mini App, events, registration, QR codes, points, certificates and the project. Use ONLY the HANDBOOK and the USER DATA below. Never invent events, dates, places, people, links or features.
-- If the handbook doesn't cover the question, or it's off-topic, say briefly that you don't know and advise writing to the region's coordinators (app → Top/Reyting → «Jamoa»).
+- Answer about using the bot, the website, the Mini App, events, registration, QR codes, points, certificates, and about the project itself: its team, founders, coordinators, partners, history (PROJECT INFO). Use ONLY the HANDBOOK, PROJECT INFO and USER DATA below. Never invent events, dates, places, people, links or features.
+- People: you may tell who someone is if they are in PROJECT INFO (name, role, region, public bio). Names may be spelled differently (Salohiddin / Salokhiddin / Salahuddin, Latin or Cyrillic) — match them sensibly. Never reveal phone numbers or private data. For a person not in PROJECT INFO say you have no public information about them.
+- If the question isn't covered, or it's off-topic, say briefly that you don't know and advise writing to the region's coordinators (app → Top/Reyting → «Jamoa»).
 - You can only explain. You cannot register people, give points, change data or check anyone in — say so if asked.
 - Reply in {lang}. Be short and friendly: at most 6 short lines. Use the exact button names from the handbook. Formatting: Telegram HTML only (<b>bold</b>), no Markdown, no tables.
 
@@ -202,7 +269,7 @@ USER DATA (read-only, about the person asking):
 
 
 async def ask(question: str, lang: str, user_ctx: str, history: list | None = None, audio: bytes | None = None) -> str:
-    system = _SYSTEM.format(lang=LANG_NAMES.get(lang, "Uzbek"), kb=faq.knowledge_text(), user=user_ctx or "—")
+    system = _SYSTEM.format(lang=LANG_NAMES.get(lang, "Uzbek"), kb=await knowledge(), user=user_ctx or "—")
     contents = []
     for q, a in (history or [])[-3:]:
         contents += [{"role": "user", "parts": [{"text": q}]}, {"role": "model", "parts": [{"text": a}]}]
@@ -248,7 +315,7 @@ action — one of:
 period — one of "today","yesterday","week","month","all" (default "today" for report/stats).
 region — one of {regions} or "all" (Tashkent city/region → "tashkent"; default "all").
 query — only for "find", else "".
-answer — ONLY when action is "question" or "unknown": a short helpful answer (max 6 lines, Telegram HTML <b> only) in {lang}, using ONLY this handbook; if the handbook doesn't cover it, say so briefly. Otherwise "".
+answer — ONLY when action is "question" or "unknown": a short helpful answer (max 6 lines, Telegram HTML <b> only) in {lang}, using ONLY this handbook and PROJECT INFO (team, founders, partners, numbers); never reveal phone numbers. If not covered, say so briefly. Otherwise "".
 
 HANDBOOK:
 {kb}
@@ -257,7 +324,7 @@ HANDBOOK:
 
 async def parse_command(text: str, regions: list[str], audio: bytes | None = None, lang: str = "uz") -> dict:
     parts = [_audio_part(audio), {"text": "Voice command (probably Uzbek or Russian)."}] if audio else [{"text": text[:500]}]
-    raw = await _generate(_CMD_SYSTEM.format(regions=", ".join(regions), lang=LANG_NAMES.get(lang, "Uzbek"), kb=faq.knowledge_text()),
+    raw = await _generate(_CMD_SYSTEM.format(regions=", ".join(regions), lang=LANG_NAMES.get(lang, "Uzbek"), kb=await knowledge()),
                           [{"role": "user", "parts": parts}], json_mode=True, max_tokens=2048)
     try:
         return json.loads(raw)
