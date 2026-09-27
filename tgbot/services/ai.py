@@ -29,6 +29,10 @@ MODEL = os.environ.get("GEMINI_MODEL", "").strip()
 MODELS = [m for m in dict.fromkeys([MODEL, "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-flash-latest"]) if m]
 _working = None
 LAST_ERROR = ""
+# Запасная модель — Gemma через тот же бесплатный ключ: только текст, без system_instruction и JSON-режима,
+# зато обычно намного больший дневной лимит. Отключить: AI_GEMMA=0.
+GEMMA = os.environ.get("GEMMA_MODEL", "gemma-3-27b-it").strip()
+GEMMA_ON = os.environ.get("AI_GEMMA", "1") != "0" and bool(GEMMA)
 DAILY_LIMIT = int(os.environ.get("AI_DAILY_LIMIT", "15"))
 URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 LANG_NAMES = {"uz": "Uzbek (Latin script)", "ru": "Russian", "en": "English"}
@@ -43,13 +47,14 @@ class Unavailable(Exception):
 
 
 async def _cooling() -> bool:
-    try:
-        return bool(await _aclient().exists("ai:cooldown"))
-    except Exception:
-        return False
+    """Все модели на лимите?"""
+    for m in MODELS + ([GEMMA] if GEMMA_ON else []):
+        if not await _dead_ttl(m):
+            return False
+    return True
 
 
-async def _cool_down(seconds=120):
+async def _cool_down(seconds=120):  # оставлено для совместимости
     try:
         await _aclient().set("ai:cooldown", 1, ex=seconds)
     except Exception:
@@ -108,22 +113,55 @@ def _body(system, contents, json_mode, max_tokens, model, thinking_off=True):
     return {"system_instruction": {"parts": [{"text": system}]}, "contents": contents, "generationConfig": cfg}
 
 
-async def _generate(system: str, contents: list, json_mode=False, max_tokens=4096) -> str:
+def _until_daily_reset() -> int:
+    """Дневные лимиты Google сбрасываются в полночь по тихоокеанскому времени (~08:00 UTC)."""
+    from datetime import datetime, timedelta, timezone as tz
+    now = datetime.now(tz.utc)
+    reset = now.replace(hour=8, minute=5, second=0, microsecond=0)
+    if reset <= now:
+        reset += timedelta(days=1)
+    return int((reset - now).total_seconds())
+
+
+async def _dead_ttl(model: str) -> int:
+    try:
+        return max(0, await _aclient().ttl(f"ai:dead:{model}"))
+    except Exception:
+        return 0
+
+
+async def _mark_dead(model: str, seconds: int):
+    try:
+        await _aclient().set(f"ai:dead:{model}", 1, ex=max(5, int(seconds)))
+    except Exception:
+        pass
+
+
+async def _on_429(model: str, data, msg: str) -> float:
+    """Лимит: дневной — модель «отдыхает» до сброса; минутный — на столько, сколько просит Google."""
+    daily = "perday" in msg.replace(" ", "").lower() or "per day" in msg.lower() or "PerDay" in str(data)
+    delay = _retry_delay(data)
+    await _mark_dead(model, _until_daily_reset() if daily else max(delay, 20))
+    return delay
+
+
+async def _generate(system: str, contents: list, json_mode=False, max_tokens=4096, gemma_contents: list | None = None) -> str:
     """
-    Запрос к Gemini. Модели пробуем по очереди: у каждой СВОЙ бесплатный лимит,
-    поэтому 429 у одной — не повод сдаваться. Короткое «подождите N сек» (≤ 12) — ждём.
-    Пустой ответ (обрезан/только мысли) — ещё раз без размышлений и с большим запасом, потом другая модель.
-    Все модели на лимите — пауза и честное «ИИ занят» (Unavailable("rate limit")).
+    Запрос к ИИ. Модели Gemini по очереди (у каждой СВОЙ бесплатный лимит); модели на лимите
+    пропускаем, пока не «отдохнут». Все Gemini исчерпаны — запасная Gemma (если передан
+    gemma_contents: только текст, компактный справочник). Пустой ответ — ещё раз с запасом.
+    Ничего не вышло из-за лимитов — Unavailable("rate limit") → «ИИ занят».
     """
     global _working, LAST_ERROR
     if not API_KEY:
         LAST_ERROR = "GEMINI_API_KEY yo'q (.env)"
         raise Unavailable("no key")
-    if await _cooling():
-        raise Unavailable("rate limit")
-    order = ([_working] if _working else []) + [m for m in MODELS if m != _working]
-    limited, wait_max = False, 0.0
+    order = ([_working] if _working and _working != GEMMA else []) + [m for m in MODELS if m != _working]
+    limited = False
     for model in order:
+        if await _dead_ttl(model):
+            limited = True
+            continue
         thinking_off, tokens = True, max_tokens
         for attempt in range(3):
             try:
@@ -139,44 +177,79 @@ async def _generate(system: str, contents: list, json_mode=False, max_tokens=409
                     return text
                 LAST_ERROR = f"{model}: empty answer ({finish})"
                 log.warning("gemini %s", LAST_ERROR)
-                tokens = min(tokens * 2, 8192)      # обрезало — больше места и ещё раз
+                tokens = min(tokens * 2, 8192)
                 continue
             if status == 400 and "thinking" in msg.lower() and thinking_off:
-                thinking_off = False                 # модель не знает thinkingConfig — без него
+                thinking_off = False
                 continue
             LAST_ERROR = f"{model}: HTTP {status} {msg[:200]}"
             log.warning("gemini %s", LAST_ERROR)
             if status == 429:
-                delay = _retry_delay(data)
-                wait_max = max(wait_max, delay)
-                if attempt == 0 and delay <= 12:
+                delay = await _on_429(model, data, msg)
+                if attempt == 0 and delay <= 12 and "perday" not in msg.replace(" ", "").lower():
                     await asyncio.sleep(delay + 0.5)
                     continue
                 limited = True
-                break                                # у другой модели — свой лимит
+                break
             if status in (400, 403) and "API key" in msg:
-                raise Unavailable("bad key")        # ключ неверный — другие модели не помогут
-            break                                    # 404/400/5xx — следующая модель
+                raise Unavailable("bad key")
+            break
+    # ── запасная Gemma: только текст ──
+    if GEMMA_ON and gemma_contents is not None and not await _dead_ttl(GEMMA):
+        cfg = {"temperature": 0.3, "maxOutputTokens": min(max_tokens, 2048)}
+        try:
+            status, data = await _post(GEMMA, {"contents": gemma_contents, "generationConfig": cfg})
+        except (aiohttp.ClientError, TimeoutError) as e:
+            LAST_ERROR = f"network: {e}"
+            raise Unavailable(str(e))
+        if status == 200:
+            text, finish = _extract(data)
+            if text:
+                return text
+            LAST_ERROR = f"{GEMMA}: empty answer ({finish})"
+        else:
+            msg = (data or {}).get("error", {}).get("message", "") if isinstance(data, dict) else str(data)
+            LAST_ERROR = f"{GEMMA}: HTTP {status} {msg[:200]}"
+            log.warning("gemma %s", LAST_ERROR)
+            if status == 429:
+                await _on_429(GEMMA, data, msg)
+                limited = True
     if limited:
-        await _cool_down(int(min(max(wait_max, 15), 90)))
         raise Unavailable("rate limit")
     raise Unavailable("failed")
 
 
+def _gemma_contents(system: str, history: list, text: str) -> list:
+    """У Gemma нет system_instruction — инструкцию кладём в начало первого сообщения пользователя."""
+    contents = []
+    for q, a in (history or [])[-2:]:
+        contents += [{"role": "user", "parts": [{"text": q}]}, {"role": "model", "parts": [{"text": a}]}]
+    contents.append({"role": "user", "parts": [{"text": text}]})
+    contents[0]["parts"][0]["text"] = f"{system}\n\n---\n{contents[0]['parts'][0]['text']}"
+    return contents
+
+
+async def models_state() -> str:
+    lines = []
+    for m in MODELS + ([GEMMA + " (zaxira, faqat matn)"] if GEMMA_ON else []):
+        name = m.split(" ")[0]
+        ttl = await _dead_ttl(name)
+        mark = "✅" if not ttl else f"⏳ limit, {ttl // 3600} soat {ttl % 3600 // 60} daq qoldi" if ttl > 3600 else f"⏳ limit, {ttl} soniya"
+        lines.append(f"• {m}: {mark}" + (" ← hozir shu" if name == _working else ""))
+    return "\n".join(lines)
+
+
 async def status() -> str:
-    """Для /ai — проверка: есть ли ключ, какая модель отвечает, какая ошибка."""
+    """Для /ai — проверка: есть ли ключ, какая модель отвечает, какая ошибка, какие модели на лимите."""
     if not API_KEY:
         return "❌ GEMINI_API_KEY topilmadi. .env ga qo'shing va botni qayta yarating: docker compose up -d --force-recreate bot"
     try:
-        await _aclient().delete("ai:cooldown")
-    except Exception:
-        pass
-    try:
-        await _generate("Reply with one word: OK", [{"role": "user", "parts": [{"text": "ping"}]}], max_tokens=256)
+        await _generate("Reply with one word: OK", [{"role": "user", "parts": [{"text": "ping"}]}], max_tokens=256,
+                        gemma_contents=[{"role": "user", "parts": [{"text": "Reply with one word: OK"}]}])
         last = f"\nOxirgi xato: {LAST_ERROR}" if LAST_ERROR else ""
-        return f"✅ AI ishlayapti. Model: {_working}.{last}\nModellar: {', '.join(MODELS)}"
+        return f"✅ AI ishlayapti.{last}\n\n{await models_state()}"
     except Unavailable as e:
-        return f"❌ AI ishlamayapti: {e}\n{LAST_ERROR}"
+        return f"❌ AI ishlamayapti: {e}\n{LAST_ERROR}\n\n{await models_state()}"
 
 
 def _audio_part(audio: bytes, mime="audio/ogg"):
@@ -233,6 +306,42 @@ def _project_info_sync() -> str:
     return "\n".join(lines)
 
 
+def _project_info_compact_sync() -> str:
+    """Кратко о проекте для запасной модели: без длинных списков (у Gemma маленький лимит токенов в минуту)."""
+    from app_telegram.models import TGUser, TeamMemberYashilQullar, Partner
+    from tgbot.i18n import region_label, role_label
+    lines = ["Yashil Qo'llar — eco-volunteering youth project in Uzbekistan. Website yashilqollar.uz, bot @yashilqollarbot.",
+             "The bot, the Mini App «Ilova» and certificates were developed by Salokhiddin Usmonov (Usmonov Salohiddin).",
+             "Certificates are signed by the founder of Yashil Qo'llar — Abdulboriy Akbarov."]
+    for m in TeamMemberYashilQullar.objects.all()[:15]:
+        lines.append(f"- {m.fullname} — {m.get_focus_display()}. {' '.join((m.bio or '').split())[:120]}")
+    for u in TGUser.objects.filter(role__in=["Founder", "head_coordinator", "main_coordinator"]).order_by('role')[:20]:
+        lines.append(f"- {u.fullname} — {role_label(u.role, 'en')}" + (f", {region_label(u.region, 'en')}" if u.region else ""))
+    names = ", ".join(p.name for p in Partner.objects.filter(is_active=True)[:15])
+    if names:
+        lines.append(f"Partners: {names}.")
+    try:
+        extra = extra_path().read_text(encoding="utf-8").strip()
+        if extra:
+            lines.append("Admin notes: " + extra[:1500])
+    except OSError:
+        pass
+    return "\n".join(lines)
+
+
+_KB_SMALL = {"at": 0.0, "text": ""}
+
+
+async def knowledge_small(question: str, lang: str) -> str:
+    if time.time() - _KB_SMALL["at"] > 600 or not _KB_SMALL["text"]:
+        from asgiref.sync import sync_to_async
+        try:
+            _KB_SMALL.update(at=time.time(), text=await sync_to_async(_project_info_compact_sync)())
+        except Exception:
+            log.exception("compact info")
+    return faq.compact_text(faq.ranked(question, 5), lang) + "\n\n## PROJECT INFO\n" + _KB_SMALL["text"]
+
+
 async def knowledge() -> str:
     """Справочник для ИИ: FAQ + информация о проекте (кэш 10 минут)."""
     if time.time() - _KB_CACHE["at"] > 600 or not _KB_CACHE["text"]:
@@ -248,6 +357,7 @@ async def knowledge() -> str:
 
 def reset_knowledge_cache():
     _KB_CACHE["at"] = 0.0
+    _KB_SMALL["at"] = 0.0
 
 
 # ─────────────────────────── помощник для волонтёров ───────────────────────────
@@ -278,7 +388,11 @@ async def ask(question: str, lang: str, user_ctx: str, history: list | None = No
     else:
         parts = [{"text": question[:1000]}]
     contents.append({"role": "user", "parts": parts})
-    text = await _generate(system, contents, max_tokens=2048)
+    gemma = None
+    if not audio and GEMMA_ON:
+        small = _SYSTEM.format(lang=LANG_NAMES.get(lang, "Uzbek"), kb=await knowledge_small(question, lang), user=user_ctx or "—")
+        gemma = _gemma_contents(small, history, question[:1000])
+    text = await _generate(system, contents, max_tokens=2048, gemma_contents=gemma)
     return _safe_html(text)
 
 
@@ -324,9 +438,15 @@ HANDBOOK:
 
 async def parse_command(text: str, regions: list[str], audio: bytes | None = None, lang: str = "uz") -> dict:
     parts = [_audio_part(audio), {"text": "Voice command (probably Uzbek or Russian)."}] if audio else [{"text": text[:500]}]
+    gemma = None
+    if not audio and GEMMA_ON:
+        small = _CMD_SYSTEM.format(regions=", ".join(regions), lang=LANG_NAMES.get(lang, "Uzbek"), kb=await knowledge_small(text, lang))
+        gemma = _gemma_contents(small + "\nReturn ONLY the JSON object, no other text.", [], text[:500])
     raw = await _generate(_CMD_SYSTEM.format(regions=", ".join(regions), lang=LANG_NAMES.get(lang, "Uzbek"), kb=await knowledge()),
-                          [{"role": "user", "parts": parts}], json_mode=True, max_tokens=2048)
+                          [{"role": "user", "parts": parts}], json_mode=True, max_tokens=2048, gemma_contents=gemma)
+    import re as _re
+    m = _re.search(r"\{.*\}", raw, _re.S)
     try:
-        return json.loads(raw)
+        return json.loads(m.group(0) if m else raw)
     except ValueError:
         raise Unavailable("bad json")

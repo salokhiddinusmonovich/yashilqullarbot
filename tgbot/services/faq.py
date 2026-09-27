@@ -226,3 +226,20 @@ def knowledge_text() -> str:
     for e in FAQ:
         out.append(f"### {e['id']}\nUZ: {e['uz']}\nRU: {e['ru']}")
     return "\n\n".join(out)
+
+
+def ranked(question: str, k: int = 5) -> list:
+    """Записи FAQ по убыванию похожести на вопрос (для компактного справочника запасной модели)."""
+    toks = words(question)
+    scored = []
+    for e, kws in _PREP:
+        score = sum((2.0 if len(parts) > 1 else 1.0) for _raw, parts in kws if toks and all(_hit(p, toks) for p in parts))
+        scored.append((score, e))
+    scored.sort(key=lambda x: -x[0])
+    top = [e for sc, e in scored if sc > 0][:k]
+    # ничего не совпало — самые частые темы
+    return top or [e for e in FAQ if e["id"] in ("join_event", "register_bot", "certificate", "qr", "contact")]
+
+
+def compact_text(entries: list, lang: str) -> str:
+    return "\n\n".join(f"### {e['id']}\n{answer(e, lang)}" for e in entries)
