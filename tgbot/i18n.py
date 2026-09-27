@@ -886,9 +886,9 @@ TEXTS = {
     "ask_btn": {"uz": "🤖 Savol berish", "ru": "🤖 Задать вопрос", "en": "🤖 Ask a question"},
     "ask_exit_btn": {"uz": "⬅️ Chiqish", "ru": "⬅️ Выйти", "en": "⬅️ Exit"},
     "ask_intro": {
-        "uz": "🤖 <b>Savolingizni yozing</b> — bot, sayt, ilova, tadbirlar, ballar, sertifikat haqida.\n\n💡 Yozish shart emas: klaviaturadagi 🎙 mikrofonni bosib aytib yuboring.\nChiqish — «⬅️ Chiqish».",
-        "ru": "🤖 <b>Напишите вопрос</b> — про бота, сайт, приложение, мероприятия, баллы, сертификаты.\n\n💡 Можно не печатать: нажмите 🎙 на клавиатуре и продиктуйте.\nВыйти — «⬅️ Выйти».",
-        "en": "🤖 <b>Type your question</b> — about the bot, website, app, events, points, certificates.\n\n💡 No need to type: tap 🎙 on your keyboard and dictate.\nTo leave — «⬅️ Exit».",
+        "uz": "🤖 <b>Savolingizni yozing yoki ovozli xabar yuboring</b> 🎤 — bot, sayt, ilova, tadbirlar, ballar, sertifikat haqida. O'zbekcha, ruscha — farqi yo'q.\n💡 Umuman olganda, botga istalgan paytda savol yozsangiz ham javob beraman.\nChiqish — «⬅️ Chiqish».",
+        "ru": "🤖 <b>Напишите вопрос или отправьте голосовое</b> 🎤 — про бота, сайт, приложение, мероприятия, баллы, сертификаты. На узбекском или русском — неважно.\n💡 Вообще, можно просто написать боту вопрос в любой момент — я отвечу.\nВыйти — «⬅️ Выйти».",
+        "en": "🤖 <b>Type a question or send a voice message</b> 🎤 — about the bot, website, app, events, points, certificates. Uzbek, Russian or English.\n💡 In fact, you can message the bot a question at any time — I'll answer.\nTo leave — «⬅️ Exit».",
     },
     "ask_bye": {"uz": "👌 Yana savol bo'lsa — «❓ Qo'llanma» → «🤖 Savol berish» yoki /ask.",
                 "ru": "👌 Будут вопросы — «❓ Инструкция» → «🤖 Задать вопрос» или /ask.",
@@ -906,17 +906,17 @@ TEXTS = {
                   "en": "🎤 I can't listen to voice messages. Tap 🎙 on your keyboard and dictate — your phone turns it into text."},
     "adm_btn_cmd": {"uz": "🎙 Buyruq (matn yoki ovoz)", "ru": "🎙 Команда (текст или голос)", "en": "🎙 Command (text or voice)"},
     "cmd_help": {
-        "uz": "🎙 <b>Buyruq rejimi</b> — yozing yoki klaviaturadagi 🎙 bilan aytib yuboring:\n\n"
+        "uz": "🎙 <b>Buyruq rejimi</b> — yozing yoki <b>ovozli xabar</b> yuboring (o'zbekcha/ruscha):\n\n"
               "• <code>bugun toshkent excel</code> — kim keldi, Excel\n• <code>kecha samarqand kelganlar</code>\n"
               "• <code>hafta statistika</code> — yangi odamlar, kelganlar, tadbirlar\n• <code>farg'ona koordinatorlari</code>\n"
               "• <code>kelgusi tadbirlar</code>\n• <code>top Aziza</code> yoki <code>top +99890…</code>\n\n"
               "Faqat ko'rish va hisobotlar. Rol berish, xabar yuborish — tugmalar orqali.{ai}\nChiqish — «⬅️ Menyu».",
-        "ru": "🎙 <b>Режим команд</b> — напишите или продиктуйте через 🎙 на клавиатуре:\n\n"
+        "ru": "🎙 <b>Режим команд</b> — напишите или отправьте <b>голосовое</b> (узбекский/русский):\n\n"
               "• <code>сегодня ташкент excel</code> — кто пришёл, Excel\n• <code>вчера самарканд пришли</code>\n"
               "• <code>статистика за неделю</code> — новые, пришедшие, мероприятия\n• <code>координаторы фергана</code>\n"
               "• <code>ближайшие мероприятия</code>\n• <code>найди Азиза</code> или <code>найди +99890…</code>\n\n"
               "Только просмотр и отчёты. Роли и рассылки — кнопками.{ai}\nВыйти — «⬅️ Меню».",
-        "en": "🎙 <b>Command mode</b> — type or dictate with 🎙 on your keyboard:\n\n"
+        "en": "🎙 <b>Command mode</b> — type or send a <b>voice message</b> (Uzbek/Russian):\n\n"
               "• <code>today tashkent excel</code> — who came, Excel\n• <code>yesterday samarkand attended</code>\n"
               "• <code>stats this week</code> — new users, attendance, events\n• <code>coordinators fergana</code>\n"
               "• <code>upcoming events</code>\n• <code>find Aziza</code> or <code>find +99890…</code>\n\n"
@@ -998,6 +998,8 @@ TEXTS = {
     "cert_past": {"uz": "🎓 <b>Yangilik!</b> Endi sertifikatlaringiz doim qo'lingizda. O'tgan tadbirlar uchun sertifikatlaringiz tayyor: <b>{n} ta</b>.\n\n📥 Olish: /sertifikat yoki ilovada Profil → «Sertifikatlarim».",
                   "ru": "🎓 <b>Новое!</b> Теперь ваши сертификаты всегда под рукой. Сертификаты за прошлые мероприятия готовы: <b>{n}</b>.\n\n📥 Получить: /sertifikat или в приложении Профиль → «Мои сертификаты».",
                   "en": "🎓 <b>New!</b> Your certificates are now always at hand. Certificates for past events are ready: <b>{n}</b>.\n\n📥 Get them: /sertifikat or in the app Profile → «My certificates»."},
+    "voice_long": {"uz": "🎤 Ovozli xabar juda uzun. 2 daqiqagacha qilib, qisqaroq so'rang.", "ru": "🎤 Голосовое слишком длинное. Запишите покороче — до 2 минут.",
+                   "en": "🎤 The voice message is too long. Please keep it under 2 minutes."},
     "adm_btn_stats": {"uz": "📊 Statistika", "ru": "📊 Статистика", "en": "📊 Statistics"},
     "adm_btn_events": {"uz": "📅 Tadbirlar", "ru": "📅 Мероприятия", "en": "📅 Events"},
     "adm_btn_find": {"uz": "🔎 Qidirish", "ru": "🔎 Поиск", "en": "🔎 Search"},

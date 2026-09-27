@@ -34,7 +34,7 @@ from tgbot.handlers.contact_with_team import register_project_handlers
 from tgbot.handlers.link_account import register_link_account_handlers
 from tgbot.handlers.admin_panel import register_admin_panel
 from tgbot.handlers.help import register_help
-from tgbot.handlers.assistant import register_assistant
+from tgbot.handlers.assistant import register_assistant, register_free_questions
 from tgbot.handlers.invite import register_invite
 from tgbot.handlers.reminders import register_reminders
 from tgbot.services.reminders import reminders_loop
@@ -125,6 +125,9 @@ def register_all_handlers(dp):
     # состояний ("введите @username") ловят любой текст, и так /start и
     # кнопки меню продолжают работать, даже если админ бросил ввод на полпути.
     register_admin_panel(dp)
+
+    # 🤖 Любой текст/голосовое, которое никто не обработал, — вопрос помощнику (не молчим).
+    register_free_questions(dp)
 
     print(f"Handlers registered! (mode: {'MINI APP' if USE_MINI_APP else 'TEXT'})")
 

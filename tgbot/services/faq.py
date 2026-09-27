@@ -68,7 +68,8 @@ FAQ = [
     },
     {
         "id": "join_event",
-        "kw": ["tadbirga yozil", "tadbirga qanday", "yozilaman", "yozilish", "qatnash", "записат", "запис на", "как попасть", "участвов", "join event", "join an event", "attend"],
+        "kw": ["tadbirga yozil", "tadbirga qanday", "yozilaman", "yozilish", "qatnash", "kelmoqchiman", "bormoqchiman", "tadbirga kel", "tadbirga bor",
+               "записат", "запис на", "как попасть", "участвов", "прийти", "прийду", "пойти на", "хочу на мероприят", "join event", "join an event", "attend"],
         "uz": "🌱 <b>Tadbirga yozilish:</b>\n• Botda: <b>🌱 Tadbirlar → 📅 Kelgusi tadbirlar</b> → tadbirni tanlang → <b>«✅ Ro'yxatdan o'tish»</b>\n• Yoki ilovada: chap pastdagi <b>«Ilova»</b> → Tadbirlar → «Yozilish».\n\nYozilgach tadbir guruhiga qo'shiling. Tadbir kuni QR-kodingizni koordinatorga ko'rsating.\n📍 Faqat o'z hududingiz tadbirlariga yozilish mumkin.",
         "ru": "🌱 <b>Как записаться на мероприятие:</b>\n• В боте: <b>🌱 Мероприятия → 📅 Предстоящие</b> → выберите → <b>«✅ Записаться»</b>\n• Или в приложении: кнопка <b>«Ilova»</b> слева внизу → События → «Записаться».\n\nПосле записи вступите в группу мероприятия. В день мероприятия покажите QR-код координатору.\n📍 Записаться можно только на мероприятия своего региона.",
         "en": "🌱 <b>Joining an event:</b>\n• In the bot: <b>🌱 Events → 📅 Upcoming</b> → pick one → <b>«✅ Sign up»</b>\n• Or in the app: the <b>«Ilova»</b> button at the bottom left → Events → «Join».\n\nThen join the event group. On the day, show your QR code to the coordinator.\n📍 You can only join events in your own region.",

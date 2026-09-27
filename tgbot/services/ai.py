@@ -23,7 +23,11 @@ from .lang import _aclient
 log = logging.getLogger(__name__)
 
 API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
-MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-latest").strip()
+MODEL = os.environ.get("GEMINI_MODEL", "").strip()
+# Имена моделей у Google меняются — пробуем по очереди, рабочую запоминаем (_working)
+MODELS = [m for m in dict.fromkeys([MODEL, "gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash", "gemini-2.5-flash-lite"]) if m]
+_working = None
+LAST_ERROR = ""
 DAILY_LIMIT = int(os.environ.get("AI_DAILY_LIMIT", "15"))
 URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 LANG_NAMES = {"uz": "Uzbek (Latin script)", "ru": "Russian", "en": "English"}
@@ -64,8 +68,16 @@ async def take_quota(tg_id: int) -> bool:
         return True   # Redis лёг — не наказываем человека
 
 
+async def _post(model: str, body: dict):
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=40)) as s:
+        async with s.post(URL.format(model=model), json=body, headers={"x-goog-api-key": API_KEY}) as resp:
+            return resp.status, await resp.json(content_type=None)
+
+
 async def _generate(system: str, contents: list, json_mode=False, max_tokens=2048) -> str:
+    global _working, LAST_ERROR
     if not API_KEY:
+        LAST_ERROR = "GEMINI_API_KEY yo'q (.env)"
         raise Unavailable("no key")
     if await _cooling():
         raise Unavailable("cooldown")
@@ -76,26 +88,60 @@ async def _generate(system: str, contents: list, json_mode=False, max_tokens=204
     }
     if json_mode:
         body["generationConfig"]["responseMimeType"] = "application/json"
-    try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=25)) as s:
-            async with s.post(URL.format(model=MODEL), json=body, headers={"x-goog-api-key": API_KEY}) as resp:
-                if resp.status == 429:
-                    await _cool_down()
-                    raise Unavailable("rate limit")
-                data = await resp.json(content_type=None)
-                if resp.status != 200:
-                    log.warning("gemini %s: %s", resp.status, str(data)[:300])
-                    raise Unavailable(f"http {resp.status}")
-    except (aiohttp.ClientError, TimeoutError) as e:
-        raise Unavailable(str(e))
+    order = ([_working] if _working else []) + [m for m in MODELS if m != _working]
+    data = None
+    for model in order:
+        try:
+            status, data = await _post(model, body)
+        except (aiohttp.ClientError, TimeoutError) as e:
+            LAST_ERROR = f"network: {e}"
+            raise Unavailable(str(e))
+        if status == 200:
+            _working = model
+            break
+        msg = (data or {}).get("error", {}).get("message", "") if isinstance(data, dict) else str(data)
+        LAST_ERROR = f"{model}: HTTP {status} {msg[:200]}"
+        log.warning("gemini %s", LAST_ERROR)
+        if status == 429:
+            await _cool_down()
+            raise Unavailable("rate limit")
+        if status in (400, 403) and "API key" in msg:
+            raise Unavailable("bad key")          # ключ неверный — другие модели не помогут
+        if status in (404, 400):
+            continue                               # модель не найдена/не поддерживает — пробуем следующую
+        raise Unavailable(f"http {status}")
+    else:
+        raise Unavailable("no working model")
     try:
         parts = data["candidates"][0]["content"]["parts"]
         text = "".join(p.get("text", "") for p in parts if not p.get("thought")).strip()
     except (KeyError, IndexError, TypeError):
+        LAST_ERROR = f"empty answer: {str(data)[:200]}"
         raise Unavailable("empty answer")
     if not text:
         raise Unavailable("empty answer")
+    LAST_ERROR = ""
     return text
+
+
+async def status() -> str:
+    """Для /ai — проверка: есть ли ключ, какая модель отвечает, какая ошибка."""
+    if not API_KEY:
+        return "❌ GEMINI_API_KEY topilmadi. .env ga qo'shing va botni qayta yarating: docker compose up -d --force-recreate bot"
+    try:
+        await _aclient().delete("ai:cooldown")
+    except Exception:
+        pass
+    try:
+        txt = await _generate("Reply with one word: OK", [{"role": "user", "parts": [{"text": "ping"}]}], max_tokens=50)
+        return f"✅ AI ishlayapti. Model: {_working}. Javob: {txt[:40]}"
+    except Unavailable as e:
+        return f"❌ AI ishlamayapti: {e}\n{LAST_ERROR}"
+
+
+def _audio_part(audio: bytes, mime="audio/ogg"):
+    import base64
+    return {"inline_data": {"mime_type": mime, "data": base64.b64encode(audio).decode()}}
 
 
 # ─────────────────────────── помощник для волонтёров ───────────────────────────
@@ -115,14 +161,22 @@ USER DATA (read-only, about the person asking):
 {user}"""
 
 
-async def ask(question: str, lang: str, user_ctx: str, history: list | None = None) -> str:
+async def ask(question: str, lang: str, user_ctx: str, history: list | None = None, audio: bytes | None = None) -> str:
     system = _SYSTEM.format(lang=LANG_NAMES.get(lang, "Uzbek"), kb=faq.knowledge_text(), user=user_ctx or "—")
     contents = []
     for q, a in (history or [])[-3:]:
         contents += [{"role": "user", "parts": [{"text": q}]}, {"role": "model", "parts": [{"text": a}]}]
-    contents.append({"role": "user", "parts": [{"text": question[:1000]}]})
+    if audio:
+        parts = [_audio_part(audio), {"text": VOICE_NOTE}]
+    else:
+        parts = [{"text": question[:1000]}]
+    contents.append({"role": "user", "parts": parts})
     text = await _generate(system, contents, max_tokens=1500)
     return _safe_html(text)
+
+
+VOICE_NOTE = ("This is a Telegram voice message (most likely Uzbek, maybe Russian or mixed). Listen carefully. "
+              "Start your reply with one line: 🎙 «<what the person said, briefly, in their own language>» — then answer the question.")
 
 
 def _safe_html(text: str) -> str:
@@ -141,13 +195,15 @@ def _safe_html(text: str) -> str:
 # ─────────────────────────── команды админа ───────────────────────────
 
 _CMD_SYSTEM = """Convert an admin's command for the Yashil Qo'llar Telegram bot into JSON. The command may be in Uzbek (Latin or Cyrillic), Russian or English, possibly dictated by voice with typos.
-Return ONLY a JSON object: {{"action": ..., "period": ..., "region": ..., "query": ...}}
+Return ONLY a JSON object: {{"transcript": ..., "action": ..., "period": ..., "region": ..., "query": ...}}
+transcript — the command as understood (in its original language; for voice — what was said).
 action — one of:
   "report"  — list/Excel of people who ATTENDED events (кто пришёл, kelganlar, ro'yxat, excel);
   "stats"   — numbers: new users, attendance, events (статистика, nechta, сколько);
   "coordinators" — who are coordinators/team in a region;
   "events"  — upcoming events list;
   "find"    — find a person (query = name, @username or phone);
+  "question" — a general question about the bot/project (how to register, certificates, etc.);
   "unknown" — anything else (including requests to change data, send messages, give roles).
 period — one of "today","yesterday","week","month","all" (default "today" for report/stats).
 region — one of {regions} or "all" (Tashkent city/region → "tashkent"; default "all").
@@ -155,9 +211,10 @@ query — only for "find", else "".
 """
 
 
-async def parse_command(text: str, regions: list[str]) -> dict:
+async def parse_command(text: str, regions: list[str], audio: bytes | None = None) -> dict:
+    parts = [_audio_part(audio), {"text": "Voice command (probably Uzbek or Russian)."}] if audio else [{"text": text[:500]}]
     raw = await _generate(_CMD_SYSTEM.format(regions=", ".join(regions)),
-                          [{"role": "user", "parts": [{"text": text[:500]}]}], json_mode=True, max_tokens=512)
+                          [{"role": "user", "parts": parts}], json_mode=True, max_tokens=512)
     try:
         return json.loads(raw)
     except ValueError:

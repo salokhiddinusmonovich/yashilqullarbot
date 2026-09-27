@@ -74,47 +74,88 @@ def _user_ctx(tg_id: int) -> tuple[str, bool]:
             f"Registered upcoming events: {ev}."), bool(u.is_admin)
 
 
-async def ask_question(message: types.Message, state: FSMContext):
-    text = (message.text or "").strip()
+async def _voice_bytes(message: types.Message) -> bytes | None:
+    """Голосовое из Telegram (OGG/Opus) — байтами, для Gemini. Слишком длинное — None."""
+    from io import BytesIO
+    v = message.voice or message.audio
+    if not v or (v.duration or 0) > 120:
+        return None
+    bio = BytesIO()
+    await v.download(destination_file=bio)
+    return bio.getvalue()
+
+
+async def answer_user(message: types.Message, state: FSMContext | None, text: str = "", audio: bytes | None = None, kb=None):
+    """
+    Один ответ на любой вопрос (текст или голос):
+      короткий понятный вопрос → FAQ сразу (бесплатно, мгновенно);
+      остальное → бесплатный ИИ по нашему справочнику;
+      ИИ недоступен → FAQ, если нашёлся хоть какой-то ответ, иначе «напишите координатору».
+    """
     lang = current_lang.get() or "uz"
-    if not text:
+    entry = faq.match(text) if text else None
+    if entry and len(faq.words(text)) <= 7:
+        await message.answer(faq.answer(entry, lang), reply_markup=kb)
         return
-    if text in variants("ask_exit_btn") or text.startswith("/"):
+
+    if ai.enabled():
+        if not await ai.take_quota(message.from_user.id):
+            await message.answer(t("ask_limit", n=ai.DAILY_LIMIT), reply_markup=kb)
+            return
+        await message.bot.send_chat_action(message.chat.id, "record_voice" if audio else "typing")
+        ctx, _ = await _user_ctx(message.from_user.id)
+        history = (await state.get_data()).get("hist", []) if state else []
+        try:
+            answer = await ai.ask(text, lang, ctx, history, audio=audio)
+        except ai.Unavailable as e:
+            log.warning("ai unavailable: %s | %s", e, ai.LAST_ERROR)
+        else:
+            if state:
+                await state.update_data(hist=(history + [[text[:500] or "(voice)", answer[:800]]])[-3:])
+            await message.answer(answer + t("ask_ai_note"), reply_markup=kb)
+            return
+
+    if entry:
+        await message.answer(faq.answer(entry, lang), reply_markup=kb)
+    elif audio is not None or (message.voice and not ai.enabled()):
+        await message.answer(t("voice_tip"), reply_markup=kb)
+    else:
+        await message.answer(t("ask_fallback"), reply_markup=kb)
+
+
+async def ask_question(message: types.Message, state: FSMContext):
+    """Режим «🤖 Savol berish»: текст или голосовое."""
+    text = (message.text or "").strip()
+    if text and (text in variants("ask_exit_btn") or text.startswith("/")):
         await state.finish()
         _, is_admin = await _user_ctx(message.from_user.id)
         await message.answer(t("ask_bye"), reply_markup=reply.hi_there(is_admin))
         return
-
-    # 1) FAQ — бесплатно и без выдумок
-    entry = faq.match(text)
-    if entry:
-        await message.answer(faq.answer(entry, lang), reply_markup=ask_kb())
+    audio = await _voice_bytes(message) if (message.voice or message.audio) else None
+    if not text and audio is None:
+        await message.answer(t("voice_long"), reply_markup=ask_kb())
         return
-
-    # 2) бесплатный ИИ
-    if ai.enabled():
-        if not await ai.take_quota(message.from_user.id):
-            await message.answer(t("ask_limit", n=ai.DAILY_LIMIT), reply_markup=ask_kb())
-            return
-        await message.bot.send_chat_action(message.chat.id, "typing")
-        ctx, _ = await _user_ctx(message.from_user.id)
-        data = await state.get_data()
-        history = data.get("hist", [])
-        try:
-            answer = await ai.ask(text, lang, ctx, history)
-        except ai.Unavailable as e:
-            log.info("ai unavailable: %s", e)
-        else:
-            await state.update_data(hist=(history + [[text[:500], answer[:800]]])[-3:])
-            await message.answer(answer + t("ask_ai_note"), reply_markup=ask_kb())
-            return
-
-    # 3) запасной ответ
-    await message.answer(t("ask_fallback"), reply_markup=ask_kb())
+    await answer_user(message, state, text, audio, kb=ask_kb())
 
 
-async def ask_voice(message: types.Message):
-    await message.answer(t("voice_tip"))
+async def free_question(message: types.Message, state: FSMContext):
+    """Человек просто написал/наговорил что-то боту вне всяких режимов — отвечаем, а не молчим."""
+    text = (message.text or "").strip()
+    if text.startswith("/"):
+        return
+    audio = await _voice_bytes(message) if (message.voice or message.audio) else None
+    if not text and audio is None:
+        await message.answer(t("voice_long"))
+        return
+    await answer_user(message, state, text, audio)
+
+
+async def ai_status(message: types.Message):
+    """/ai — админам: работает ли бесплатный ИИ и почему нет."""
+    from .admin_panel import is_admin
+    if not await is_admin(message.bot, message.from_user.id):
+        return
+    await message.answer(escape(await ai.status()))
 
 
 # ═══════════════════════════ команды админа ═══════════════════════════
@@ -179,16 +220,27 @@ async def cmd_message(message: types.Message, state: FSMContext):
         await state.finish()
         return
     text = (message.text or "").strip()
-    if not text:
+    audio = await _voice_bytes(message) if (message.voice or message.audio) else None
+    if not text and audio is None:
+        await message.answer(t("voice_tip") if not ai.enabled() else t("voice_long"))
         return
-    cmd = parse_rules(text)
+    cmd = parse_rules(text) if text else None
     if cmd is None and ai.enabled():
         try:
             await message.bot.send_chat_action(message.chat.id, "typing")
-            cmd = await ai.parse_command(text, list(reports.REGION_CHOICES))
+            cmd = await ai.parse_command(text, list(reports.REGION_CHOICES), audio=audio)
+            if audio and cmd.get("transcript"):
+                await message.answer(f"🎙 «{escape(str(cmd['transcript'])[:300])}»")
         except ai.Unavailable as e:
-            log.info("ai cmd unavailable: %s", e)
+            log.warning("ai cmd unavailable: %s | %s", e, ai.LAST_ERROR)
     action = (cmd or {}).get("action", "unknown")
+    if action in ("question", "unknown") or cmd is None:
+        # не команда отчёта — значит, обычный вопрос: отвечаем как помощник
+        if text and (cmd is None and not ai.enabled()) and parse_rules(text) is None and faq.match(text) is None:
+            await message.answer(t("cmd_unknown"))
+            return
+        await answer_user(message, None, text or str((cmd or {}).get("transcript") or ""), None if (cmd or {}).get("transcript") else audio)
+        return
     period = cmd.get("period") if cmd and cmd.get("period") in reports.PERIODS else "today"
     region = cmd.get("region") if cmd and cmd.get("region") in reports.REGION_CHOICES else "all"
     again = InlineKeyboardMarkup().add(InlineKeyboardButton(t("adm_btn_menu"), callback_data="adm:menu"))
@@ -214,10 +266,6 @@ async def cmd_message(message: types.Message, state: FSMContext):
         await message.answer(t("cmd_found", n=len(users)), reply_markup=kb)
     else:
         await message.answer(t("cmd_unknown"), reply_markup=again)
-
-
-async def cmd_voice(message: types.Message):
-    await message.answer(t("voice_tip"))
 
 
 @sync_to_async
@@ -287,9 +335,13 @@ def _events_text(region):
 def register_assistant(dp: Dispatcher):
     from .admin_panel import AdminStates
     dp.register_message_handler(ask_start, commands=["ask"], state="*")
+    dp.register_message_handler(ai_status, commands=["ai"], state="*")
     dp.register_message_handler(ask_start, text=variants("ask_btn"), state="*")
     dp.register_callback_query_handler(ask_start_cb, text="ask:start", state="*")
-    dp.register_message_handler(ask_voice, content_types=types.ContentType.VOICE, state=AskState.waiting)
-    dp.register_message_handler(ask_question, state=AskState.waiting)
-    dp.register_message_handler(cmd_voice, content_types=types.ContentType.VOICE, state=AdminStates.command)
-    dp.register_message_handler(cmd_message, state=AdminStates.command)
+    dp.register_message_handler(ask_question, content_types=[types.ContentType.TEXT, types.ContentType.VOICE, types.ContentType.AUDIO], state=AskState.waiting)
+    dp.register_message_handler(cmd_message, content_types=[types.ContentType.TEXT, types.ContentType.VOICE, types.ContentType.AUDIO], state=AdminStates.command)
+
+
+def register_free_questions(dp: Dispatcher):
+    """Регистрируется САМЫМ ПОСЛЕДНИМ: ловит только то, что никто другой не обработал (вне режимов)."""
+    dp.register_message_handler(free_question, content_types=[types.ContentType.TEXT, types.ContentType.VOICE, types.ContentType.AUDIO], state=None)
