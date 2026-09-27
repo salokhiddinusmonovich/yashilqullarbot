@@ -35,6 +35,20 @@ DEFAULT_LAYOUT = {
     "number_x": 72, "number_y": 78, "number_size": 19, "number_color": "#968C7D", "show_number": True,
     # название мероприятия (если в дизайне оставили пустую строку под текст) — по умолчанию выключено
     "event_x": 563, "event_y": 700, "event_max_w": 820, "event_size": 30, "event_color": "#464646", "event_show": False,
+    # абзац с названием мероприятия: {event} — название; строка, начинающаяся с «*», — жирная.
+    # Шрифт сам уменьшается, чтобы обычный текст уложился в body_lines строк.
+    "body_x": 573, "body_y": 690, "body_max_w": 860, "body_size": 25, "body_line": 33, "body_lines": 4,
+    "body_color": "#545F5B", "body_show": False, "body_text": "",
+}
+
+# Встроенный осенний дизайн: абзац из Canva («...in the Plogging Campaign...») убран с картинки
+# (cert_assets/template_body.png) и пишется системой — с названием КАЖДОГО мероприятия.
+BUILTIN_TEMPLATE = "template_body.png"
+BUILTIN_LAYOUT = {
+    "body_show": True,
+    "body_text": "for actively participating in «{event}». Your responsibility, physical effort, and positive spirit have contributed "
+                 "to making our environment cleaner and greener. We truly appreciate your dedication to protecting nature and "
+                 "promoting an eco-friendly lifestyle.\n*Thank you for being part of this meaningful initiative.",
 }
 
 # ─────────── библиотека дизайнов ───────────
@@ -151,6 +165,8 @@ def design_for(project) -> str:
 def layout(slug: str | None = None) -> dict:
     _migrate_legacy()
     lay = dict(DEFAULT_LAYOUT)
+    if not has_template(slug or FALLBACK):
+        lay.update(BUILTIN_LAYOUT)          # встроенный дизайн — абзац пишет система
     try:
         lay.update(json.loads((_dir(slug or FALLBACK) / "layout.json").read_text()))
     except (OSError, ValueError):
@@ -175,7 +191,10 @@ def reset(slug: str = FALLBACK):
 def template_path(slug: str | None = None) -> Path:
     _migrate_legacy()
     p = _dir(slug or FALLBACK) / "template.png"
-    return p if p.exists() else ASSETS / "template.png"
+    if p.exists():
+        return p
+    b = ASSETS / BUILTIN_TEMPLATE
+    return b if b.exists() else ASSETS / "template.png"
 
 
 def save_template(fileobj, slug: str = FALLBACK):
@@ -197,7 +216,7 @@ def _font(kind: str, size: int) -> ImageFont.FreeTypeFont:
         f.set_variation_by_axes([700])
     else:
         f = ImageFont.truetype(str(ASSETS / "fonts" / "Montserrat.ttf"), size)
-        f.set_variation_by_axes([600 if kind == "date" else 500])
+        f.set_variation_by_axes([{"date": 600, "body": 400, "bodyb": 700}.get(kind, 500)])
     return f
 
 
@@ -230,10 +249,45 @@ def render(name: str, date_text: str, number: str, lay: dict | None = None, slug
             esize -= 1
             ef = _font("date", esize)
         d.text((lay["event_x"], lay["event_y"]), text, font=ef, fill=lay["event_color"], anchor="ms")
+    if lay.get("body_show") and lay.get("body_text"):
+        _draw_body(d, lay, event_title or "Yashil Qo'llar")
     if lay.get("show_number") and number:
         d.text((lay["number_x"], lay["number_y"]), f"№ {number}", font=_font("number", int(lay["number_size"])),
                fill=lay["number_color"], anchor="ls")
     return img
+
+
+def _wrap(text: str, font, max_w: int) -> list:
+    lines, line = [], ""
+    for w in text.split():
+        test = f"{line} {w}".strip()
+        if font.getlength(test) <= max_w or not line:
+            line = test
+        else:
+            lines.append(line)
+            line = w
+    if line:
+        lines.append(line)
+    return lines
+
+
+def _draw_body(d, lay: dict, event_title: str):
+    """Абзац по центру: {event} → название мероприятия, «*строка» — жирная. Длинное название — шрифт меньше."""
+    paras = [p.strip() for p in str(lay["body_text"]).replace("{event}", event_title).split("\n") if p.strip()]
+    size, max_w = int(lay["body_size"]), int(lay["body_max_w"])
+    while True:
+        reg, bold = _font("body", size), _font("bodyb", size)
+        wrapped = [(bool(p.startswith("*")), _wrap(p.lstrip("*").strip(), bold if p.startswith("*") else reg, max_w)) for p in paras]
+        normal = sum(len(ls) for b, ls in wrapped if not b)
+        if normal <= int(lay["body_lines"]) or size <= 18:
+            break
+        size -= 1
+    step = int(lay["body_line"]) * size / int(lay["body_size"])
+    y = lay["body_y"]
+    for is_bold, ls in wrapped:
+        for ln in ls:
+            d.text((lay["body_x"], y), ln, font=bold if is_bold else reg, fill=lay["body_color"], anchor="ms")
+            y += step
 
 
 def number_of(pp) -> str:

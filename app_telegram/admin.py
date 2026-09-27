@@ -164,6 +164,7 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
                     if not isinstance(C.DEFAULT_LAYOUT[k], bool) and request.POST.get(k) not in (None, "")}
             data["show_number"] = bool(request.POST.get("show_number"))
             data["event_show"] = bool(request.POST.get("event_show"))
+            data["body_show"] = bool(request.POST.get("body_show"))
             try:
                 C.save_layout(data, slug)
             except ValueError:
@@ -176,8 +177,11 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
 
         labels = {"x": trn("cert_x"), "y": trn("cert_y"), "size": trn("cert_size"), "color": trn("cert_color"), "max_w": trn("cert_maxw")}
         groups = []
-        for title, prefix in ((trn("cert_name"), "name_"), (trn("cert_date"), "date_"), (trn("cert_number"), "number_"), (trn("cert_event"), "event_")):
-            fs = [(k, labels.get(k.split("_", 1)[1], k), lay[k], "color" if k.endswith("color") else "number")
+        labels.update({"line": trn("cert_line"), "lines": trn("cert_lines"), "text": trn("cert_body_text")})
+        for title, prefix in ((trn("cert_name"), "name_"), (trn("cert_date"), "date_"), (trn("cert_number"), "number_"),
+                              (trn("cert_body"), "body_"), (trn("cert_event"), "event_")):
+            fs = [(k, labels.get(k.split("_", 1)[1], k), lay[k],
+                   "color" if k.endswith("color") else "textarea" if isinstance(v, str) else "number")
                   for k, v in C.DEFAULT_LAYOUT.items() if k.startswith(prefix) and not isinstance(v, bool)]
             groups.append((title, prefix, fs))
         cur = next(d for d in all_designs if d["slug"] == slug)
@@ -185,7 +189,7 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
         ctx = {
             **self.admin_site.each_context(request), "title": trn("cert_title"), "opts": self.model._meta,
             "designs": all_designs, "cur": cur, "slug": slug, "groups": groups,
-            "show_number": lay.get("show_number"), "event_show": lay.get("event_show"),
+            "show_number": lay.get("show_number"), "event_show": lay.get("event_show"), "body_show": lay.get("body_show"),
             "months": [(i + 1, n, (i + 1) in cur.get("months", [])) for i, n in enumerate(month_names)],
             "events_text": ", ".join(str(x) for x in cur.get("events", [])),
             "recent_events": list(EcoProject.objects.order_by('-date').values('id', 'title', 'date')[:12]),

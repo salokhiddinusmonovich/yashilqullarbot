@@ -84,9 +84,14 @@
           <h3>{{ title }}</h3>
           <div class="cert-row">
             {% for key, label, value, kind in fields %}
-              <label>{{ label }}<input type="{% if kind == 'color' %}color{% else %}number{% endif %}" name="{{ key }}" value="{{ value }}" class="lay"></label>
+              {% if kind == "textarea" %}
+                <label style="grid-column: 1 / -1">{{ label }}<textarea name="{{ key }}" rows="5" class="lay" style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:10px;border:1px solid var(--hairline-color);background:var(--body-bg);color:var(--body-fg);font:inherit">{{ value }}</textarea></label>
+              {% else %}
+                <label>{{ label }}<input type="{% if kind == 'color' %}color{% else %}number{% endif %}" name="{{ key }}" value="{{ value }}" class="lay"></label>
+              {% endif %}
             {% endfor %}
           </div>
+          {% if prefix == "body_" %}<label class="chk"><input type="checkbox" name="body_show" class="lay" {% if body_show %}checked{% endif %}> {% yq "cert_body_show" %}</label>{% endif %}
           {% if prefix == "number_" %}<label class="chk"><input type="checkbox" name="show_number" class="lay" {% if show_number %}checked{% endif %}> {% yq "cert_show_number" %}</label>{% endif %}
           {% if prefix == "event_" %}<label class="chk"><input type="checkbox" name="event_show" class="lay" {% if event_show %}checked{% endif %}> {% yq "cert_event_show" %}</label>{% endif %}
         </div>
