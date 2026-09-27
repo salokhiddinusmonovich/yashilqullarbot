@@ -4,7 +4,7 @@
 Дизайны — библиотека (админка «🎓 Sertifikat dizaynlari»): 🍂 Kuz, ❄️ Qish, 🌸 Bahor,
 ☀️ Yoz + свои. У каждого свой PNG из Canva (без имени), свои координаты и месяцы.
 Дизайн выбирается по дате мероприятия (или дизайн привязан к конкретному мероприятию).
-Сезон без своего PNG → стандартный осенний (cert_assets/template.png).
+Сезон без своего PNG → встроенный сезонный дизайн (cert_assets/seasons/<сезон>.png).
 Файл сертификата не хранится — собирается при открытии: имя всегда актуальное,
 а летнее мероприятие навсегда остаётся в летнем дизайне.
 
@@ -52,6 +52,33 @@ BUILTIN_LAYOUT = {
                  "to making our environment cleaner and greener. We truly appreciate your dedication to protecting nature and "
                  "promoting an eco-friendly lifestyle.\n*Thank you for being part of this meaningful initiative.",
 }
+
+# Встроенные сезонные дизайны (cert_assets/seasons/<сезон>.png, генератор — _generate.py рядом):
+# общий стиль, свой цвет и иллюстрация у каждого сезона. Имя, абзац, дата, QR и номер пишет система.
+SEASON_V = 2      # версия встроенных макетов: координаты, сохранённые в админке для старой картинки, не применяются
+_SEASON_BASE = {
+    "name_x": 575, "name_y": 652, "name_max_w": 760, "name_size": 84,
+    "date_x": 395, "date_y": 1036, "date_size": 26,
+    "number_x": 72, "number_y": 84, "number_size": 18,
+    "body_x": 575, "body_y": 722, "body_max_w": 880, "body_size": 24, "body_line": 34, "body_lines": 4,
+    "qr_x": 72, "qr_y": 100, "qr_size": 124,
+}
+SEASON_COLORS = {   # имя, дата/номер, абзац, QR
+    "kuz": ("#B8541C", "#6B5B4A", "#4F4A44", "#8A3B12"),
+    "qish": ("#2F6690", "#56626D", "#44505A", "#1E4A6B"),
+    "bahor": ("#C0506F", "#6F5B64", "#4F4549", "#8E3450"),
+    "yoz": ("#2F7D4F", "#566555", "#434D43", "#1F5A38"),
+}
+
+
+def season_builtin(slug: str | None) -> dict | None:
+    """Встроенный дизайн сезона: макет (или None, если у дизайна нет встроенной картинки)."""
+    if slug not in SEASON_COLORS or not (ASSETS / "seasons" / f"{slug}.png").exists():
+        return None
+    name_c, muted, body_c, qr_c = SEASON_COLORS[slug]
+    return {**_SEASON_BASE, **BUILTIN_LAYOUT, "name_color": name_c, "date_color": muted, "number_color": muted,
+            "body_color": body_c, "qr_color": qr_c}
+
 
 # ─────────── библиотека дизайнов ───────────
 # media/certificates/designs/<slug>/{template.png, layout.json, meta.json}
@@ -120,7 +147,7 @@ def designs() -> list:
     out = []
     for sl in slugs:
         m = meta(sl)
-        m["ready"] = has_template(sl) or sl == FALLBACK
+        m["ready"] = has_template(sl) or sl == FALLBACK or season_builtin(sl) is not None
         m["custom_png"] = has_template(sl)
         out.append(m)
     return out
@@ -166,12 +193,19 @@ def design_for(project) -> str:
 
 def layout(slug: str | None = None) -> dict:
     _migrate_legacy()
+    slug = slug or FALLBACK
     lay = dict(DEFAULT_LAYOUT)
-    if not has_template(slug or FALLBACK):
-        lay.update(BUILTIN_LAYOUT)          # встроенный дизайн — абзац пишет система
+    builtin = None if has_template(slug) else season_builtin(slug)
+    if builtin:
+        lay.update(builtin)                 # встроенный сезонный дизайн
+    elif not has_template(slug):
+        lay.update(BUILTIN_LAYOUT)          # старый встроенный — абзац пишет система
     try:
-        lay.update(json.loads((_dir(slug or FALLBACK) / "layout.json").read_text()))
-    except (OSError, ValueError):
+        saved = json.loads((_dir(slug) / "layout.json").read_text())
+        # правки для встроенного дизайна действуют, только если сделаны для этой же его версии
+        if not builtin or saved.get("_v") == SEASON_V:
+            lay.update({k: v for k, v in saved.items() if k in DEFAULT_LAYOUT})
+    except (OSError, ValueError, AttributeError):
         pass
     return lay
 
@@ -183,6 +217,8 @@ def save_layout(data: dict, slug: str = FALLBACK):
         if k in DEFAULT_LAYOUT:
             d = DEFAULT_LAYOUT[k]
             clean[k] = bool(v) if isinstance(d, bool) else type(d)(v)
+    if not has_template(slug) and season_builtin(slug):
+        clean["_v"] = SEASON_V
     (_dir(slug) / "layout.json").write_text(json.dumps(clean, ensure_ascii=False, indent=1))
 
 
@@ -195,6 +231,10 @@ def template_path(slug: str | None = None) -> Path:
     p = _dir(slug or FALLBACK) / "template.png"
     if p.exists():
         return p
+    sp = ASSETS / "seasons" / f"{slug or FALLBACK}.png"
+    if slug in SEASON_COLORS or not slug:
+        if sp.exists():
+            return sp
     b = ASSETS / BUILTIN_TEMPLATE
     return b if b.exists() else ASSETS / "template.png"
 
