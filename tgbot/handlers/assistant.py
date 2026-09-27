@@ -42,6 +42,20 @@ def ask_kb():
     return ReplyKeyboardMarkup([[KeyboardButton(t("ask_exit_btn"))]], resize_keyboard=True)
 
 
+def faq_menu() -> InlineKeyboardMarkup:
+    """Кнопки тем — готовые ответы без ИИ и без лимитов."""
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(*[InlineKeyboardButton(t(f"faqbtn_{fid}"), callback_data=f"faq:{fid}") for fid in faq.MENU])
+    return kb
+
+
+async def faq_callback(call: types.CallbackQuery):
+    entry = faq.by_id(call.data.split(":", 1)[1])
+    await call.answer()
+    if entry:
+        await call.message.answer(faq.answer(entry, current_lang.get() or "uz"), reply_markup=faq_menu())
+
+
 def ask_inline():
     return InlineKeyboardMarkup().add(InlineKeyboardButton(t("ask_btn"), callback_data="ask:start"))
 
@@ -85,10 +99,22 @@ async def _voice_bytes(message: types.Message) -> bytes | None:
     return bio.getvalue()
 
 
-async def _busy_text(failed: str) -> str:
-    if failed == "rate limit" and await ai.all_daily_dead() and not ai.groq_enabled():
-        return t("ai_busy_day", time=ai.reset_time_local())
-    return t("ai_busy") if failed == "rate limit" else t("ai_error")
+SMALL_TALK = {
+    "salom", "assalomu", "assalom", "alaykum", "привет", "здравствуй", "здравствуйте", "салом", "ассалому", "hi", "hello", "hey",
+    "alo", "allo", "aloo", "алло", "ало", "алоо", "алооо", "ok", "ок", "okay", "rahmat", "спасибо", "thanks", "raxmat", "рахмат",
+    "ha", "yo'q", "да", "нет", "yes", "no", "эх", "эхх", "эххх", "бл", "блин", "hmm", "ммм", "?", "??", "...",
+}
+
+
+def _small_talk(text: str) -> bool:
+    """«привет», «алооо», «эххх», «бл», «?» — не вопрос. Отвечаем сами, без ИИ."""
+    import re as _re
+    words = [_re.sub(r"(.)\1{2,}", r"\1\1", w) for w in _re.findall(r"[\w']+|\?+", text.lower())]
+    if not words:
+        return True
+    if len(words) <= 3 and all(w in SMALL_TALK or _re.sub(r"(.)\1+", r"\1", w) in SMALL_TALK or len(w) <= 2 for w in words):
+        return True
+    return len(words) == 1 and len(words[0]) <= 12 and not faq.match(text)
 
 
 async def answer_user(message: types.Message, state: FSMContext | None, text: str = "", audio: bytes | None = None, kb=None):
@@ -102,6 +128,9 @@ async def answer_user(message: types.Message, state: FSMContext | None, text: st
     """
     lang = current_lang.get() or "uz"
     failed = ""
+    if text and _small_talk(text):
+        await message.answer(t("small_talk"), reply_markup=faq_menu())
+        return
     if text:
         low = faq.normalize(text)
         if any(w in low for w in ai.WHO_WORDS):
@@ -143,14 +172,16 @@ async def answer_user(message: types.Message, state: FSMContext | None, text: st
             await message.answer(answer + t("ask_ai_note"), reply_markup=kb)
             return
 
-    if entry:
-        await message.answer(faq.answer(entry, lang), reply_markup=kb)
-    elif ai.enabled() and failed:
-        await message.answer(await _busy_text(failed), reply_markup=kb)
+    # ИИ недоступен (лимит Google, сеть, ключ) — не «занят», а лучший готовый ответ + кнопки тем. Без лимитов.
+    guesses = faq.best_guesses(text, 2) if text else []
+    if entry and entry not in guesses:
+        guesses = [entry] + guesses[:1]
+    if guesses:
+        await message.answer("\n\n".join(faq.answer(g, lang) for g in guesses), reply_markup=faq_menu())
     elif audio is not None or message.voice:
-        await message.answer(t("voice_tip"), reply_markup=kb)
+        await message.answer(t("voice_menu"), reply_markup=faq_menu())
     else:
-        await message.answer(t("ask_fallback"), reply_markup=kb)
+        await message.answer(t("ai_menu"), reply_markup=faq_menu())
 
 
 async def ask_question(message: types.Message, state: FSMContext):
@@ -287,7 +318,7 @@ async def _run_cmd(message: types.Message, text: str, audio: bytes | None):
             await message.answer(heard + ai._safe_html(str(cmd["answer"])) + t("ask_ai_note"))
             return
         if cmd is None and ai.enabled() and (audio is not None or not text):
-            await message.answer(await _busy_text(failed))
+            await message.answer(t("voice_menu"), reply_markup=faq_menu())
             return
         if text and parse_rules(text) is None and faq.match(text) is None and not ai.enabled():
             await message.answer(t("cmd_unknown"))
@@ -393,6 +424,7 @@ def register_assistant(dp: Dispatcher):
     dp.register_message_handler(ai_status, commands=["ai"], state="*")
     dp.register_message_handler(ask_start, text=variants("ask_btn"), state="*")
     dp.register_callback_query_handler(ask_start_cb, text="ask:start", state="*")
+    dp.register_callback_query_handler(faq_callback, lambda c: c.data.startswith("faq:"), state="*")
     dp.register_message_handler(ask_question, content_types=[types.ContentType.TEXT, types.ContentType.VOICE, types.ContentType.AUDIO], state=AskState.waiting)
     dp.register_message_handler(cmd_message, content_types=[types.ContentType.TEXT, types.ContentType.VOICE, types.ContentType.AUDIO], state=AdminStates.command)
 

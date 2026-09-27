@@ -6,8 +6,9 @@ aistudio.google.com → Get API key). Без ключа бот отвечает 
 
 Защита бесплатного лимита:
   • сначала FAQ (tgbot/services/faq.py) — ИИ зовём только если он не нашёл ответ;
-  • на человека — AI_DAILY_LIMIT вопросов в день (по умолчанию 15), счётчик в Redis;
-  • Google ответил 429 (лимит) — 2 минуты вообще не ходим в ИИ, отвечаем «напишите координатору».
+  • личного лимита на человека по умолчанию НЕТ (AI_DAILY_LIMIT=0); можно включить в .env, например 30;
+  • приветствия и «алло/эх/бл» — отвечаем без ИИ (не тратим бесплатный лимит Google);
+  • модель на лимите Google — пропускаем её до сброса, идём к следующей (Gemini → Groq → Gemma).
 Ответ только по справочнику (FAQ + инструкция) и данным самого человека — ничего не выдумывает.
 """
 import asyncio
@@ -39,7 +40,7 @@ GROQ_KEY = os.environ.get("GROQ_API_KEY", "").strip()
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
 GROQ_STT = os.environ.get("GROQ_STT_MODEL", "whisper-large-v3").strip()
 GROQ_URL = "https://api.groq.com/openai/v1"
-DAILY_LIMIT = int(os.environ.get("AI_DAILY_LIMIT", "15"))
+DAILY_LIMIT = int(os.environ.get("AI_DAILY_LIMIT", "0"))   # 0 — без личного лимита
 URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 LANG_NAMES = {"uz": "Uzbek (Latin script)", "ru": "Russian", "en": "English"}
 
@@ -72,7 +73,9 @@ async def _cool_down(seconds=120):  # оставлено для совмести
 
 
 async def take_quota(tg_id: int) -> bool:
-    """Списать один вопрос из дневного лимита человека. False — лимит исчерпан."""
+    """Списать один вопрос из дневного лимита человека. False — лимит исчерпан. DAILY_LIMIT=0 — лимита нет."""
+    if DAILY_LIMIT <= 0:
+        return True
     key = f"ai:q:{tg_id}:{date.today().isoformat()}"
     try:
         r = _aclient()

@@ -243,3 +243,33 @@ def ranked(question: str, k: int = 5) -> list:
 
 def compact_text(entries: list, lang: str) -> str:
     return "\n\n".join(f"### {e['id']}\n{answer(e, lang)}" for e in entries)
+
+
+MENU = ["register_bot", "join_event", "qr", "certificate", "points", "password", "app", "contact"]
+
+
+def by_id(fid: str):
+    return next((e for e in FAQ if e["id"] == fid), None)
+
+
+def best_guess(question: str):
+    """Самая похожая запись, даже если уверенность небольшая (для ответа, когда ИИ недоступен). None — ничего общего."""
+    toks = words(question)
+    best, best_score = None, 0.0
+    for e, kws in _PREP:
+        score = sum((2.0 if len(parts) > 1 else 1.0) for _raw, parts in kws if toks and all(_hit(p, toks) for p in parts))
+        if score > best_score:
+            best, best_score = e, score
+    return best if best_score >= 1.0 else None
+
+
+def best_guesses(question: str, k: int = 2) -> list:
+    """До k записей, у которых есть хоть какое-то совпадение (вопрос бывает про две темы сразу)."""
+    toks = words(question)
+    scored = []
+    for e, kws in _PREP:
+        score = sum((2.0 if len(parts) > 1 else 1.0) for _raw, parts in kws if toks and all(_hit(p, toks) for p in parts))
+        if score >= 1.0:
+            scored.append((score, e))
+    scored.sort(key=lambda x: -x[0])
+    return [e for _, e in scored[:k]]
