@@ -83,9 +83,9 @@ FAQ = [
     {
         "id": "certificate",
         "kw": ["sertifikat", "сертификат", "certificate", "diplom", "грамот"],
-        "uz": "🎓 <b>Sertifikat</b> darhol berilmaydi — tadbirdan keyin uni <b>tadbir guruhiga</b> tashlaymiz.\nShuning uchun tadbirga yozilganingizda kelgan guruh havolasi orqali guruhga qo'shiling.\n❗ Faqat QR-kodi skaner qilinganlar (kelgani tasdiqlanganlar) sertifikat oladi.",
-        "ru": "🎓 <b>Сертификат</b> выдаётся не сразу — после мероприятия мы публикуем его в <b>группе мероприятия</b>.\nПоэтому вступите в группу по ссылке, которая приходит при записи.\n❗ Сертификат получают только те, чей QR-код отсканирован (участие подтверждено).",
-        "en": "🎓 <b>Certificates</b> aren't issued instantly — we post them in the <b>event group</b> after the event.\nJoin the group via the link you get when signing up.\n❗ Only people whose QR code was scanned get a certificate.",
+        "uz": "🎓 <b>Sertifikat</b> tadbirdan keyingi kuni ertalab botga o'zi keladi (PDF). Barcha sertifikatlaringiz: /sertifikat yoki ilovada Profil → «Sertifikatlarim».\n❗ Faqat QR-kodi skaner qilinganlar (kelgani tasdiqlanganlar) sertifikat oladi.",
+        "ru": "🎓 <b>Сертификат</b> приходит в бот сам на следующее утро после мероприятия (PDF). Все ваши сертификаты: /sertifikat или в приложении Профиль → «Мои сертификаты».\n❗ Сертификат получают только те, чей QR-код отсканирован (участие подтверждено).",
+        "en": "🎓 Your <b>certificate</b> arrives in the bot automatically the morning after the event (PDF). All your certificates: /sertifikat or in the app Profile → «My certificates».\n❗ Only people whose QR code was scanned get a certificate.",
     },
     {
         "id": "points",

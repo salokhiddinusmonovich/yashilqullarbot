@@ -79,6 +79,14 @@ async def user_start(message: Message, state: FSMContext, lang: str = None):
     # --- STANDARD GREETING FLOW ---
     user = await sync_to_async(TGUser.objects.filter(tg_id=message.from_user.id).first)()
 
+    # «Пригласи друга»: пришёл по ссылке ?start=ref_<tg> и его ещё нет в базе — запоминаем, кто пригласил
+    if args and args.startswith('ref_') and not user:
+        try:
+            from app_telegram import referrals
+            await sync_to_async(referrals.remember)(message.from_user.id, int(args[4:]))
+        except ValueError:
+            pass
+
     if user:
         await message.answer(
             t("welcome_back", name=escape(user.fullname or message.from_user.full_name)),

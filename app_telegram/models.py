@@ -184,10 +184,12 @@ class ProjectParticipation(models.Model):
     applied_at = models.DateTimeField(auto_now_add=True, verbose_name=tr('f_applied_at'))
 
     def save(self, *args, **kwargs):
+        became_attended = False
         if self.pk:
             old_obj = ProjectParticipation.objects.get(pk=self.pk)
             # Если статус изменился на "Пришёл" — даем монеты
             if old_obj.status != 'attended' and self.status == 'attended':
+                became_attended = True
                 self.user.balance += 10
                 self.user.save()
             # Если статус был "Пришёл", но изменили на другой — забираем монеты
@@ -196,10 +198,15 @@ class ProjectParticipation(models.Model):
                     self.user.balance -= 10
                     self.user.save()
         elif self.status == 'attended':
+            became_attended = True
             self.user.balance += 10
             self.user.save()
-            
+
         super().save(*args, **kwargs)
+        if became_attended:
+            # «Пригласи друга»: первый приход друга → бонус пригласившему (app_telegram/referrals.py)
+            from . import referrals
+            referrals.on_attended(self.user)
 
     class Meta:
         unique_together = ('user', 'project')

@@ -35,6 +35,11 @@ from tgbot.handlers.link_account import register_link_account_handlers
 from tgbot.handlers.admin_panel import register_admin_panel
 from tgbot.handlers.help import register_help
 from tgbot.handlers.assistant import register_assistant
+from tgbot.handlers.invite import register_invite
+from tgbot.handlers.reminders import register_reminders
+from tgbot.services.reminders import reminders_loop
+from tgbot.services.cert_delivery import certificates_loop
+from tgbot.handlers.certs import register_certs
 from tgbot.handlers.language import register_language
 from tgbot.handlers.miniapp import register_miniapp, setup_menu_button
 from tgbot.middlewares.environment import EnvironmentMiddleware
@@ -81,6 +86,9 @@ def register_all_handlers(dp):
     register_language(dp)
     register_miniapp(dp)             # /app — открыть Mini App
     register_help(dp)                # ❓ Qo'llanma / /help
+    register_invite(dp)              # 👥 пригласи друга / /invite
+    register_reminders(dp)           # кнопки в напоминаниях о мероприятиях
+    register_certs(dp)               # 🎓 /sertifikat
     register_register(dp)            # регистрация — СТАТИКА, всегда через бота,
                                       # не переключается флагом USE_MINI_APP
     register_about_and_team(dp)      # статичная инфа "о нас"/команда — не дублируется в Mini App
@@ -158,6 +166,10 @@ async def main():
 
     # Ежедневный отчёт админам (21:00 по Ташкенту, см. DAILY_REPORT_HOUR)
     asyncio.create_task(daily_report_loop(bot))
+    # Напоминания о мероприятиях: накануне в 19:00 и за 2 часа (tgbot/services/reminders.py)
+    asyncio.create_task(reminders_loop(bot))
+    # 🎓 Сертификаты — наутро после мероприятия всем, кто пришёл (tgbot/services/cert_delivery.py)
+    asyncio.create_task(certificates_loop(bot))
 
     # Запуск polling
     try:

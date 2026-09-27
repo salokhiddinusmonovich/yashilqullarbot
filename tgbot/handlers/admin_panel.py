@@ -71,6 +71,7 @@ def main_kb() -> InlineKeyboardMarkup:
     )
     kb.add(InlineKeyboardButton(t("adm_btn_report"), callback_data="adm:rep"))
     kb.add(InlineKeyboardButton(t("adm_btn_cmd"), callback_data="adm:cmd"))
+    kb.add(InlineKeyboardButton(t("adm_btn_shopw"), callback_data="adm:shopw"))
     kb.add(InlineKeyboardButton(t("adm_btn_bc"), callback_data="adm:bchelp"))
     return kb
 
@@ -198,6 +199,7 @@ def event_kb(pid) -> InlineKeyboardMarkup:
         InlineKeyboardButton(t("adm_btn_excel"), callback_data=f"adm:evx:{pid}"),
         InlineKeyboardButton(t("adm_btn_attended"), callback_data=f"adm:eva:{pid}"),
     )
+    kb.add(InlineKeyboardButton(t("adm_btn_noshow"), callback_data=f"adm:evn:{pid}"))
     kb.add(InlineKeyboardButton(t("adm_btn_add"), callback_data=f"adm:evadd:{pid}"))
     kb.add(InlineKeyboardButton(t("adm_btn_msg"), callback_data=f"adm:evmsg:{pid}"))
     kb.add(InlineKeyboardButton(t("adm_btn_events_back"), callback_data="adm:events"))
@@ -240,6 +242,60 @@ async def cb_event_attended(call, state, pid):
     text = "\n".join(lines)
     for x in range(0, len(text), 4000):
         await call.message.answer(text[x:x + 4000])
+
+
+@sync_to_async
+def _noshow_data(pid: int):
+    """Записались, но не пришли (мероприятие уже прошло) + кто нажал «Не смогу» в напоминании."""
+    from tgbot.services.lang import _sclient
+    project = EcoProject.objects.filter(pk=pid).first()
+    if not project:
+        return None, [], []
+    no_show = list(ProjectParticipation.objects.filter(project=project, status='approved').select_related('user').order_by('user__fullname'))
+    try:
+        cancelled_ids = [int(x) for x in _sclient().smembers(f"cancel:{pid}")]
+    except Exception:
+        cancelled_ids = []
+    cancelled = list(TGUser.objects.filter(tg_id__in=cancelled_ids).order_by('fullname'))
+    return project, no_show, cancelled
+
+
+async def cb_event_noshow(call, state, pid):
+    project, no_show, cancelled = await _noshow_data(int(pid))
+    if not project:
+        return
+    passed = project.date <= timezone.now()
+    lines = [t("adm_noshow_title", title=escape(project.title))]
+    if passed:
+        lines += ["", t("adm_noshow_head", n=len(no_show))]
+        lines += [f"{i}. {escape(_user_line(pp.user))}" + (f" · {escape(pp.user.phone)}" if pp.user.phone else "") for i, pp in enumerate(no_show, 1)]
+    else:
+        lines += ["", t("adm_noshow_future", n=len(no_show))]
+    lines += ["", t("adm_cancel_head", n=len(cancelled))]
+    lines += [f"• {escape(_user_line(u))}" for u in cancelled]
+    text = "\n".join(lines)
+    for x in range(0, len(text), 4000):
+        await call.message.answer(text[x:x + 4000])
+
+
+async def cb_shop_wishes(call, state):
+    from API.webapp import SHOP_ITEMS
+    from tgbot.services.lang import _aclient
+    r = _aclient()
+    counts = {}
+    try:
+        for item in SHOP_ITEMS:
+            counts[item] = await r.scard(f"shop:wish:{item}")
+    except Exception:
+        pass
+    top = sorted(counts.items(), key=lambda x: -x[1])
+    mx = max([c for _, c in top] or [1]) or 1
+    lines = [t("adm_shopw_title"), ""]
+    for item, c in top:
+        bar = "▇" * max(1, round(10 * c / mx)) if c else "·"
+        lines.append(f"{t('shop_' + item)} — <b>{c}</b>\n{bar}")
+    lines += ["", t("adm_shopw_note")]
+    await _edit_or_send(call, "\n".join(lines), back_kb())
 
 
 def _xlsx(title: str, headers: list, rows: list) -> BytesIO:
@@ -347,7 +403,8 @@ async def cb_report_period(call, state, period):
 def _report_data(period, region):
     d_from, d_to = reports.period_range(period)
     regions = reports.region_codes(region)
-    return d_from, d_to, reports.attendance(d_from, d_to, regions), reports.event_summary(d_from, d_to, regions)
+    return (d_from, d_to, reports.attendance(d_from, d_to, regions), reports.event_summary(d_from, d_to, regions),
+            reports.no_shows(d_from, d_to, regions))
 
 
 async def cb_report_run(call, state, period, region):
@@ -360,7 +417,7 @@ async def cb_report_run(call, state, period, region):
 async def send_report(message, admin_tg_id, period, region):
     """Excel «кто пришёл» + сводка. Общая для кнопок и для текстовых/голосовых команд админа."""
     lang = await lang_of(admin_tg_id)
-    d_from, d_to, parts, events = await _report_data(period, region)
+    d_from, d_to, parts, events, missed = await _report_data(period, region)
     ptxt = f"{t(f'rep_p_{period}')} ({reports.period_text(d_from, d_to)})" if d_from else t("rep_p_all")
     rtxt = reports.region_choice_label(region)
     again = InlineKeyboardMarkup(row_width=1).add(
@@ -371,7 +428,7 @@ async def send_report(message, admin_tg_id, period, region):
         await message.answer(t("rep_empty", period=ptxt, region=escape(rtxt)), reply_markup=again)
         return
     title = f"{t('rep_sheet_people')} · {reports.period_text(d_from, d_to)} · {rtxt}"
-    buf = await sync_to_async(reports.build_xlsx)(parts, events, lang, title)
+    buf = await sync_to_async(reports.build_xlsx)(parts, events, lang, title, missed)
     with_att = [e for e in events if e.attended]
     lines = "\n".join(f"• {escape(e.title)} — <b>{e.attended}</b>/{e.registered}" for e in with_att[:12])
     if len(with_att) > 12:
@@ -391,7 +448,7 @@ async def send_report(message, admin_tg_id, period, region):
 async def cb_report_text(call, state, period, region):
     if period not in reports.PERIODS or region not in reports.REGION_CHOICES:
         return
-    d_from, d_to, parts, _ = await _report_data(period, region)
+    d_from, d_to, parts, _, _ = await _report_data(period, region)
     head = t("rep_list_title", period=t(f"rep_p_{period}"), region=escape(reports.region_choice_label(region)), n=len(parts))
     lines, cur = [head], None
     for i, pp in enumerate(parts, 1):
@@ -673,6 +730,8 @@ CALLBACKS = {
     "addu": cb_add_user,
     "usersx": cb_users_excel,
     "rep": cb_report,
+    "evn": cb_event_noshow,
+    "shopw": cb_shop_wishes,
     "cmd": cb_cmd,
     "repp": cb_report_period,
     "repr": cb_report_run,

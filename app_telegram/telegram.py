@@ -52,6 +52,41 @@ def send_in_background(messages_: list, on_done=None):
     threading.Thread(target=run, daemon=True).start()
 
 
+async def _send_docs(docs: list):
+    """[(tg_id, bytes, filename, caption), ...] — документы одной сессией бота."""
+    from aiogram.types import InputFile
+    from io import BytesIO
+    bot = Bot(token=BOT_TOKEN, parse_mode="HTML")
+    delivered = []
+    try:
+        for tg_id, data, fname, caption in docs:
+            try:
+                await bot.send_document(tg_id, InputFile(BytesIO(data), filename=fname), caption=caption)
+                delivered.append(tg_id)
+            except Exception as e:
+                logger.warning("Telegram doc to %s failed: %s", tg_id, e)
+            await asyncio.sleep(0.1)
+    finally:
+        await (await bot.get_session()).close()
+    return delivered
+
+
+def send_documents_in_background(docs: list, on_done=None):
+    """Как send_in_background, только файлы. docs — список (tg_id, bytes, filename, caption) или функция, которая его вернёт."""
+    def run():
+        try:
+            items = docs() if callable(docs) else docs
+            delivered = asyncio.run(_send_docs(items))
+            if on_done:
+                on_done(delivered)
+        except Exception:
+            logger.exception("Background docs failed")
+        finally:
+            close_old_connections()
+
+    threading.Thread(target=run, daemon=True).start()
+
+
 def is_channel_member(tg_id: int) -> bool:
     """Подписан ли на канал. При сбое Telegram — не блокируем (True), как и в боте."""
     try:

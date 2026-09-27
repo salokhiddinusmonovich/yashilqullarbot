@@ -33,6 +33,8 @@ urlpatterns = [
     path('webapp/staff/checkin/', webapp.StaffCheckInView.as_view(), name='webapp-staff-checkin'),
     path('webapp/staff/search/', webapp.StaffSearchView.as_view(), name='webapp-staff-search'),
     path('webapp/staff/undo/', webapp.StaffUndoView.as_view(), name='webapp-staff-undo'),
+    path('webapp/regions/', webapp.RegionsView.as_view(), name='webapp-regions'),
+    path('webapp/certificates/<int:pid>/send/', webapp.CertificateSendView.as_view(), name='webapp-cert-send'),
     path('webapp/shop/', webapp.ShopView.as_view(), name='webapp-shop'),
 
     # ── Telegram bot login (без изменений) ──

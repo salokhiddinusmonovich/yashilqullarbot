@@ -488,8 +488,7 @@ TEXTS = {
               "Har bir tadbirga alohida yozilish kerak!\n\n"
               "2️⃣ Tadbir kuni <b>🌿 Mening QR-kodim</b> ni oching va koordinatorga ko'rsating.\n\n"
               "3️⃣ Koordinator skaner qilgach, sizga <b>+10 ball</b> tushadi va kelganingiz tasdiqlanadi. ✅\n\n"
-              "🎓 <b>Sertifikat</b> darhol berilmaydi — tadbirdan keyin uni tadbir <b>guruhiga</b> tashlaymiz. "
-              "Shuning uchun tadbirga yozilganingizda berilgan guruh havolasi orqali guruhga qo'shiling va kuting.\n"
+              "🎓 <b>Sertifikat</b> tadbirdan keyingi kuni ertalab botga o'zi keladi (PDF). Barchasi — /sertifikat yoki ilovada Profil → «Sertifikatlarim».\n"
               "❗ Faqat QR-kodi skaner qilinganlar sertifikat oladi.\n\n"
               "👤 <b>Mening profilim</b> — ism, rasm, hudud, balans.\n"
               "📍 Tadbirlar hududingiz bo'yicha ko'rsatiladi — hududingiz to'g'ri ekanini tekshiring.\n"
@@ -502,8 +501,7 @@ TEXTS = {
               "На каждое мероприятие нужно записываться отдельно!\n\n"
               "2️⃣ В день мероприятия откройте <b>🌿 Мой QR-код</b> и покажите координатору.\n\n"
               "3️⃣ После сканирования вам начислят <b>+10 баллов</b>, и участие будет подтверждено. ✅\n\n"
-              "🎓 <b>Сертификат</b> выдаётся не сразу — после мероприятия мы публикуем его в <b>группе</b> мероприятия. "
-              "Поэтому вступите в группу по ссылке, которую бот присылает при записи, и ждите.\n"
+              "🎓 <b>Сертификат</b> приходит в бот сам на следующее утро после мероприятия (PDF). Все — /sertifikat или в приложении Профиль → «Мои сертификаты».\n"
               "❗ Сертификат получают только те, чей QR-код отсканирован.\n\n"
               "👤 <b>Мой профиль</b> — имя, фото, регион, баланс.\n"
               "📍 Мероприятия показываются по вашему региону — проверьте, что он указан верно.\n"
@@ -516,8 +514,7 @@ TEXTS = {
               "You must register for each event separately!\n\n"
               "2️⃣ On the event day open <b>🌿 My QR code</b> and show it to the coordinator.\n\n"
               "3️⃣ Once scanned, you get <b>+10 points</b> and your attendance is confirmed. ✅\n\n"
-              "🎓 The <b>certificate</b> isn't issued instantly — after the event we post it in the event's <b>group</b>. "
-              "So join the group via the link the bot sends when you register, and wait.\n"
+              "🎓 Your <b>certificate</b> arrives in the bot automatically the morning after the event (PDF). All of them — /sertifikat or in the app Profile → «My certificates».\n"
               "❗ Only people whose QR code was scanned get a certificate.\n\n"
               "👤 <b>My profile</b> — name, photo, region, balance.\n"
               "📍 Events are shown by your region — make sure it's correct.\n"
@@ -942,6 +939,65 @@ TEXTS = {
     "cmd_none": {"uz": "🤷 Hech narsa topilmadi.", "ru": "🤷 Ничего не найдено.", "en": "🤷 Nothing found."},
     "cmd_find_none": {"uz": "🤷 «{q}» topilmadi.", "ru": "🤷 «{q}» не найден.", "en": "🤷 «{q}» not found."},
     "cmd_found": {"uz": "🔎 Topildi: {n}", "ru": "🔎 Найдено: {n}", "en": "🔎 Found: {n}"},
+    "btn_invite": {"uz": "👥 Do'stni taklif qilish", "ru": "👥 Пригласить друга", "en": "👥 Invite a friend"},
+    "invite_text": {
+        "uz": "👥 <b>Do'stlaringizni taklif qiling!</b>\n\nDo'stingiz shu havola orqali ro'yxatdan o'tib, <b>birinchi tadbirga kelganda</b> sizga <b>+{bonus} ball</b> beriladi.\n\n🔗 Sizning havolangiz:\n{link}\n\n📊 Taklif qilganlar: <b>{invited}</b> · kelganlar: <b>{joined}</b> · bonus: <b>+{earned}</b>",
+        "ru": "👥 <b>Приглашайте друзей!</b>\n\nКогда друг зарегистрируется по этой ссылке и <b>придёт на первое мероприятие</b>, вы получите <b>+{bonus} баллов</b>.\n\n🔗 Ваша ссылка:\n{link}\n\n📊 Приглашено: <b>{invited}</b> · пришли: <b>{joined}</b> · бонус: <b>+{earned}</b>",
+        "en": "👥 <b>Invite your friends!</b>\n\nWhen a friend signs up with this link and <b>comes to their first event</b>, you get <b>+{bonus} points</b>.\n\n🔗 Your link:\n{link}\n\n📊 Invited: <b>{invited}</b> · came: <b>{joined}</b> · bonus: <b>+{earned}</b>",
+    },
+    "invite_btn_share": {"uz": "📤 Do'stga yuborish", "ru": "📤 Отправить другу", "en": "📤 Send to a friend"},
+    "invite_share_text": {"uz": "Yashil Qo'llar volontyorlariga qo'shil! 🌿 Birga daraxt ekamiz va shaharni tozalaymiz.",
+                          "ru": "Присоединяйся к волонтёрам Yashil Qo'llar! 🌿 Вместе сажаем деревья и убираем город.",
+                          "en": "Join Yashil Qo'llar volunteers! 🌿 Let's plant trees and clean up the city together."},
+    "ref_bonus": {"uz": "🎉 Siz taklif qilgan <b>{name}</b> birinchi tadbiriga keldi! Sizga <b>+{bonus} ball</b>. Balans: <b>{balance}</b>.",
+                  "ru": "🎉 Приглашённый вами <b>{name}</b> пришёл на первое мероприятие! Вам <b>+{bonus} баллов</b>. Баланс: <b>{balance}</b>.",
+                  "en": "🎉 <b>{name}</b>, whom you invited, came to their first event! <b>+{bonus} points</b> for you. Balance: <b>{balance}</b>."},
+    "rem_day": {"uz": "⏰ <b>Ertaga tadbir!</b>\n\n🌱 <b>{title}</b>\n🗓 {date}, {time}\n📍 {place}\n\n📌 QR-kodingizni tayyorlab qo'ying. Kela olmasangiz — pastdagi tugmani bosing, joyingizni boshqa volontyorga beramiz.",
+                "ru": "⏰ <b>Завтра мероприятие!</b>\n\n🌱 <b>{title}</b>\n🗓 {date}, {time}\n📍 {place}\n\n📌 Приготовьте QR-код. Если не сможете прийти — нажмите кнопку ниже, место отдадим другому волонтёру.",
+                "en": "⏰ <b>Event tomorrow!</b>\n\n🌱 <b>{title}</b>\n🗓 {date}, {time}\n📍 {place}\n\n📌 Have your QR code ready. Can't make it? Tap the button below and we'll give your spot to someone else."},
+    "rem_2h": {"uz": "⏳ <b>2 soatdan keyin boshlanadi!</b>\n\n🌱 <b>{title}</b>\n🕐 {time} · 📍 {place}\n\nQR-kodni koordinatorga ko'rsatishni unutmang. Ko'rishguncha! 🌿",
+               "ru": "⏳ <b>Начало через 2 часа!</b>\n\n🌱 <b>{title}</b>\n🕐 {time} · 📍 {place}\n\nНе забудьте показать QR-код координатору. До встречи! 🌿",
+               "en": "⏳ <b>Starts in 2 hours!</b>\n\n🌱 <b>{title}</b>\n🕐 {time} · 📍 {place}\n\nDon't forget to show your QR code to the coordinator. See you! 🌿"},
+    "rem_group": {"uz": "\n👥 Guruh: {link}", "ru": "\n👥 Группа: {link}", "en": "\n👥 Group: {link}"},
+    "rem_btn_qr": {"uz": "🌿 QR-kod", "ru": "🌿 QR-код", "en": "🌿 QR code"},
+    "rem_btn_no": {"uz": "❌ Kelolmayman", "ru": "❌ Не смогу", "en": "❌ Can't come"},
+    "rem_cancelled": {"uz": "👌 Tushunarli, «{title}» dagi joyingiz bo'shatildi. Keyingi safar kutamiz! 🌿",
+                      "ru": "👌 Понятно, ваше место на «{title}» освобождено. Ждём в следующий раз! 🌿",
+                      "en": "👌 Got it, your spot at «{title}» is freed. See you next time! 🌿"},
+    "rem_cant_cancel": {"uz": "✅ Siz bu tadbirga allaqachon kelgansiz.", "ru": "✅ Вы уже отмечены на этом мероприятии.", "en": "✅ You're already checked in for this event."},
+    "rem_not_found": {"uz": "Bu tadbirga yozilmagansiz.", "ru": "Вы не записаны на это мероприятие.", "en": "You're not signed up for this event."},
+    "adm_btn_noshow": {"uz": "🚫 Kelmaganlar / kelolmayman", "ru": "🚫 Не пришли / отказались", "en": "🚫 No-shows / cancelled"},
+    "adm_noshow_title": {"uz": "🚫 <b>{title}</b>", "ru": "🚫 <b>{title}</b>", "en": "🚫 <b>{title}</b>"},
+    "adm_noshow_head": {"uz": "Yozilgan, lekin kelmagan: <b>{n}</b>", "ru": "Записались, но не пришли: <b>{n}</b>", "en": "Signed up but didn't come: <b>{n}</b>"},
+    "adm_noshow_future": {"uz": "Tadbir hali o'tmagan. Hozir yozilganlar (kelishi kutilmoqda): <b>{n}</b>", "ru": "Мероприятие ещё не прошло. Сейчас записаны (ждём): <b>{n}</b>",
+                          "en": "The event hasn't happened yet. Currently signed up: <b>{n}</b>"},
+    "adm_cancel_head": {"uz": "❌ Eslatmada «Kelolmayman» deganlar: <b>{n}</b>", "ru": "❌ Нажали «Не смогу» в напоминании: <b>{n}</b>", "en": "❌ Tapped «Can't come» in a reminder: <b>{n}</b>"},
+    "adm_btn_shopw": {"uz": "🛍 Do'kon: kim nima xohlaydi", "ru": "🛍 Магазин: что хотят", "en": "🛍 Shop: what people want"},
+    "adm_shopw_title": {"uz": "🛍 <b>Eko-do'kon — «Xohlayman»</b>", "ru": "🛍 <b>Эко-магазин — «Хочу»</b>", "en": "🛍 <b>Eco shop — «I want it»</b>"},
+    "adm_shopw_note": {"uz": "Shu raqamlarga qarab qaysi sovg'alarni birinchi tayyorlashni hal qiling.", "ru": "По этим цифрам решайте, какие подарки готовить первыми.",
+                       "en": "Use these numbers to decide which gifts to prepare first."},
+    "shop_stickers": {"uz": "🌿 Stikerlar", "ru": "🌿 Стикеры", "en": "🌿 Stickers"},
+    "shop_pin": {"uz": "📍 Znachok", "ru": "📍 Значок", "en": "📍 Pin"},
+    "shop_bracelet": {"uz": "📿 Bilaguzuk", "ru": "📿 Браслет", "en": "📿 Bracelet"},
+    "shop_notebook": {"uz": "📓 Eko-bloknot", "ru": "📓 Эко-блокнот", "en": "📓 Notebook"},
+    "shop_bag": {"uz": "👜 Eko-sumka", "ru": "👜 Эко-сумка", "en": "👜 Tote bag"},
+    "shop_cap": {"uz": "🧢 Kepka", "ru": "🧢 Кепка", "en": "🧢 Cap"},
+    "shop_tree": {"uz": "🌳 Nomingizdan ko'chat", "ru": "🌳 Дерево от имени", "en": "🌳 Tree in your name"},
+    "shop_tshirt": {"uz": "👕 Futbolka", "ru": "👕 Футболка", "en": "👕 T-shirt"},
+    "shop_thermos": {"uz": "🥤 Termos", "ru": "🥤 Термос", "en": "🥤 Thermos"},
+    "shop_hoodie": {"uz": "🧥 Xudi", "ru": "🧥 Худи", "en": "🧥 Hoodie"},
+    "rep_sheet_noshow": {"uz": "Kelmaganlar", "ru": "Не пришли", "en": "No-shows"},
+    "cert_caption": {"uz": "🎓 <b>«{title}»</b> tadbirida qatnashganingiz uchun sertifikat!\n№ {number}\n\nRahmat, tabiat himoyachisi! 🌿 Barcha sertifikatlaringiz: /sertifikat",
+                     "ru": "🎓 Сертификат за участие в <b>«{title}»</b>!\n№ {number}\n\nСпасибо, защитник природы! 🌿 Все ваши сертификаты: /sertifikat",
+                     "en": "🎓 Your certificate for taking part in <b>«{title}»</b>!\n№ {number}\n\nThank you, nature defender! 🌿 All your certificates: /sertifikat"},
+    "cert_list": {"uz": "🎓 <b>Sertifikatlaringiz</b> — {n} ta. Kerakligini bosing, bot PDF yuboradi:", "ru": "🎓 <b>Ваши сертификаты</b> — {n}. Нажмите нужный — бот пришлёт PDF:",
+                  "en": "🎓 <b>Your certificates</b> — {n}. Tap one and the bot sends the PDF:"},
+    "cert_none": {"uz": "🎓 Hozircha sertifikat yo'q. Sertifikat tadbirda QR-kodingiz skaner qilingandan keyin paydo bo'ladi.",
+                  "ru": "🎓 Сертификатов пока нет. Сертификат появляется, когда на мероприятии отсканировали ваш QR-код.",
+                  "en": "🎓 No certificates yet. A certificate appears once your QR code is scanned at an event."},
+    "cert_past": {"uz": "🎓 <b>Yangilik!</b> Endi sertifikatlaringiz doim qo'lingizda. O'tgan tadbirlar uchun sertifikatlaringiz tayyor: <b>{n} ta</b>.\n\n📥 Olish: /sertifikat yoki ilovada Profil → «Sertifikatlarim».",
+                  "ru": "🎓 <b>Новое!</b> Теперь ваши сертификаты всегда под рукой. Сертификаты за прошлые мероприятия готовы: <b>{n}</b>.\n\n📥 Получить: /sertifikat или в приложении Профиль → «Мои сертификаты».",
+                  "en": "🎓 <b>New!</b> Your certificates are now always at hand. Certificates for past events are ready: <b>{n}</b>.\n\n📥 Get them: /sertifikat or in the app Profile → «My certificates»."},
     "adm_btn_stats": {"uz": "📊 Statistika", "ru": "📊 Статистика", "en": "📊 Statistics"},
     "adm_btn_events": {"uz": "📅 Tadbirlar", "ru": "📅 Мероприятия", "en": "📅 Events"},
     "adm_btn_find": {"uz": "🔎 Qidirish", "ru": "🔎 Поиск", "en": "🔎 Search"},

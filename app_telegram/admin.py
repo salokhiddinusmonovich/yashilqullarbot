@@ -108,7 +108,80 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
         from django.urls import path
         return [
             path('report/', self.admin_site.admin_view(self.report_view), name='app_telegram_projectparticipation_report'),
+            path('certificate/', self.admin_site.admin_view(self.certificate_view), name='app_telegram_projectparticipation_certificate'),
         ] + super().get_urls()
+
+    def certificate_view(self, request):
+        """🎓 Шаблон сертификата: загрузка PNG из Canva, координаты с живым предпросмотром, «прошлые мероприятия»."""
+        from django.core.exceptions import PermissionDenied
+        from django.http import HttpResponse, HttpResponseRedirect
+        from django.template.response import TemplateResponse
+        from . import certificates as C
+
+        if not request.user.is_superuser and not self.has_change_permission(request):
+            raise PermissionDenied
+        lay = C.layout()
+
+        if request.GET.get("preview"):
+            q = dict(lay)
+            for k, v in C.DEFAULT_LAYOUT.items():
+                if k in request.GET:
+                    try:
+                        q[k] = (request.GET[k] in ("1", "true", "on")) if isinstance(v, bool) else type(v)(request.GET[k])
+                    except ValueError:
+                        pass
+            img = C.render("Muhammadaziz Khabibullayev", timezone.localdate().strftime("%d.%m.%Y"), "YQ-001043", q)
+            return HttpResponse(C.to_jpg(img, max_w=1200), content_type="image/jpeg")
+
+        if request.method == "POST":
+            act = request.POST.get("act")
+            if act == "reset":
+                C.reset()
+                self.message_user(request, trn("cert_reset_done"))
+            elif act == "announce":
+                self._announce_past(request)
+            else:
+                f = request.FILES.get("template")
+                if f:
+                    try:
+                        C.save_template(f)
+                    except Exception:
+                        self.message_user(request, trn("cert_bad_file"), messages.ERROR)
+                        return HttpResponseRedirect(request.path)
+                data = {k: request.POST.get(k) for k in C.DEFAULT_LAYOUT if k != "show_number" and request.POST.get(k) not in (None, "")}
+                data["show_number"] = bool(request.POST.get("show_number"))
+                try:
+                    C.save_layout(data)
+                except ValueError:
+                    pass
+                self.message_user(request, trn("cert_saved"))
+            return HttpResponseRedirect(request.path)
+
+        fields = [(grp, [(k, C.DEFAULT_LAYOUT[k], lay[k]) for k in C.DEFAULT_LAYOUT if k.startswith(prefix) and k != "show_number"])
+                  for grp, prefix in ((trn("cert_name"), "name_"), (trn("cert_date"), "date_"), (trn("cert_number"), "number_"))]
+        labels = {"x": trn("cert_x"), "y": trn("cert_y"), "size": trn("cert_size"), "color": trn("cert_color"), "max_w": trn("cert_maxw")}
+        ctx = {
+            **self.admin_site.each_context(request), "title": trn("cert_title"), "opts": self.model._meta,
+            "groups": [(g, [(k, k.split("_", 1)[1], labels.get(k.split("_", 1)[1], k), v, "color" if k.endswith("color") else "number") for k, _d, v in fs]) for g, fs in fields],
+            "show_number": lay.get("show_number"), "custom": (C.CUSTOM / "template.png").exists(),
+        }
+        return TemplateResponse(request, "admin/yq_certificate.html", ctx)
+
+    def _announce_past(self, request):
+        from tgbot.services.lang import _sclient
+        try:
+            if not _sclient().set("cert:announced", 1, nx=True):
+                self.message_user(request, trn("cert_announce_already"), messages.WARNING)
+                return
+        except Exception:
+            pass
+        rows = (ProjectParticipation.objects.filter(status='attended', user__tg_id__isnull=False)
+                .values_list('user__tg_id').annotate(n=Count('id')))
+        rows = list(rows)
+        langs = langs_of_sync([tg for tg, _ in rows])
+        send_in_background([(tg, bot_t("cert_past", langs.get(tg), n=n)) for tg, n in rows])
+        self.message_user(request, trn("cert_announce_done", n=len(rows)))
+
 
     def report_view(self, request):
         """Отчёт «кто пришёл»: период + регион → таблица на странице и Excel (app_telegram/reports.py)."""
@@ -146,7 +219,7 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
 
         if g.get("download"):
             title = f"{bt('rep_sheet_people', lang)} · {ptxt} · {rtxt}"
-            buf = reports.build_xlsx(parts, events, lang, title)
+            buf = reports.build_xlsx(parts, events, lang, title, reports.no_shows(d_from, d_to, regions))
             resp = HttpResponse(buf.getvalue(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             resp["Content-Disposition"] = f'attachment; filename="{reports.filename(d_from, d_to, region)}"'
             return resp
@@ -327,7 +400,7 @@ class EcoProjectAdmin(admin.ModelAdmin):
     list_filter = ('is_active', 'region', 'date')
     list_editable = ('is_active',)
     inlines = [EcoProjectImageInline]
-    actions = ['remind_local_users']
+    actions = ['remind_local_users', 'send_certificates_now']
     ordering = ('-date',)
 
     def get_queryset(self, request):
@@ -349,6 +422,34 @@ class EcoProjectAdmin(admin.ModelAdmin):
     def has_group(self, obj):
         # без ссылки на группу волонтёры не узнают, где ждать сертификат
         return bool(obj.chat_link)
+
+    @admin.action(description=tr('act_send_certs'))
+    def send_certificates_now(self, request, queryset):
+        from . import certificates as C
+        from .telegram import send_documents_in_background
+        pps = list(ProjectParticipation.objects.filter(project__in=queryset, status='attended', user__tg_id__isnull=False)
+                   .values_list('id', 'user__tg_id', 'project__title', 'project_id'))
+        langs = langs_of_sync([tg for _, tg, _, _ in pps])
+
+        def build():
+            out = []
+            for pid, tg, title, _ in pps:
+                pp = C.attended(pid)
+                if pp:
+                    out.append((tg, C.to_pdf(C.render_for(pp)), C.filename(pp),
+                                bot_t("cert_caption", langs.get(tg), title=escape(title), number=C.number_of(pp))))
+            return out
+
+        def mark(delivered):
+            from tgbot.services.lang import _sclient
+            try:
+                for _, tg, _, project_id in pps:
+                    if tg in delivered:
+                        _sclient().sadd(f"cert:sent:{project_id}", tg)
+            except Exception:
+                pass
+        send_documents_in_background(build, on_done=mark)
+        self.message_user(request, trn("msg_certs_sending", n=len(pps)))
 
     @admin.action(description=tr('act_remind'))
     def remind_local_users(self, request, queryset):

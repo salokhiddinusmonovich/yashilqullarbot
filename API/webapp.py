@@ -30,7 +30,7 @@ from rest_framework import status, views
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from app_telegram import services
+from app_telegram import certificates, referrals, services
 from app_telegram.models import TGUser, EcoProject, ProjectParticipation
 from app_telegram.telegram import send_in_background, is_channel_member
 from app_telegram.thumbs import thumb_url
@@ -170,10 +170,14 @@ def bootstrap_data(request, user: TGUser, lang: str = None):
         "events": events,
         "history": [
             {"id": pp.project_id, "title": pp.project.title,
-             "date": timezone.localtime(pp.project.date).isoformat()}
+             "date": timezone.localtime(pp.project.date).isoformat(),
+             # 🎓 сертификат: pid — id участия, pdf/jpg — подписанные ссылки
+             "cert": {"pid": pp.id, "number": certificates.number_of(pp),
+                      "pdf": certificates.url(pp.id, "pdf"), "jpg": certificates.url(pp.id, "jpg") + "?small=1"}}
             for pp in history
         ],
         "bot_username": settings.TELEGRAM_BOT_USERNAME,
+        "referral": {**referrals.stats(user.tg_id), "link": referrals.link(settings.TELEGRAM_BOT_USERNAME, user.tg_id)} if user.tg_id else None,
         "community": community_stats(),
         "regions": [[code, region_label(code, lang)] for code in TGUser.Region.values],
     }
@@ -675,3 +679,57 @@ class ShopView(_Auth):
         except Exception:
             return Response({"detail": "unavailable"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return Response(_shop_state(request.user.tg_id))
+
+
+# ─────────────────────────── рейтинг регионов ───────────────────────────
+
+def region_rating(lang="uz"):
+    """Регионы по активности: отметки «пришёл» за этот месяц и всего. Ташкент город+область — вместе."""
+    key = f"webapp:regions:{lang}"
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+    month_start = timezone.localdate().replace(day=1)
+    groups = [("tashkent", list(services.TASHKENT))] + [(c, [c]) for c in TGUser.Region.values if c not in services.TASHKENT]
+    att = dict(ProjectParticipation.objects.filter(status='attended').values_list('project__region').annotate(n=Count('id')))
+    att_m = dict(ProjectParticipation.objects.filter(status='attended', project__date__date__gte=month_start)
+                 .values_list('project__region').annotate(n=Count('id')))
+    vols = dict(TGUser.objects.exclude(region__isnull=True).values_list('region').annotate(n=Count('id')))
+    rows = []
+    for gkey, codes in groups:
+        label = bot_t("rep_tashkent", lang) if gkey == "tashkent" else region_label(gkey, lang)
+        rows.append({"key": gkey, "label": label,
+                     "month": sum(att_m.get(c, 0) for c in codes), "total": sum(att.get(c, 0) for c in codes),
+                     "volunteers": sum(vols.get(c, 0) for c in codes)})
+    rows.sort(key=lambda r: (-r["month"], -r["total"], -r["volunteers"]))
+    cache.set(key, rows, 600)
+    return rows
+
+
+class RegionsView(_Auth):
+    """GET /webapp/regions/ — рейтинг регионов (кэш 10 минут) + мой регион."""
+
+    def get(self, request):
+        lang = lang_of_sync(request.user.tg_id) if request.user.tg_id else "uz"
+        reg = request.user.region
+        mine = "tashkent" if reg in services.TASHKENT else reg
+        return Response({"regions": region_rating(lang), "mine": mine})
+
+
+class CertificateSendView(_Auth):
+    """POST /webapp/certificates/<pid>/send/ — бот присылает PDF сертификата в чат (только свой и только «пришёл»)."""
+
+    def post(self, request, pid):
+        from app_telegram.telegram import send_documents_in_background
+        pp = certificates.attended(pid)
+        if not pp or pp.user_id != request.user.id or not request.user.tg_id:
+            return Response({"result": "not_found"}, status=status.HTTP_404_NOT_FOUND)
+        lang = lang_of_sync(request.user.tg_id)
+        tg, title = request.user.tg_id, pp.project.title
+
+        def build():
+            p2 = certificates.attended(pid)
+            return [(tg, certificates.to_pdf(certificates.render_for(p2)), certificates.filename(p2),
+                     bot_t("cert_caption", lang, title=escape(title), number=certificates.number_of(p2)))]
+        send_documents_in_background(build)
+        return Response({"result": "sent"})

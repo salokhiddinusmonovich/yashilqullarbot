@@ -63,6 +63,18 @@ def attendance(date_from: date | None, date_to: date | None, regions=None):
     return list(qs.order_by('project__date', 'project__title', 'user__fullname'))
 
 
+def no_shows(date_from, date_to, regions=None):
+    """Записались, но не пришли — только на уже прошедших мероприятиях."""
+    qs = ProjectParticipation.objects.filter(status='approved', project__date__lte=timezone.now()).select_related('user', 'project')
+    if date_from:
+        qs = qs.filter(project__date__date__gte=date_from)
+    if date_to:
+        qs = qs.filter(project__date__date__lte=date_to)
+    if regions:
+        qs = qs.filter(project__region__in=regions)
+    return list(qs.order_by('project__date', 'project__title', 'user__fullname'))
+
+
 def event_summary(date_from, date_to, regions=None):
     qs = EcoProject.objects.all()
     if date_from:
@@ -85,7 +97,7 @@ def period_text(date_from, date_to, lang=None) -> str:
     return f if f == to else f"{f} — {to}"
 
 
-def build_xlsx(parts, events, lang=None, title="") -> BytesIO:
+def build_xlsx(parts, events, lang=None, title="", missed=None) -> BytesIO:
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
 
@@ -131,6 +143,17 @@ def build_xlsx(parts, events, lang=None, title="") -> BytesIO:
     sheet(ws2, t("rep_event_headers", lang), erows, title)
     for c in ws2[ws2.max_row]:
         c.font = Font(bold=True)
+
+    if missed is not None:
+        ws3 = wb.create_sheet(t("rep_sheet_noshow", lang)[:31])
+        mrows = []
+        for i, pp in enumerate(missed, 1):
+            u, p = pp.user, pp.project
+            mrows.append([i, u.fullname, u.phone or "", f"@{u.username}" if u.username else "", u.email or "",
+                          u.age or "", u.education_place or "", region_label(u.region, lang) if u.region else "",
+                          p.title, region_label(p.region, lang) if p.region else "",
+                          timezone.localtime(p.date).strftime('%d.%m.%Y') if p.date else "", u.balance])
+        sheet(ws3, t("rep_people_headers", lang), mrows, title)
 
     buf = BytesIO()
     wb.save(buf)
