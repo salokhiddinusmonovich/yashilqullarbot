@@ -53,3 +53,19 @@ def certificate_verify(request, pid: int, sig: str):
             "number": C.number_of(pp), "img": C.url(pp.id, "jpg") + "?small=1", "pdf": C.url(pp.id, "pdf"),
         })
     return render(request, "cert_verify.html", ctx, status=200 if pp else 404)
+
+
+@cache_control(private=True, max_age=1800)
+def wrapped_image(request, uid: int, year: int, sig: str):
+    """GET /c/w/<id>-<год>-<подпись>.jpg?l=uz — 🎁 сторис «итоги года» (1080×1920)."""
+    from . import wrapped
+    from .models import TGUser
+    if not wrapped.verify(uid, year, sig):
+        raise Http404
+    user = TGUser.objects.filter(pk=uid).first()
+    if not user:
+        raise Http404
+    lang = request.GET.get("l") if request.GET.get("l") in ("uz", "ru", "en") else "uz"
+    resp = HttpResponse(wrapped.image_for(user, year, lang), content_type="image/jpeg")
+    resp["Content-Disposition"] = f'inline; filename="YashilQollar_Wrapped_{year}.jpg"'
+    return resp

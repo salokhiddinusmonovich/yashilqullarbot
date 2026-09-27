@@ -40,6 +40,10 @@ from tgbot.handlers.reminders import register_reminders
 from tgbot.services.reminders import reminders_loop
 from tgbot.services.cert_delivery import certificates_loop
 from tgbot.handlers.certs import register_certs
+from tgbot.handlers.impact import register_impact
+from tgbot.handlers.wrapped import register_wrapped
+from tgbot.services.impact_prompt import impact_prompt_loop
+from tgbot.services.wrapped import wrapped_loop
 from tgbot.handlers.digest import register_digest
 from tgbot.services.digest import digest_loop
 from tgbot.handlers.language import register_language
@@ -91,6 +95,8 @@ def register_all_handlers(dp):
     register_invite(dp)              # 👥 пригласи друга / /invite
     register_reminders(dp)           # кнопки в напоминаниях о мероприятиях
     register_certs(dp)               # 🎓 /sertifikat
+    register_impact(dp)              # 📊 /natija — координатор вносит итоги мероприятия (кг, деревья, фото)
+    register_wrapped(dp)             # 🎁 /yakun — итоги года
     register_digest(dp)              # 📅 недельный дайджест: /digest, «🔕»
     register_register(dp)            # регистрация — СТАТИКА, всегда через бота,
                                       # не переключается флагом USE_MINI_APP
@@ -178,6 +184,10 @@ async def main():
     asyncio.create_task(certificates_loop(bot))
     # 📅 Дайджест мероприятий на неделю — по понедельникам в 10:00 (tgbot/services/digest.py)
     asyncio.create_task(digest_loop(bot))
+    # 📊 «Введите итоги» координаторам через 3 ч после начала мероприятия (tgbot/services/impact_prompt.py)
+    asyncio.create_task(impact_prompt_loop(bot))
+    # 🎁 Итоги года — 20 декабря всем, кто был на мероприятиях (tgbot/services/wrapped.py)
+    asyncio.create_task(wrapped_loop(bot))
 
     # Запуск polling
     try:

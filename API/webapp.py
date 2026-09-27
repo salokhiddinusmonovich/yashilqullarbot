@@ -30,7 +30,7 @@ from rest_framework import status, views
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from app_telegram import certificates, cv, referrals, services, waitlist
+from app_telegram import certificates, cv, impact, referrals, services, waitlist, wrapped
 from app_telegram.models import TGUser, EcoProject, ProjectParticipation
 from app_telegram.telegram import send_in_background, is_channel_member
 from app_telegram.thumbs import thumb_url
@@ -142,7 +142,24 @@ def community_stats():
                        .values('region').annotate(n=Count('id')).count(),
         }
         cache.set("webapp_community", data, 300)
-    return data
+    # 📊 итоги мероприятий (кг/мешки/деревья) — свой кэш, обновляется сразу после ввода итогов
+    tot = impact.totals()
+    return {**data, "kg": tot["kg"], "bags": tot["bags"], "trees": tot["trees"], "photos": tot["photos"]}
+
+
+def my_impact(user) -> dict:
+    """«Mening hissam»: моя доля в итогах + последние фото с моих мероприятий."""
+    pids = list(ProjectParticipation.objects.filter(user=user, status='attended').values_list('project_id', flat=True))
+    return {**impact.share_of(user), "photos": impact.recent_photos(limit=8, pids=pids)}
+
+
+def wrapped_info(user, lang):
+    """🎁 Итоги года: {year, url} — когда доступны (декабрь–январь; админам — всегда, как превью)."""
+    preview = wrapped.can_preview(user)
+    year = wrapped.year_for(preview=preview)
+    if not year:
+        return None
+    return {"year": year, "image": wrapped.url(user.id, year, lang), "preview": preview and wrapped.year_for() is None}
 
 
 def bootstrap_data(request, user: TGUser, lang: str = None):
@@ -167,6 +184,7 @@ def bootstrap_data(request, user: TGUser, lang: str = None):
         ProjectParticipation.objects.filter(user=user, status='attended')
         .select_related('project').order_by('-project__date')[:80]
     )
+    done = impact.many([pp.project_id for pp in history])
 
     return {
         "user": _user_payload(request, user, lang),
@@ -174,6 +192,7 @@ def bootstrap_data(request, user: TGUser, lang: str = None):
         "history": [
             {"id": pp.project_id, "title": pp.project.title,
              "date": timezone.localtime(pp.project.date).isoformat(),
+             "has_impact": pp.project_id in done,
              # 🎓 сертификат: pid — id участия, pdf/jpg — подписанные ссылки
              "cert": {"pid": pp.id, "number": certificates.number_of(pp),
                       "pdf": certificates.url(pp.id, "pdf"), "jpg": certificates.url(pp.id, "jpg") + "?small=1"}}
@@ -183,6 +202,8 @@ def bootstrap_data(request, user: TGUser, lang: str = None):
         "cv_url": cv.url(user.id),
         "referral": {**referrals.stats(user.tg_id), "link": referrals.link(settings.TELEGRAM_BOT_USERNAME, user.tg_id)} if user.tg_id else None,
         "community": community_stats(),
+        "impact": my_impact(user),
+        "wrapped": wrapped_info(user, lang),
         "regions": [[code, region_label(code, lang)] for code in TGUser.Region.values],
     }
 
@@ -759,3 +780,47 @@ class WaitView(_Auth):
             result = "waiting"
         lang = lang_of_sync(user.tg_id) if user.tg_id else "uz"
         return Response({"result": result, "event": _event_payload(request, project, None, lang)})
+
+
+# ─────────────────────────── 📊 итоги мероприятий и 🎁 итоги года ───────────────────────────
+
+class ImpactEventView(_Auth):
+    """GET /webapp/impact/<id>/ — итоги мероприятия: цифры, сколько пришло, все фото, моя доля."""
+
+    def get(self, request, pk):
+        p = EcoProject.objects.filter(id=pk).first()
+        data = impact.event_payload(p) if p else None
+        if not data:
+            return Response({"result": "none"}, status=status.HTTP_404_NOT_FOUND)
+        was = ProjectParticipation.objects.filter(user=request.user, project=p, status='attended').exists()
+        n = max(data["attended"], 1)
+        mine = {k: round(data[k] / n, 1) for k in impact.KINDS} if was else None
+        return Response({"id": p.id, "title": p.title, "date": timezone.localtime(p.date).isoformat(),
+                         "region_label": region_label(p.region, lang_of_sync(request.user.tg_id) if request.user.tg_id else "uz"),
+                         **data, "mine": mine})
+
+
+class WrappedView(_Auth):
+    """GET /webapp/wrapped/ — 🎁 итоги года для сторис в Mini App (404, если ещё не время)."""
+
+    def get(self, request):
+        user = request.user
+        lang = lang_of_sync(user.tg_id) if user.tg_id else "uz"
+        info = wrapped_info(user, lang)
+        if not info:
+            return Response({"result": "soon"}, status=status.HTTP_404_NOT_FOUND)
+        s = wrapped.stats(user, info["year"])
+        s.pop("region", None)
+        return Response({**s, **info, "region_label": region_label(user.region, lang) if user.region else None})
+
+
+class PublicImpactView(views.APIView):
+    """GET /impact/ — для сайта: итоги (кг/мешки/деревья) и последние фото с мероприятий. Кэш 5 минут."""
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request):
+        limit = min(int(request.query_params.get("limit") or 24), 60)
+        resp = Response({**impact.totals(), "items": impact.recent_photos(limit=limit)})
+        resp["Cache-Control"] = "public, max-age=300"
+        return resp
