@@ -42,15 +42,37 @@ def with_counts(qs):
     )
 
 
+def scan_regions(user: TGUser):
+    """
+    Мероприятия каких регионов человек может сканировать.
+    Координатор, медиа, IT и т.д. — только своего региона (Ташкент-город
+    и область — одна группа). None — без ограничений: основатель, или
+    регион в профиле не указан (тогда фильтровать не по чему).
+    """
+    if user.role == TGUser.Role.FOUNDER or not user.region:
+        return None
+    return region_group(user.region)
+
+
+def can_scan_project(user: TGUser, project: EcoProject) -> bool:
+    allowed = scan_regions(user)
+    return allowed is None or project.region in allowed
+
+
 def pick_project(volunteer: TGUser, scanner: TGUser):
     """
     Какое мероприятие сейчас идёт (для скана из бота, где мероприятие
-    не выбрано явно). Приоритет: сегодняшнее в регионе волонтёра →
+    не выбрано явно). Только среди регионов, которые сканирующему можно
+    (scan_regions). Приоритет: сегодняшнее в регионе волонтёра →
     сегодняшнее в регионе сканирующего → единственное сегодняшнее →
-    ближайшее по дате активное в регионе волонтёра.
+    ближайшее по дате активное.
     """
+    allowed = scan_regions(scanner)
     today = timezone.localdate()
-    todays = list(EcoProject.objects.filter(is_active=True, date__date=today).order_by('date'))
+    todays = [
+        p for p in EcoProject.objects.filter(is_active=True, date__date=today).order_by('date')
+        if allowed is None or p.region in allowed
+    ]
 
     for region in (volunteer.region, scanner.region):
         if region:
@@ -60,7 +82,7 @@ def pick_project(volunteer: TGUser, scanner: TGUser):
     if len(todays) == 1:
         return todays[0]
 
-    active = EcoProject.objects.filter(is_active=True, region__in=region_group(volunteer.region))
+    active = EcoProject.objects.filter(is_active=True, region__in=allowed or region_group(volunteer.region))
     now = timezone.now()
     return (
         active.filter(date__gte=now).order_by('date').first()

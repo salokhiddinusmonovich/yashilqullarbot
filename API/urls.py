@@ -32,6 +32,7 @@ urlpatterns = [
     path('webapp/staff/events/', webapp.StaffEventsView.as_view(), name='webapp-staff-events'),
     path('webapp/staff/checkin/', webapp.StaffCheckInView.as_view(), name='webapp-staff-checkin'),
     path('webapp/staff/search/', webapp.StaffSearchView.as_view(), name='webapp-staff-search'),
+    path('webapp/shop/', webapp.ShopView.as_view(), name='webapp-shop'),
 
     # ── Telegram bot login (без изменений) ──
     path('login/', TelegramLoginView.as_view(), name='login'),

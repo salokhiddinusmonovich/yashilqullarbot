@@ -34,7 +34,9 @@ def process_qr_logic(scanner_tg_id, target_tg_id):
 
     project = services.pick_project(volunteer, scanner_user)
     if not project:
-        return t("qr_no_project", region=region_label(volunteer.region)), None, None, False
+        # регион, в котором искали: свой — для координатора, волонтёра — для основателя
+        region = scanner_user.region if services.scan_regions(scanner_user) else volunteer.region
+        return t("qr_no_project", region=region_label(region)), None, None, False
 
     result, auto_added = services.check_in(volunteer, project)
     if result == "already":

@@ -516,14 +516,19 @@ class _Staff(_Auth):
 
 
 class StaffEventsView(_Staff):
-    """GET /webapp/staff/events/ — мероприятия для сканирования (вчера…+7 дней) + какое выбрать по умолчанию."""
+    """
+    GET /webapp/staff/events/ — мероприятия для сканирования (вчера…+7 дней) + какое выбрать по умолчанию.
+    Только своего региона (services.scan_regions), у основателя — все.
+    """
 
     def get(self, request):
         now = timezone.now()
         lang = lang_of_sync(request.user.tg_id) if request.user.tg_id else "uz"
-        qs = services.with_counts(
-            EcoProject.objects.filter(date__gte=now - timedelta(days=1), date__lte=now + timedelta(days=7))
-        ).order_by('date')[:20]
+        qs = EcoProject.objects.filter(date__gte=now - timedelta(days=1), date__lte=now + timedelta(days=7))
+        allowed = services.scan_regions(request.user)
+        if allowed is not None:
+            qs = qs.filter(region__in=allowed)
+        qs = services.with_counts(qs).order_by('date')[:20]
         events = [_event_payload(request, p, None, lang) for p in qs]
         today = timezone.localdate().isoformat()
         mine = services.region_group(request.user.region)
@@ -537,14 +542,17 @@ class StaffEventsView(_Staff):
 class StaffCheckInView(_Staff):
     """
     POST /webapp/staff/checkin/  { project_id, qr } или { project_id, user_id }
-    → { result: ok|already|not_found|bad_qr, auto_added, person, counts }
+    → { result: ok|already|not_found|bad_qr|other_region, auto_added, person, counts }
     Не записан — записывается автоматически (как и в боте).
+    Мероприятие чужого региона — отказ (other_region), даже если id подставили вручную.
     """
 
     def post(self, request):
         project = EcoProject.objects.filter(id=request.data.get("project_id")).first()
         if not project:
             return Response({"result": "no_event"}, status=status.HTTP_400_BAD_REQUEST)
+        if not services.can_scan_project(request.user, project):
+            return Response({"result": "other_region"})
 
         if request.data.get("user_id"):
             volunteer = TGUser.objects.filter(id=request.data["user_id"]).first()
@@ -592,3 +600,50 @@ class StaffSearchView(_Staff):
              "photo": _abs(request, thumb_url(u.photo, 120))}
             for u in users
         ]})
+
+
+# ─────────────────────────── эко-магазин (бета) ───────────────────────────
+# Магазин ещё не открыт: товары и цены — на фронте (Mini App, screens/Shop.tsx).
+# Здесь только «❤ Хочу» — чтобы до запуска знать, что и сколько заказывать.
+# Хранится в Redis (db 6, как язык): shop:wish:<item> — множество tg_id. Схему БД не трогаем.
+
+SHOP_ITEMS = ("stickers", "pin", "bracelet", "notebook", "bag", "cap", "tree", "tshirt", "thermos", "hoodie")
+
+
+def _shop_state(tg_id):
+    from tgbot.services.lang import _sclient
+    r = _sclient()
+    try:
+        pipe = r.pipeline()
+        for item in SHOP_ITEMS:
+            pipe.scard(f"shop:wish:{item}")
+            pipe.sismember(f"shop:wish:{item}", tg_id)
+        res = pipe.execute()
+    except Exception:
+        return {"counts": {}, "mine": []}
+    counts = {item: int(res[2 * i]) for i, item in enumerate(SHOP_ITEMS)}
+    mine = [item for i, item in enumerate(SHOP_ITEMS) if res[2 * i + 1]]
+    return {"counts": counts, "mine": mine}
+
+
+class ShopView(_Auth):
+    """GET /webapp/shop/ — сколько людей хотят каждый товар + мои «хочу». POST {item} — переключить «хочу»."""
+
+    def get(self, request):
+        return Response(_shop_state(request.user.tg_id))
+
+    def post(self, request):
+        item = request.data.get("item")
+        if item not in SHOP_ITEMS or not request.user.tg_id:
+            return Response({"detail": "bad item"}, status=status.HTTP_400_BAD_REQUEST)
+        from tgbot.services.lang import _sclient
+        key = f"shop:wish:{item}"
+        try:
+            r = _sclient()
+            if r.sismember(key, request.user.tg_id):
+                r.srem(key, request.user.tg_id)
+            else:
+                r.sadd(key, request.user.tg_id)
+        except Exception:
+            return Response({"detail": "unavailable"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        return Response(_shop_state(request.user.tg_id))
