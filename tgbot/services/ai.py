@@ -10,6 +10,7 @@ aistudio.google.com → Get API key). Без ключа бот отвечает 
   • Google ответил 429 (лимит) — 2 минуты вообще не ходим в ИИ, отвечаем «напишите координатору».
 Ответ только по справочнику (FAQ + инструкция) и данным самого человека — ничего не выдумывает.
 """
+import asyncio
 import json
 import logging
 import os
@@ -25,7 +26,7 @@ log = logging.getLogger(__name__)
 API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 MODEL = os.environ.get("GEMINI_MODEL", "").strip()
 # Имена моделей у Google меняются — пробуем по очереди, рабочую запоминаем (_working)
-MODELS = [m for m in dict.fromkeys([MODEL, "gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash", "gemini-2.5-flash-lite"]) if m]
+MODELS = [m for m in dict.fromkeys([MODEL, "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-flash-latest"]) if m]
 _working = None
 LAST_ERROR = ""
 DAILY_LIMIT = int(os.environ.get("AI_DAILY_LIMIT", "15"))
@@ -74,13 +75,30 @@ async def _post(model: str, body: dict):
             return resp.status, await resp.json(content_type=None)
 
 
+def _retry_delay(data) -> float:
+    """Сколько Google просит подождать при 429 (RetryInfo.retryDelay, «13s»)."""
+    try:
+        for d in data.get("error", {}).get("details", []):
+            if "retryDelay" in d:
+                return float(str(d["retryDelay"]).rstrip("s"))
+    except (AttributeError, ValueError, TypeError):
+        pass
+    return 30.0
+
+
 async def _generate(system: str, contents: list, json_mode=False, max_tokens=2048) -> str:
+    """
+    Запрос к Gemini. Модели пробуем по очереди: у каждой СВОЙ бесплатный лимит,
+    поэтому «лимит» у одной (429) — не повод сдаваться: идём к следующей.
+    Короткое «подождите N сек» (≤ 12) — ждём и повторяем. Все исчерпаны — пауза на
+    столько, сколько просит Google, и честное «ИИ занят».
+    """
     global _working, LAST_ERROR
     if not API_KEY:
         LAST_ERROR = "GEMINI_API_KEY yo'q (.env)"
         raise Unavailable("no key")
     if await _cooling():
-        raise Unavailable("cooldown")
+        raise Unavailable("rate limit")
     body = {
         "system_instruction": {"parts": [{"text": system}]},
         "contents": contents,
@@ -89,13 +107,22 @@ async def _generate(system: str, contents: list, json_mode=False, max_tokens=204
     if json_mode:
         body["generationConfig"]["responseMimeType"] = "application/json"
     order = ([_working] if _working else []) + [m for m in MODELS if m != _working]
-    data = None
+    data, limited, wait_max = None, False, 0.0
     for model in order:
-        try:
-            status, data = await _post(model, body)
-        except (aiohttp.ClientError, TimeoutError) as e:
-            LAST_ERROR = f"network: {e}"
-            raise Unavailable(str(e))
+        for attempt in (1, 2):
+            try:
+                status, data = await _post(model, body)
+            except (aiohttp.ClientError, TimeoutError) as e:
+                LAST_ERROR = f"network: {e}"
+                raise Unavailable(str(e))
+            if status != 429:
+                break
+            delay = _retry_delay(data)
+            wait_max = max(wait_max, delay)
+            if attempt == 1 and delay <= 12:
+                await asyncio.sleep(delay + 0.5)
+                continue
+            break
         if status == 200:
             _working = model
             break
@@ -103,14 +130,17 @@ async def _generate(system: str, contents: list, json_mode=False, max_tokens=204
         LAST_ERROR = f"{model}: HTTP {status} {msg[:200]}"
         log.warning("gemini %s", LAST_ERROR)
         if status == 429:
-            await _cool_down()
-            raise Unavailable("rate limit")
+            limited = True
+            continue                               # у другой модели — свой лимит
         if status in (400, 403) and "API key" in msg:
             raise Unavailable("bad key")          # ключ неверный — другие модели не помогут
         if status in (404, 400):
-            continue                               # модель не найдена/не поддерживает — пробуем следующую
+            continue                               # модель не найдена/не поддерживает — следующая
         raise Unavailable(f"http {status}")
     else:
+        if limited:
+            await _cool_down(int(min(max(wait_max, 15), 90)))
+            raise Unavailable("rate limit")
         raise Unavailable("no working model")
     try:
         parts = data["candidates"][0]["content"]["parts"]
@@ -120,7 +150,6 @@ async def _generate(system: str, contents: list, json_mode=False, max_tokens=204
         raise Unavailable("empty answer")
     if not text:
         raise Unavailable("empty answer")
-    LAST_ERROR = ""
     return text
 
 
@@ -133,8 +162,9 @@ async def status() -> str:
     except Exception:
         pass
     try:
-        txt = await _generate("Reply with one word: OK", [{"role": "user", "parts": [{"text": "ping"}]}], max_tokens=50)
-        return f"✅ AI ishlayapti. Model: {_working}. Javob: {txt[:40]}"
+        await _generate("Reply with one word: OK", [{"role": "user", "parts": [{"text": "ping"}]}], max_tokens=50)
+        last = f"\nOxirgi xato: {LAST_ERROR}" if LAST_ERROR else ""
+        return f"✅ AI ishlayapti. Model: {_working}.{last}\nModellar: {', '.join(MODELS)}"
     except Unavailable as e:
         return f"❌ AI ishlamayapti: {e}\n{LAST_ERROR}"
 
@@ -208,13 +238,17 @@ action — one of:
 period — one of "today","yesterday","week","month","all" (default "today" for report/stats).
 region — one of {regions} or "all" (Tashkent city/region → "tashkent"; default "all").
 query — only for "find", else "".
+answer — ONLY when action is "question" or "unknown": a short helpful answer (max 6 lines, Telegram HTML <b> only) in {lang}, using ONLY this handbook; if the handbook doesn't cover it, say so briefly. Otherwise "".
+
+HANDBOOK:
+{kb}
 """
 
 
-async def parse_command(text: str, regions: list[str], audio: bytes | None = None) -> dict:
+async def parse_command(text: str, regions: list[str], audio: bytes | None = None, lang: str = "uz") -> dict:
     parts = [_audio_part(audio), {"text": "Voice command (probably Uzbek or Russian)."}] if audio else [{"text": text[:500]}]
-    raw = await _generate(_CMD_SYSTEM.format(regions=", ".join(regions)),
-                          [{"role": "user", "parts": parts}], json_mode=True, max_tokens=512)
+    raw = await _generate(_CMD_SYSTEM.format(regions=", ".join(regions), lang=LANG_NAMES.get(lang, "Uzbek"), kb=faq.knowledge_text()),
+                          [{"role": "user", "parts": parts}], json_mode=True, max_tokens=1500)
     try:
         return json.loads(raw)
     except ValueError:

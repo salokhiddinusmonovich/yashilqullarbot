@@ -117,7 +117,9 @@ async def answer_user(message: types.Message, state: FSMContext | None, text: st
 
     if entry:
         await message.answer(faq.answer(entry, lang), reply_markup=kb)
-    elif audio is not None or (message.voice and not ai.enabled()):
+    elif ai.enabled() and ai.LAST_ERROR and "429" in ai.LAST_ERROR or await ai._cooling():
+        await message.answer(t("ai_busy"), reply_markup=kb)      # бесплатный лимит Google на минуту — попробуйте чуть позже
+    elif audio is not None or message.voice:
         await message.answer(t("voice_tip"), reply_markup=kb)
     else:
         await message.answer(t("ask_fallback"), reply_markup=kb)
@@ -228,19 +230,26 @@ async def cmd_message(message: types.Message, state: FSMContext):
     if cmd is None and ai.enabled():
         try:
             await message.bot.send_chat_action(message.chat.id, "typing")
-            cmd = await ai.parse_command(text, list(reports.REGION_CHOICES), audio=audio)
-            if audio and cmd.get("transcript"):
-                await message.answer(f"🎙 «{escape(str(cmd['transcript'])[:300])}»")
+            cmd = await ai.parse_command(text, list(reports.REGION_CHOICES), audio=audio, lang=current_lang.get() or "uz")
         except ai.Unavailable as e:
             log.warning("ai cmd unavailable: %s | %s", e, ai.LAST_ERROR)
+    heard = f"🎙 «{escape(str(cmd.get('transcript'))[:300])}»\n" if audio and cmd and cmd.get("transcript") else ""
     action = (cmd or {}).get("action", "unknown")
     if action in ("question", "unknown") or cmd is None:
-        # не команда отчёта — значит, обычный вопрос: отвечаем как помощник
-        if text and (cmd is None and not ai.enabled()) and parse_rules(text) is None and faq.match(text) is None:
+        # не команда отчёта — обычный вопрос. Ответ уже пришёл в том же запросе (один запрос на голосовое).
+        if cmd and cmd.get("answer"):
+            await message.answer(heard + ai._safe_html(str(cmd["answer"])) + t("ask_ai_note"))
+            return
+        if cmd is None and ai.enabled() and (audio is not None or not text):
+            await message.answer(t("ai_busy"))
+            return
+        if text and parse_rules(text) is None and faq.match(text) is None and not ai.enabled():
             await message.answer(t("cmd_unknown"))
             return
-        await answer_user(message, None, text or str((cmd or {}).get("transcript") or ""), None if (cmd or {}).get("transcript") else audio)
+        await answer_user(message, None, text, None)
         return
+    if heard:
+        await message.answer(heard.strip())
     period = cmd.get("period") if cmd and cmd.get("period") in reports.PERIODS else "today"
     region = cmd.get("region") if cmd and cmd.get("region") in reports.REGION_CHOICES else "all"
     again = InlineKeyboardMarkup().add(InlineKeyboardButton(t("adm_btn_menu"), callback_data="adm:menu"))
