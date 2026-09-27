@@ -76,11 +76,12 @@ def home_view(request):
     return response
 
 
-from app_telegram.views_cert import certificate_file
+from app_telegram.views_cert import certificate_file, cv_file
 
 urlpatterns = [
     # 🎓 сертификат участника: /c/<id>-<подпись>.pdf|jpg
     path('c/<int:pid>-<str:sig>.<str:ext>', certificate_file, name='certificate-file'),
+    path('c/cv/<int:uid>-<str:sig>.pdf', cv_file, name='cv-file'),
     path('admin/', admin.site.urls),
     path('i18n/', include('django.conf.urls.i18n')),  # переключатель языка в админке
     path('', home_view),

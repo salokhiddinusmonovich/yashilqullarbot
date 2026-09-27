@@ -40,6 +40,8 @@ from tgbot.handlers.reminders import register_reminders
 from tgbot.services.reminders import reminders_loop
 from tgbot.services.cert_delivery import certificates_loop
 from tgbot.handlers.certs import register_certs
+from tgbot.handlers.digest import register_digest
+from tgbot.services.digest import digest_loop
 from tgbot.handlers.language import register_language
 from tgbot.handlers.miniapp import register_miniapp, setup_menu_button
 from tgbot.middlewares.environment import EnvironmentMiddleware
@@ -89,6 +91,7 @@ def register_all_handlers(dp):
     register_invite(dp)              # 👥 пригласи друга / /invite
     register_reminders(dp)           # кнопки в напоминаниях о мероприятиях
     register_certs(dp)               # 🎓 /sertifikat
+    register_digest(dp)              # 📅 недельный дайджест: /digest, «🔕»
     register_register(dp)            # регистрация — СТАТИКА, всегда через бота,
                                       # не переключается флагом USE_MINI_APP
     register_about_and_team(dp)      # статичная инфа "о нас"/команда — не дублируется в Mini App
@@ -173,6 +176,8 @@ async def main():
     asyncio.create_task(reminders_loop(bot))
     # 🎓 Сертификаты — наутро после мероприятия всем, кто пришёл (tgbot/services/cert_delivery.py)
     asyncio.create_task(certificates_loop(bot))
+    # 📅 Дайджест мероприятий на неделю — по понедельникам в 10:00 (tgbot/services/digest.py)
+    asyncio.create_task(digest_loop(bot))
 
     # Запуск polling
     try:

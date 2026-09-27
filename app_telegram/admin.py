@@ -113,7 +113,7 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
         ] + super().get_urls()
 
     def certificate_view(self, request):
-        """🎓 Шаблон сертификата: загрузка PNG из Canva, координаты с живым предпросмотром, «прошлые мероприятия»."""
+        """🎓 Дизайны сертификатов: сезоны (🍂❄️🌸☀️) и свои; PNG из Canva, месяцы, координаты, живой предпросмотр."""
         from django.core.exceptions import PermissionDenied
         from django.http import HttpResponse, HttpResponseRedirect
         from django.template.response import TemplateResponse
@@ -121,7 +121,13 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
 
         if not request.user.is_superuser and not self.has_change_permission(request):
             raise PermissionDenied
-        lay = C.layout()
+        all_designs = C.designs()
+        slugs = [d["slug"] for d in all_designs]
+        slug = request.GET.get("d") or request.POST.get("d") or C.FALLBACK
+        if slug not in slugs:
+            slug = C.FALLBACK
+        here = f"{request.path}?d={slug}"
+        lay = C.layout(slug)
 
         if request.GET.get("preview"):
             q = dict(lay)
@@ -131,40 +137,58 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
                         q[k] = (request.GET[k] in ("1", "true", "on")) if isinstance(v, bool) else type(v)(request.GET[k])
                     except ValueError:
                         pass
-            img = C.render("Muhammadaziz Khabibullayev", timezone.localdate().strftime("%d.%m.%Y"), "YQ-001043", q)
+            img = C.render("Muhammadaziz Khabibullayev", timezone.localdate().strftime("%d.%m.%Y"), "YQ-001043", q,
+                           slug=slug, event_title="Daraxt ekish — Yunusobod")
             return HttpResponse(C.to_jpg(img, max_w=1200), content_type="image/jpeg")
 
         if request.method == "POST":
             act = request.POST.get("act")
-            if act == "reset":
-                C.reset()
-                self.message_user(request, trn("cert_reset_done"))
-            elif act == "announce":
+            if act == "announce":
                 self._announce_past(request)
-            else:
-                f = request.FILES.get("template")
-                if f:
-                    try:
-                        C.save_template(f)
-                    except Exception:
-                        self.message_user(request, trn("cert_bad_file"), messages.ERROR)
-                        return HttpResponseRedirect(request.path)
-                data = {k: request.POST.get(k) for k in C.DEFAULT_LAYOUT if k != "show_number" and request.POST.get(k) not in (None, "")}
-                data["show_number"] = bool(request.POST.get("show_number"))
+                return HttpResponseRedirect(here)
+            if act == "new":
+                new = C.create_design(request.POST.get("name", "").strip(), request.POST.get("emoji", "").strip() or "🎨")
+                return HttpResponseRedirect(f"{request.path}?d={new}")
+            if act == "reset":
+                C.delete_design(slug)
+                self.message_user(request, trn("cert_reset_done"))
+                return HttpResponseRedirect(request.path if slug not in C.SEASONS else here)
+            f = request.FILES.get("template")
+            if f:
                 try:
-                    C.save_layout(data)
-                except ValueError:
-                    pass
-                self.message_user(request, trn("cert_saved"))
-            return HttpResponseRedirect(request.path)
+                    C.save_template(f, slug)
+                except Exception:
+                    self.message_user(request, trn("cert_bad_file"), messages.ERROR)
+                    return HttpResponseRedirect(here)
+            data = {k: request.POST.get(k) for k in C.DEFAULT_LAYOUT
+                    if not isinstance(C.DEFAULT_LAYOUT[k], bool) and request.POST.get(k) not in (None, "")}
+            data["show_number"] = bool(request.POST.get("show_number"))
+            data["event_show"] = bool(request.POST.get("event_show"))
+            try:
+                C.save_layout(data, slug)
+            except ValueError:
+                pass
+            import re as _re
+            events = [int(x) for x in _re.findall(r"\d+", request.POST.get("events", ""))]
+            C.save_meta(slug, months=request.POST.getlist("months"), events=events)
+            self.message_user(request, trn("cert_saved"))
+            return HttpResponseRedirect(here)
 
-        fields = [(grp, [(k, C.DEFAULT_LAYOUT[k], lay[k]) for k in C.DEFAULT_LAYOUT if k.startswith(prefix) and k != "show_number"])
-                  for grp, prefix in ((trn("cert_name"), "name_"), (trn("cert_date"), "date_"), (trn("cert_number"), "number_"))]
         labels = {"x": trn("cert_x"), "y": trn("cert_y"), "size": trn("cert_size"), "color": trn("cert_color"), "max_w": trn("cert_maxw")}
+        groups = []
+        for title, prefix in ((trn("cert_name"), "name_"), (trn("cert_date"), "date_"), (trn("cert_number"), "number_"), (trn("cert_event"), "event_")):
+            fs = [(k, labels.get(k.split("_", 1)[1], k), lay[k], "color" if k.endswith("color") else "number")
+                  for k, v in C.DEFAULT_LAYOUT.items() if k.startswith(prefix) and not isinstance(v, bool)]
+            groups.append((title, prefix, fs))
+        cur = next(d for d in all_designs if d["slug"] == slug)
+        month_names = ["Yan", "Fev", "Mar", "Apr", "May", "Iyn", "Iyl", "Avg", "Sen", "Okt", "Noy", "Dek"]
         ctx = {
             **self.admin_site.each_context(request), "title": trn("cert_title"), "opts": self.model._meta,
-            "groups": [(g, [(k, k.split("_", 1)[1], labels.get(k.split("_", 1)[1], k), v, "color" if k.endswith("color") else "number") for k, _d, v in fs]) for g, fs in fields],
-            "show_number": lay.get("show_number"), "custom": (C.CUSTOM / "template.png").exists(),
+            "designs": all_designs, "cur": cur, "slug": slug, "groups": groups,
+            "show_number": lay.get("show_number"), "event_show": lay.get("event_show"),
+            "months": [(i + 1, n, (i + 1) in cur.get("months", [])) for i, n in enumerate(month_names)],
+            "events_text": ", ".join(str(x) for x in cur.get("events", [])),
+            "recent_events": list(EcoProject.objects.order_by('-date').values('id', 'title', 'date')[:12]),
         }
         return TemplateResponse(request, "admin/yq_certificate.html", ctx)
 

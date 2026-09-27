@@ -153,6 +153,10 @@ async def _do_register(message: types.Message, tg_id: int, project_id: int, bot)
         return
 
     result, project = await _register(tg_id, project_id)
+    if result == "event_no_seats" and project:
+        kb = InlineKeyboardMarkup().add(InlineKeyboardButton(t("btn_wait_join"), callback_data=f"evwait:{project.id}"))
+        await message.answer(t("event_no_seats") + "\n\n" + t("wait_offer"), reply_markup=kb)
+        return
     if result != "ok":
         await message.answer(t(result), reply_markup=get_events_menu())
         return
@@ -170,6 +174,31 @@ async def register_callback(call: types.CallbackQuery):
     await call.answer()
     project_id = int(call.data.split(":", 1)[1])
     await _do_register(call.message, call.from_user.id, project_id, call.bot)
+
+
+@sync_to_async
+def _wait(tg_id: int, project_id: int, join: bool):
+    from app_telegram import waitlist
+    from app_telegram.models import EcoProject
+    user = TGUser.objects.filter(tg_id=tg_id).first()
+    project = EcoProject.objects.filter(id=project_id).first()
+    if not user or not project:
+        return None
+    if join:
+        return waitlist.join(user, project)
+    waitlist.leave(user.id, project_id)
+    return 0
+
+
+async def wait_callback(call: types.CallbackQuery):
+    kind, pid = call.data.split(":")
+    await call.answer()
+    pos = await _wait(call.from_user.id, int(pid), kind == "evwait")
+    if kind == "evwait" and pos:
+        kb = InlineKeyboardMarkup().add(InlineKeyboardButton(t("btn_wait_leave"), callback_data=f"evunwait:{pid}"))
+        await call.message.answer(t("wait_joined", pos=pos), reply_markup=kb)
+    elif kind == "evunwait":
+        await call.message.answer(t("wait_left"))
 
 
 async def process_registration(message: types.Message, state: FSMContext):
@@ -213,6 +242,7 @@ def register_eco_clubs(dp: Dispatcher):
     dp.register_message_handler(list_upcoming_events, text=variants("btn_upcoming"), state="*")
     dp.register_message_handler(list_past_events, text=variants("btn_past"), state="*")
     dp.register_callback_query_handler(register_callback, lambda c: c.data.startswith("evreg:"), state="*")
+    dp.register_callback_query_handler(wait_callback, lambda c: c.data.startswith(("evwait:", "evunwait:")), state="*")
     dp.register_message_handler(
         process_registration,
         text=variants("btn_event_register"),

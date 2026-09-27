@@ -30,7 +30,7 @@ from rest_framework import status, views
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from app_telegram import certificates, referrals, services
+from app_telegram import certificates, cv, referrals, services, waitlist
 from app_telegram.models import TGUser, EcoProject, ProjectParticipation
 from app_telegram.telegram import send_in_background, is_channel_member
 from app_telegram.thumbs import thumb_url
@@ -122,6 +122,9 @@ def _event_payload(request, p, joined_status=None, lang="uz"):
         "attended": getattr(p, "attended", None),
         "max": p.max_participants,
         "my_status": joined_status,
+        # ⏳ лист ожидания: сколько в очереди и моё место (если стою)
+        "waitlist": waitlist.count(p.id),
+        "my_wait": waitlist.position(request.user.id, p.id) if getattr(request, "user", None) and request.user.is_authenticated and not joined_status else None,
         # ссылку на группу показываем только записавшимся
         "chat_link": p.chat_link if joined_status else None,
     }
@@ -177,6 +180,7 @@ def bootstrap_data(request, user: TGUser, lang: str = None):
             for pp in history
         ],
         "bot_username": settings.TELEGRAM_BOT_USERNAME,
+        "cv_url": cv.url(user.id),
         "referral": {**referrals.stats(user.tg_id), "link": referrals.link(settings.TELEGRAM_BOT_USERNAME, user.tg_id)} if user.tg_id else None,
         "community": community_stats(),
         "regions": [[code, region_label(code, lang)] for code in TGUser.Region.values],
@@ -733,3 +737,25 @@ class CertificateSendView(_Auth):
                      bot_t("cert_caption", lang, title=escape(title), number=certificates.number_of(p2)))]
         send_documents_in_background(build)
         return Response({"result": "sent"})
+
+
+class WaitView(_Auth):
+    """POST /webapp/events/<id>/wait/ {leave?: true} — встать в очередь на заполненное мероприятие / выйти."""
+
+    def post(self, request, pk):
+        user = request.user
+        project = services.with_counts(EcoProject.objects.filter(id=pk, is_active=True)).first()
+        if not project:
+            return Response({"result": "gone"})
+        if request.data.get("leave"):
+            waitlist.leave(user.id, pk)
+            result = "left"
+        else:
+            if project.region not in services.region_group(user.region):
+                return Response({"result": "region"})
+            if ProjectParticipation.objects.filter(user=user, project=project).exists():
+                return Response({"result": "already"})
+            waitlist.join(user, project)
+            result = "waiting"
+        lang = lang_of_sync(user.tg_id) if user.tg_id else "uz"
+        return Response({"result": result, "event": _event_payload(request, project, None, lang)})

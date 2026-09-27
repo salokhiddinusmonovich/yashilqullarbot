@@ -24,6 +24,7 @@ urlpatterns = [
     path('webapp/me/password/', webapp.MePasswordView.as_view(), name='webapp-me-password'),
     path('webapp/events/', webapp.AllEventsView.as_view(), name='webapp-events'),
     path('webapp/events/<int:pk>/join/', webapp.JoinView.as_view(), name='webapp-join'),
+    path('webapp/events/<int:pk>/wait/', webapp.WaitView.as_view(), name='webapp-wait'),
     path('webapp/lang/', webapp.LangView.as_view(), name='webapp-lang'),
     path('webapp/qr.svg', webapp.QRView.as_view(), name='webapp-qr'),
     path('webapp/top/', webapp.LeaderboardView.as_view(), name='webapp-top'),

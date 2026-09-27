@@ -49,6 +49,25 @@ async def cert_callback(call: types.CallbackQuery):
                                        caption=t("cert_caption", title=escape(title), number=number))
 
 
+@sync_to_async
+def _cv(tg_id: int, lang: str):
+    from app_telegram import cv
+    from app_telegram.models import TGUser
+    u = TGUser.objects.filter(tg_id=tg_id).first()
+    return (cv.build(u, lang), cv.filename(u)) if u else (None, None)
+
+
+async def cv_handler(message: types.Message):
+    from tgbot.i18n import current_lang
+    await message.answer(t("adm_preparing"))
+    data, fname = await _cv(message.from_user.id, current_lang.get() or "uz")
+    if not data:
+        await message.answer(t("cert_none"))
+        return
+    await message.answer_document(InputFile(BytesIO(data), filename=fname), caption=t("cv_caption"))
+
+
 def register_certs(dp: Dispatcher):
+    dp.register_message_handler(cv_handler, commands=["cv", "rezyume", "резюме"], state="*")
     dp.register_message_handler(certs_handler, commands=["sertifikat", "certificate", "certificates", "cert"], state="*")
     dp.register_callback_query_handler(cert_callback, lambda c: c.data.startswith("cert:"), state="*")

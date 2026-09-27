@@ -436,4 +436,4 @@ class EcoProjectLike(models.Model):
  
     class Meta:
         unique_together = ('project', 'user')
- 
+

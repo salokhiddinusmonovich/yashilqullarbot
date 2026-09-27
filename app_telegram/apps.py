@@ -8,5 +8,12 @@ class AppTelegramConfig(AppConfig):
     verbose_name = "Yashil Qo'llar"
 
     def ready(self):
-        import app_telegram.translation  
+        import app_telegram.translation  # noqa
+        # ⏳ лист ожидания: место освободилось → записываем первого из очереди
+        from django.db.models.signals import post_delete, post_save
+        from . import waitlist
+        from .models import ProjectParticipation, EcoProject
+        post_delete.connect(waitlist.on_participation_deleted, sender=ProjectParticipation, dispatch_uid="wait_del")
+        post_save.connect(waitlist.on_participation_saved, sender=ProjectParticipation, dispatch_uid="wait_save")
+        post_save.connect(waitlist.on_project_saved, sender=EcoProject, dispatch_uid="wait_proj")
         

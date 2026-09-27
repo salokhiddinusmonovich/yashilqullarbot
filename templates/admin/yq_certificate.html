@@ -2,10 +2,21 @@
 {% load yq %}
 {% block extrastyle %}{{ block.super }}
 <style>
-  .cert { max-width: 1280px; }
+  .cert { max-width: 1320px; }
   .cert-head h1 { margin: 0 0 4px; font-size: 1.6rem; font-weight: 800; letter-spacing: -.02em; }
-  .cert-head p { margin: 0 0 18px; color: var(--body-quiet-color); max-width: 760px; }
-  .cert-grid { display: grid; grid-template-columns: 360px 1fr; gap: 20px; align-items: start; }
+  .cert-head p { margin: 0 0 14px; color: var(--body-quiet-color); max-width: 820px; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; align-items: center; }
+  .tab { display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 12px; border: 1px solid var(--hairline-color);
+    background: var(--darkened-bg); font-weight: 700; color: var(--body-loud-color) !important; text-decoration: none !important; }
+  .tab.on { background: var(--primary); color: #fff !important; border-color: transparent; }
+  .tab small { font-weight: 600; opacity: .75; font-size: .72rem; }
+  .tab .dot { width: 8px; height: 8px; border-radius: 50%; background: #16a34a; display: inline-block; }
+  .tab .dot.off { background: #d1d5db; }
+  .newform { display: inline-flex; gap: 6px; align-items: center; }
+  .newform input { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--hairline-color); background: var(--body-bg); color: var(--body-fg); width: 150px; }
+  .newform input.emo { width: 48px; text-align: center; }
+  .newform button { padding: 8px 12px; border-radius: 10px; border: 1px dashed var(--primary); background: transparent; color: var(--primary); font-weight: 700; cursor: pointer; }
+  .cert-grid { display: grid; grid-template-columns: 380px 1fr; gap: 20px; align-items: start; }
   @media (max-width: 1000px) { .cert-grid { grid-template-columns: 1fr; } }
   .cert-box { padding: 16px; border-radius: 16px; background: var(--darkened-bg); border: 1px solid var(--hairline-color); margin-bottom: 14px; }
   .cert-box h3 { margin: 0 0 10px; font-size: .95rem; }
@@ -13,7 +24,11 @@
   .cert-row label { display: grid; gap: 3px; font-size: .75rem; color: var(--body-quiet-color); font-weight: 600; }
   .cert-row input { padding: 7px 9px; border-radius: 9px; border: 1px solid var(--hairline-color); background: var(--body-bg); color: var(--body-fg); width: 100%; box-sizing: border-box; }
   .cert-row input[type=color] { padding: 2px; height: 34px; }
-  .cert-hint { font-size: .78rem; color: var(--body-quiet-color); margin-top: 6px; }
+  .months { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+  .months label { display: flex; gap: 4px; align-items: center; justify-content: center; padding: 6px 0; border-radius: 9px; border: 1px solid var(--hairline-color); background: var(--body-bg); font-size: .8rem; cursor: pointer; }
+  .months input:checked + span { font-weight: 800; color: var(--primary); }
+  .evinput { width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--hairline-color); background: var(--body-bg); color: var(--body-fg); }
+  .cert-hint { font-size: .78rem; color: var(--body-quiet-color); margin-top: 6px; line-height: 1.45; }
   .cert-btns { display: flex; gap: 8px; flex-wrap: wrap; }
   .cert-btns button { padding: 10px 16px; border-radius: 12px; border: 0; font-weight: 700; cursor: pointer; }
   .cert-btns .save { background: linear-gradient(135deg, #15803d, #16a34a); color: #fff; }
@@ -22,35 +37,63 @@
   .cert-prev img { display: block; width: 100%; }
   .cert-announce { background: #fff7ed; border-color: #fdba74; }
   .cert-announce button { background: #ea580c; color: #fff; padding: 10px 16px; border-radius: 12px; border: 0; font-weight: 700; cursor: pointer; }
-  .cert-tag { display: inline-block; font-size: .72rem; padding: 2px 8px; border-radius: 99px; background: #dcfce7; color: #166534; font-weight: 700; margin-left: 6px; }
+  .warn { padding: 10px 12px; border-radius: 12px; background: #fef9c3; color: #854d0e; font-size: .82rem; margin-bottom: 12px; }
+  .chk { display: flex; gap: 8px; align-items: center; margin-top: 10px; font-size: .85rem; }
 </style>
 {% endblock %}
 {% block breadcrumbs %}<div class="breadcrumbs"><a href="{% url 'admin:index' %}">⌂</a> › <a href="{% url 'admin:app_telegram_projectparticipation_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a> › {% yq "cert_title" %}</div>{% endblock %}
 {% block content %}
 <div class="cert">
   <div class="cert-head"><h1>🎓 {% yq "cert_title" %}</h1><p>{% yq "cert_sub" %}</p></div>
+
+  <div class="tabs">
+    {% for d in designs %}
+      <a class="tab {% if d.slug == slug %}on{% endif %}" href="?d={{ d.slug }}">
+        <span class="dot {% if not d.custom_png %}off{% endif %}"></span>{{ d.emoji }} {{ d.name }}
+        {% if d.events %}<small>#{{ d.events|join:", #" }}</small>{% elif d.months %}<small>{{ d.months|length }} oy</small>{% endif %}
+      </a>
+    {% endfor %}
+    <form method="post" class="newform">{% csrf_token %}
+      <input class="emo" name="emoji" value="🎨" maxlength="4">
+      <input name="name" placeholder="{% yq "cert_new_ph" %}" required maxlength="40">
+      <button type="submit" name="act" value="new">{% yq "cert_new" %}</button>
+    </form>
+  </div>
+
   <div class="cert-grid">
     <div>
       <form method="post" enctype="multipart/form-data" id="cert-form">{% csrf_token %}
+        <input type="hidden" name="d" value="{{ slug }}">
+        {% if not cur.custom_png %}<div class="warn">⚠️ {% yq "cert_default_note" %}</div>{% endif %}
         <div class="cert-box">
-          <h3>🖼 {% yq "cert_upload" %}{% if custom %}<span class="cert-tag">✓</span>{% endif %}</h3>
+          <h3>🖼 {{ cur.emoji }} {{ cur.name }} — {% yq "cert_upload" %}</h3>
           <input type="file" name="template" accept="image/png,image/jpeg">
           <div class="cert-hint">{% yq "cert_upload_hint" %}</div>
         </div>
-        {% for title, fields in groups %}
+        <div class="cert-box">
+          <h3>📅 {% yq "cert_months" %}</h3>
+          <div class="months">
+            {% for num, name, on in months %}<label><input type="checkbox" name="months" value="{{ num }}" {% if on %}checked{% endif %} hidden><span>{{ name }}</span></label>{% endfor %}
+          </div>
+          <h3 style="margin-top:14px">⭐ {% yq "cert_events" %}</h3>
+          <input class="evinput" name="events" value="{{ events_text }}" placeholder="12, 15">
+          <div class="cert-hint">{% yq "cert_events_hint" %} {% for e in recent_events %}#{{ e.id }} {{ e.title|truncatechars:26 }} ({{ e.date|date:"d.m" }}){% if not forloop.last %} · {% endif %}{% endfor %}</div>
+        </div>
+        {% for title, prefix, fields in groups %}
         <div class="cert-box">
           <h3>{{ title }}</h3>
           <div class="cert-row">
-            {% for key, short, label, value, kind in fields %}
+            {% for key, label, value, kind in fields %}
               <label>{{ label }}<input type="{% if kind == 'color' %}color{% else %}number{% endif %}" name="{{ key }}" value="{{ value }}" class="lay"></label>
             {% endfor %}
           </div>
-          {% if forloop.last %}<label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:.85rem"><input type="checkbox" name="show_number" class="lay" {% if show_number %}checked{% endif %}> {% yq "cert_show_number" %}</label>{% endif %}
+          {% if prefix == "number_" %}<label class="chk"><input type="checkbox" name="show_number" class="lay" {% if show_number %}checked{% endif %}> {% yq "cert_show_number" %}</label>{% endif %}
+          {% if prefix == "event_" %}<label class="chk"><input type="checkbox" name="event_show" class="lay" {% if event_show %}checked{% endif %}> {% yq "cert_event_show" %}</label>{% endif %}
         </div>
         {% endfor %}
         <div class="cert-btns">
           <button class="save" type="submit" name="act" value="save">{% yq "cert_save" %}</button>
-          <button class="reset" type="submit" name="act" value="reset">{% yq "cert_reset" %}</button>
+          <button class="reset" type="submit" name="act" value="reset" onclick="return confirm('?')">{% if cur.season %}{% yq "cert_reset" %}{% else %}{% yq "cert_delete" %}{% endif %}</button>
         </div>
         <p class="cert-hint">⏰ {% yq "cert_auto_note" %}</p>
       </form>
@@ -61,8 +104,8 @@
       </form>
     </div>
     <div>
-      <div class="cert-hint" style="margin:0 0 8px">{% yq "cert_preview" %}</div>
-      <div class="cert-prev"><img id="cert-img" src="?preview=1" alt=""></div>
+      <div class="cert-hint" style="margin:0 0 8px">{% yq "cert_preview" %} — {{ cur.emoji }} {{ cur.name }}</div>
+      <div class="cert-prev"><img id="cert-img" src="?d={{ slug }}&preview=1" alt=""></div>
     </div>
   </div>
 </div>
@@ -71,7 +114,7 @@
   (function () {
     const img = document.getElementById("cert-img"); let t;
     function upd() {
-      const p = new URLSearchParams({ preview: "1" });
+      const p = new URLSearchParams({ d: "{{ slug }}", preview: "1" });
       document.querySelectorAll(".lay").forEach(el => p.set(el.name, el.type === "checkbox" ? (el.checked ? "1" : "0") : el.value));
       clearTimeout(t); t = setTimeout(() => { img.src = "?" + p.toString(); }, 250);
     }
