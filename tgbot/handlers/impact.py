@@ -218,6 +218,9 @@ async def done_callback(call: types.CallbackQuery, state: FSMContext):
     # впервые появились цифры — поблагодарить всех, кто пришёл
     if not had and impact.has_numbers(res):
         asyncio.create_task(notify_volunteers(call.bot, pid))
+    # 📍 мероприятие было по сообщению «Iflos joy» → место убрано, автору «до / после»
+    from tgbot.handlers.spots import notify_cleaned_by_event
+    asyncio.create_task(notify_cleaned_by_event(call.bot, pid))
 
 
 @sync_to_async

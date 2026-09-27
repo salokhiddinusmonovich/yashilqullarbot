@@ -40,6 +40,9 @@ urlpatterns = [
     path('webapp/impact/<int:pk>/', webapp.ImpactEventView.as_view(), name='webapp-impact'),
     path('webapp/wrapped/', webapp.WrappedView.as_view(), name='webapp-wrapped'),
     path('impact/', webapp.PublicImpactView.as_view(), name='public-impact'),
+    path('webapp/spots/', webapp.SpotsView.as_view(), name='webapp-spots'),
+    path('webapp/spots/<int:pk>/', webapp.SpotView.as_view(), name='webapp-spot'),
+    path('spots/', webapp.PublicSpotsView.as_view(), name='public-spots'),
 
     # ── Telegram bot login (без изменений) ──
     path('login/', TelegramLoginView.as_view(), name='login'),

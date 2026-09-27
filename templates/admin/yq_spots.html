@@ -1,0 +1,104 @@
+{% extends "admin/base_site.html" %}
+{% load yq %}
+{% block extrastyle %}{{ block.super }}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  .sp { max-width: 1320px; }
+  .sp-head h1 { margin: 0 0 4px; font-size: 1.6rem; font-weight: 800; letter-spacing: -.02em; }
+  .sp-head p { margin: 0 0 14px; color: var(--body-quiet-color); max-width: 860px; }
+  .sp-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
+  .sp-tab { display: inline-flex; gap: 6px; align-items: center; padding: 8px 13px; border-radius: 12px; border: 1px solid var(--hairline-color);
+    background: var(--darkened-bg); font-weight: 700; color: var(--body-loud-color) !important; text-decoration: none !important; }
+  .sp-tab.on { background: var(--primary); color: #fff !important; border-color: transparent; }
+  .sp-tab small { opacity: .7; font-weight: 700; }
+  .sp-bar select { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--hairline-color); background: var(--body-bg); color: var(--body-fg); margin-left: auto; }
+  #sp-map { height: 380px; border-radius: 16px; border: 1px solid var(--hairline-color); margin-bottom: 16px; z-index: 0; }
+  .sp-list { display: grid; gap: 12px; }
+  .sp-card { display: grid; grid-template-columns: 260px 1fr auto; gap: 16px; padding: 14px; border-radius: 16px; background: var(--darkened-bg); border: 1px solid var(--hairline-color); }
+  @media (max-width: 900px) { .sp-card { grid-template-columns: 1fr; } }
+  .sp-photos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+  .sp-photos a:first-child { grid-column: 1 / -1; }
+  .sp-photos img { width: 100%; height: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; display: block; }
+  .sp-photos a:first-child img { aspect-ratio: 4 / 3; }
+  .sp-info { display: grid; gap: 4px; align-content: start; font-size: .88rem; }
+  .sp-info h3 { margin: 0 0 4px; font-size: 1.05rem; }
+  .sp-pill { display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: .75rem; font-weight: 800; background: var(--body-bg); border: 1px solid var(--hairline-color); margin-left: 6px; }
+  .sp-muted { color: var(--body-quiet-color); }
+  .sp-after { margin-top: 6px; display: flex; gap: 4px; }
+  .sp-after img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; }
+  .sp-acts { display: grid; gap: 6px; align-content: start; min-width: 170px; }
+  .sp-acts button { padding: 8px 12px; border-radius: 10px; border: 1px solid var(--hairline-color); background: var(--body-bg); color: var(--body-loud-color); font-weight: 700; cursor: pointer; text-align: left; }
+  .sp-acts button.ev { background: linear-gradient(135deg, #15803d, #16a34a); color: #fff; border: 0; }
+  .sp-empty { padding: 40px; text-align: center; color: var(--body-quiet-color); }
+  .sp-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+</style>
+{% endblock %}
+{% block breadcrumbs %}<div class="breadcrumbs"><a href="{% url 'admin:index' %}">⌂</a> › {% yq "spots_title" %}</div>{% endblock %}
+{% block content %}
+<div class="sp">
+  <div class="sp-head"><h1>📍 {% yq "spots_title" %}</h1><p>{% yq "spots_sub" %}</p></div>
+
+  <div class="sp-bar">
+    {% for key, label, n in tabs %}
+      <a class="sp-tab {% if st == key %}on{% endif %}" href="?st={{ key }}{% if region %}&region={{ region }}{% endif %}">{{ label }} <small>{{ n }}</small></a>
+    {% endfor %}
+    <a class="sp-tab {% if st == 'all' %}on{% endif %}" href="?st=all{% if region %}&region={{ region }}{% endif %}">{% yq "spots_all" %} <small>{{ total }}</small></a>
+    <select onchange="location.search='?st={{ st }}&region='+this.value">
+      <option value="">{% yq "spots_regions_all" %}</option>
+      {% for code, label in regions %}<option value="{{ code }}" {% if code == region %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </div>
+
+  <div id="sp-map"></div>
+
+  <div class="sp-list">
+    {% for r in rows %}
+      <div class="sp-card" id="spot-{{ r.id }}">
+        <div class="sp-photos">
+          {% for u in r.photo_urls %}<a href="{{ u }}" target="_blank"><img src="{{ u }}" alt="" loading="lazy"></a>{% endfor %}
+        </div>
+        <div class="sp-info">
+          <h3>#{{ r.id }} · {{ r.region_label }} <span class="sp-pill">{{ r.status_label }}</span></h3>
+          {% if r.address %}<div>🏠 {{ r.address }}</div>{% endif %}
+          <div>🗑 {{ r.size_label }} · ♻️ {{ r.kind_label }}</div>
+          <div>🚶 {{ r.access_label }}</div>
+          {% if r.note %}<div>✍️ {{ r.note }}</div>{% endif %}
+          <div class="sp-muted">👤 {% yq "spots_author" %}: {% if r.tg %}<a href="tg://user?id={{ r.tg }}">{{ r.name|default:r.tg }}</a>{% else %}{{ r.name }}{% endif %} · 🕒 {{ r.date|date:"d.m.Y H:i" }}{% if r.confirms %} · 👍 {{ r.confirms }}{% endif %}</div>
+          <div><a href="{{ r.maps.google }}" target="_blank">Google Maps</a> · <a href="{{ r.maps.yandex }}" target="_blank">Yandex</a>{% if r.event_id %} · <a href="../../ecoproject/{{ r.event_id }}/change/">📅 #{{ r.event_id }}</a>{% endif %}</div>
+          {% if r.after_urls %}<div class="sp-after">{% for u in r.after_urls %}<a href="{{ u }}" target="_blank"><img src="{{ u }}" alt=""></a>{% endfor %}</div>{% endif %}
+        </div>
+        <form method="post" class="sp-acts">{% csrf_token %}
+          <input type="hidden" name="id" value="{{ r.id }}">
+          {% if r.status == "new" or r.status == "accepted" %}<button class="ev" name="act" value="event">{{ event_label }}</button>{% endif %}
+          {% for key, label in acts %}
+            {% if key != r.status and r.status != "cleaned" and r.status != "rejected" and r.status != "duplicate" %}
+              {% if key == "accepted" and r.status != "new" %}{% else %}<button name="act" value="{{ key }}">{{ label }}</button>{% endif %}
+            {% endif %}
+          {% endfor %}
+        </form>
+      </div>
+    {% empty %}
+      <div class="sp-empty">📭 {% yq "spots_empty" %}</div>
+    {% endfor %}
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  (function () {
+    const pts = {{ points|safe }};
+    const map = L.map("sp-map").setView([41.3, 64.5], 6);
+    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", {
+      maxZoom: 18, attribution: "Tiles &copy; Esri",
+    }).addTo(map);
+    const color = { new: "#ef4444", accepted: "#f97316", planned: "#eab308", cleaned: "#22c55e", rejected: "#9ca3af", duplicate: "#9ca3af" };
+    const layer = [];
+    pts.forEach(p => {
+      const icon = L.divIcon({ className: "", html: `<div class="sp-dot" style="background:${color[p.st]}"></div>`, iconSize: [14, 14] });
+      const m = L.marker([p.lat, p.lon], { icon }).addTo(map)
+        .bindPopup(`<b>#${p.id}</b> · ${p.t}${p.img ? `<br><img src="${p.img}" style="width:160px;border-radius:8px;margin-top:6px">` : ""}<br><a href="#spot-${p.id}">↓</a>`);
+      layer.push(m);
+    });
+    if (layer.length) map.fitBounds(L.featureGroup(layer).getBounds().pad(0.3), { maxZoom: 14 });
+  })();
+</script>
+{% endblock %}

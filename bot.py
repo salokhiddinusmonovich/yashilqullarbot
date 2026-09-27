@@ -42,6 +42,7 @@ from tgbot.services.cert_delivery import certificates_loop
 from tgbot.handlers.certs import register_certs
 from tgbot.handlers.impact import register_impact
 from tgbot.handlers.wrapped import register_wrapped
+from tgbot.handlers.spots import register_spots, register_spots_start
 from tgbot.services.impact_prompt import impact_prompt_loop
 from tgbot.services.wrapped import wrapped_loop
 from tgbot.handlers.digest import register_digest
@@ -86,6 +87,7 @@ def register_all_filters(dp):
 def register_all_handlers(dp):
     # ── Работает ВСЕГДА, независимо от режима ──
     register_admin(dp)               # админ-панель — не относится к Mini App вообще
+    register_spots_start(dp)         # t.me/<бот>?start=spot — «📍 Iflos joy» из Mini App (раньше общего /start)
     register_user(dp)                # /start — точка входа
     # Язык и инструкция — ДО хендлеров состояний: кнопки «🌐» и «❓»
     # должны срабатывать даже посреди регистрации, а не сохраняться как ответ.
@@ -97,6 +99,7 @@ def register_all_handlers(dp):
     register_certs(dp)               # 🎓 /sertifikat
     register_impact(dp)              # 📊 /natija — координатор вносит итоги мероприятия (кг, деревья, фото)
     register_wrapped(dp)             # 🎁 /yakun — итоги года
+    register_spots(dp)               # 📍 Iflos joy — сообщить о мусорном месте (кнопка меню, /iflos)
     register_digest(dp)              # 📅 недельный дайджест: /digest, «🔕»
     register_register(dp)            # регистрация — СТАТИКА, всегда через бота,
                                       # не переключается флагом USE_MINI_APP

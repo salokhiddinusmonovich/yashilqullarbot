@@ -14,7 +14,7 @@ _BUTTON_KEYS = (
     "btn_about", "btn_join", "btn_qr", "btn_guide", "btn_profile", "btn_events", "btn_admin",
     "btn_back", "btn_register", "btn_phone", "btn_partners", "btn_upcoming", "btn_past",
     "btn_event_register", "btn_view_profile", "btn_change_photo", "btn_change_name",
-    "btn_change_region", "btn_shop",
+    "btn_change_region", "btn_shop", "btn_invite", "btn_spot", "spot_btn_cancel",
 )
 
 KNOWN_MENU_BUTTON_TEXTS = frozenset(

@@ -9,7 +9,8 @@ def hi_there(is_admin: bool = False, lang: str = None):
         [KeyboardButton(text=t("btn_events", lang)), KeyboardButton(text=t("btn_qr", lang))],
         [KeyboardButton(text=t("btn_profile", lang)), KeyboardButton(text=t("btn_guide", lang))],
         [KeyboardButton(text=t("btn_about", lang)), KeyboardButton(text=t("btn_join", lang))],
-        [KeyboardButton(text=t("btn_invite", lang)), KeyboardButton(text=LANG_BUTTON)],
+        [KeyboardButton(text=t("btn_spot", lang)), KeyboardButton(text=t("btn_invite", lang))],
+        [KeyboardButton(text=LANG_BUTTON)],
     ]
     if is_admin:
         keyboard.append([KeyboardButton(text=t("btn_admin", lang))])

@@ -110,6 +110,7 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
             path('report/', self.admin_site.admin_view(self.report_view), name='app_telegram_projectparticipation_report'),
             path('certificate/', self.admin_site.admin_view(self.certificate_view), name='app_telegram_projectparticipation_certificate'),
             path('assistant/', self.admin_site.admin_view(self.assistant_view), name='app_telegram_projectparticipation_assistant'),
+            path('spots/', self.admin_site.admin_view(self.spots_view), name='app_telegram_projectparticipation_spots'),
         ] + super().get_urls()
 
     def certificate_view(self, request):
@@ -195,6 +196,67 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
             "recent_events": list(EcoProject.objects.order_by('-date').values('id', 'title', 'date')[:12]),
         }
         return TemplateResponse(request, "admin/yq_certificate.html", ctx)
+
+    def spots_view(self, request):
+        """📍 Iflos joylar: карта + список сообщений волонтёров, смена статуса (автору — сообщение и баллы)."""
+        from django.core.exceptions import PermissionDenied
+        from django.http import HttpResponseRedirect
+        from django.template.response import TemplateResponse
+        from django.utils.translation import get_language
+        from tgbot.i18n import t as bt, region_label
+        from . import spots as SP
+
+        if not self.has_view_permission(request):
+            raise PermissionDenied
+        lang = (get_language() or "ru")[:2]
+        lang = lang if lang in ("uz", "ru", "en") else "ru"
+        if request.method == "POST":
+            if not self.has_change_permission(request):
+                raise PermissionDenied
+            sid, act = int(request.POST.get("id") or 0), request.POST.get("act")
+            s = SP.get(sid)
+            if s:
+                event, pts = None, 0
+                if act == "event":
+                    event, pts = SP.create_event(sid)
+                elif act in ("accepted", "rejected", "duplicate", "cleaned"):
+                    s, pts = SP.set_status(sid, act, reason="other" if act == "rejected" else "")
+                s = SP.get(sid)
+                if s.get("tg"):
+                    send_in_background([(s["tg"], SP.author_text(s, pts, "", event, langs_of_sync([s["tg"]]).get(s["tg"]) or "uz"))])
+                self.message_user(request, trn("spots_done"))
+                if event:
+                    return HttpResponseRedirect(f"../../ecoproject/{event.id}/change/")
+            return HttpResponseRedirect(request.get_full_path())
+
+        st = request.GET.get("st", "new")
+        reg = request.GET.get("region", "")
+        items = SP.all_spots()
+        counts = {k: sum(1 for x in items if x["status"] == k) for k in SP.STATUSES}
+        if st in SP.STATUSES:
+            items = [x for x in items if x["status"] == st]
+        if reg:
+            items = [x for x in items if x.get("region") == reg]
+        rows = []
+        for x in items[:200]:
+            from datetime import datetime, timezone as dt_tz
+            rows.append({**x, "photo_urls": [SP.photo_url(p) for p in x["photos"]], "after_urls": [SP.photo_url(p) for p in x["after"]],
+                         "region_label": region_label(x["region"], lang) if x.get("region") else "—",
+                         "status_label": bt(f"spot_st_{x['status']}", lang), "size_label": bt(f"spot_size_{x['size']}", lang),
+                         "kind_label": bt(f"spot_kind_{x['kind']}", lang), "access_label": bt(f"spot_acc_{x['access']}", lang),
+                         "date": timezone.localtime(datetime.fromtimestamp(x["created"], tz=dt_tz.utc)), "maps": SP.maps_links(x["lat"], x["lon"])})
+        import json as _json
+        ctx = {
+            **self.admin_site.each_context(request), "title": trn("spots_title"), "opts": self.model._meta,
+            "rows": rows, "st": st, "region": reg, "total": sum(counts.values()),
+            "tabs": [(k, bt(f"spot_st_{k}", lang), counts[k]) for k in SP.STATUSES],
+            "regions": [(c, region_label(c, lang)) for c in TGUser.Region.values],
+            "acts": [(k, bt(f"spot_st_{k}", lang)) for k in ("accepted", "cleaned", "rejected", "duplicate")],
+            "event_label": bt("spot_m_event", lang),
+            "points": _json.dumps([{"id": r["id"], "lat": r["lat"], "lon": r["lon"], "st": r["status"], "t": r["status_label"],
+                                    "img": r["photo_urls"][0] if r["photo_urls"] else ""} for r in rows]),
+        }
+        return TemplateResponse(request, "admin/yq_spots.html", ctx)
 
     def assistant_view(self, request):
         """🤖 Что знает ИИ-помощник: свои заметки (media/assistant/extra.txt) + то, что берётся из базы."""

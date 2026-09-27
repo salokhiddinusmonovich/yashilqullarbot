@@ -30,7 +30,7 @@ from rest_framework import status, views
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from app_telegram import certificates, cv, impact, referrals, services, waitlist, wrapped
+from app_telegram import certificates, cv, impact, referrals, services, spots, waitlist, wrapped
 from app_telegram.models import TGUser, EcoProject, ProjectParticipation
 from app_telegram.telegram import send_in_background, is_channel_member
 from app_telegram.thumbs import thumb_url
@@ -153,6 +153,14 @@ def my_impact(user) -> dict:
     return {**impact.share_of(user), "photos": impact.recent_photos(limit=8, pids=pids)}
 
 
+def spots_summary(user) -> dict:
+    """🗺 Эко-карта на главной: сколько мест ждут уборки, сколько убрано, сколько сообщил я."""
+    items = spots.all_spots()
+    return {"open": sum(1 for s in items if s["status"] in ("accepted", "planned")),
+            "cleaned": sum(1 for s in items if s["status"] == "cleaned"),
+            "mine": sum(1 for s in items if s.get("uid") == user.id)}
+
+
 def wrapped_info(user, lang):
     """🎁 Итоги года: {year, url} — когда доступны (декабрь–январь; админам — всегда, как превью)."""
     preview = wrapped.can_preview(user)
@@ -204,6 +212,7 @@ def bootstrap_data(request, user: TGUser, lang: str = None):
         "community": community_stats(),
         "impact": my_impact(user),
         "wrapped": wrapped_info(user, lang),
+        "spots": spots_summary(user),
         "regions": [[code, region_label(code, lang)] for code in TGUser.Region.values],
     }
 
@@ -822,5 +831,46 @@ class PublicImpactView(views.APIView):
     def get(self, request):
         limit = min(int(request.query_params.get("limit") or 24), 60)
         resp = Response({**impact.totals(), "items": impact.recent_photos(limit=limit)})
+        resp["Cache-Control"] = "public, max-age=300"
+        return resp
+
+
+# ─────────────────────────── 📍 Iflos joy / 🗺 эко-карта ───────────────────────────
+
+class SpotsView(_Auth):
+    """GET /webapp/spots/ — точки для эко-карты: проверенные всем + свои (любой статус)."""
+
+    def get(self, request):
+        user = request.user
+        lang = lang_of_sync(user.tg_id) if user.tg_id else "uz"
+        items = [spots.payload(s, lang, user) for s in spots.all_spots() if spots.visible_to(s, user)]
+        return Response({"spots": items})
+
+
+class SpotView(_Auth):
+    """GET /webapp/spots/<id>/ — место целиком: фото, «до / после», мероприятие."""
+
+    def get(self, request, pk):
+        user = request.user
+        s = spots.get(pk)
+        if not s or not (spots.visible_to(s, user) or spots.can_moderate(user, s)):
+            return Response({"result": "none"}, status=status.HTTP_404_NOT_FOUND)
+        lang = lang_of_sync(user.tg_id) if user.tg_id else "uz"
+        return Response(spots.payload(s, lang, user, full=True))
+
+
+class PublicSpotsView(views.APIView):
+    """GET /spots/ — для сайта: проверенные места (без авторов). Кэш 5 минут."""
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request):
+        lang = request.query_params.get("lang") if request.query_params.get("lang") in LANGS else "uz"
+        items = []
+        for s in spots.all_spots(spots.PUBLIC):
+            p = spots.payload(s, lang)
+            p.pop("mine", None)
+            items.append(p)
+        resp = Response({"spots": items, "counts": {k: sum(1 for x in items if x["status"] == k) for k in spots.PUBLIC}})
         resp["Cache-Control"] = "public, max-age=300"
         return resp
