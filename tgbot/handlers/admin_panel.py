@@ -43,6 +43,7 @@ logger = logging.getLogger(__name__)
 
 
 class AdminStates(StatesGroup):
+    command = State()      # 🎙 команды текстом/голосом с клавиатуры — tgbot/handlers/assistant.py
     search_user = State()
     add_participant = State()
     event_message = State()
@@ -69,6 +70,7 @@ def main_kb() -> InlineKeyboardMarkup:
         InlineKeyboardButton(t("adm_btn_users_xlsx"), callback_data="adm:usersx"),
     )
     kb.add(InlineKeyboardButton(t("adm_btn_report"), callback_data="adm:rep"))
+    kb.add(InlineKeyboardButton(t("adm_btn_cmd"), callback_data="adm:cmd"))
     kb.add(InlineKeyboardButton(t("adm_btn_bc"), callback_data="adm:bchelp"))
     return kb
 
@@ -141,6 +143,12 @@ async def cb_menu(call, state):
 async def cb_stats(call, state):
     await call.answer(t("adm_preparing"))
     await _edit_or_send(call, await build_report(), back_kb())
+
+
+async def cb_cmd(call, state):
+    from ..services import ai
+    await state.set_state(AdminStates.command)
+    await _edit_or_send(call, t("cmd_help", ai=t("cmd_ai_on") if ai.enabled() else ""), back_kb())
 
 
 async def cb_bchelp(call, state):
@@ -346,7 +354,12 @@ async def cb_report_run(call, state, period, region):
     if period not in reports.PERIODS or region not in reports.REGION_CHOICES:
         return
     await call.answer(t("adm_preparing"))
-    lang = await lang_of(call.from_user.id)
+    await send_report(call.message, call.from_user.id, period, region)
+
+
+async def send_report(message, admin_tg_id, period, region):
+    """Excel «кто пришёл» + сводка. Общая для кнопок и для текстовых/голосовых команд админа."""
+    lang = await lang_of(admin_tg_id)
     d_from, d_to, parts, events = await _report_data(period, region)
     ptxt = f"{t(f'rep_p_{period}')} ({reports.period_text(d_from, d_to)})" if d_from else t("rep_p_all")
     rtxt = reports.region_choice_label(region)
@@ -355,7 +368,7 @@ async def cb_report_run(call, state, period, region):
         InlineKeyboardButton(t("adm_btn_menu"), callback_data="adm:menu"),
     )
     if not parts:
-        await call.message.answer(t("rep_empty", period=ptxt, region=escape(rtxt)), reply_markup=again)
+        await message.answer(t("rep_empty", period=ptxt, region=escape(rtxt)), reply_markup=again)
         return
     title = f"{t('rep_sheet_people')} · {reports.period_text(d_from, d_to)} · {rtxt}"
     buf = await sync_to_async(reports.build_xlsx)(parts, events, lang, title)
@@ -369,7 +382,7 @@ async def cb_report_run(call, state, period, region):
     )
     caption = t("rep_caption", n=len(parts), people=len({pp.user_id for pp in parts}), events=len(with_att),
                 period=ptxt, region=escape(rtxt), lines=lines)
-    await call.message.answer_document(
+    await message.answer_document(
         types.InputFile(buf, filename=reports.filename(d_from, d_to, region)),
         caption=caption[:1020], reply_markup=kb,
     )
@@ -660,6 +673,7 @@ CALLBACKS = {
     "addu": cb_add_user,
     "usersx": cb_users_excel,
     "rep": cb_report,
+    "cmd": cb_cmd,
     "repp": cb_report_period,
     "repr": cb_report_run,
     "rept": cb_report_text,

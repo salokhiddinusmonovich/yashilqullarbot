@@ -21,7 +21,8 @@ async def send_guide(message: types.Message, tg_id: int = None):
     text = t("guide_volunteer")
     if await _is_staff(tg_id or message.chat.id):
         text += t("guide_coordinator")
-    await message.answer(text)
+    from .assistant import ask_inline
+    await message.answer(text, reply_markup=ask_inline())
 
 
 async def help_handler(message: types.Message):

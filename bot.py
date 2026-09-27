@@ -34,6 +34,7 @@ from tgbot.handlers.contact_with_team import register_project_handlers
 from tgbot.handlers.link_account import register_link_account_handlers
 from tgbot.handlers.admin_panel import register_admin_panel
 from tgbot.handlers.help import register_help
+from tgbot.handlers.assistant import register_assistant
 from tgbot.handlers.language import register_language
 from tgbot.handlers.miniapp import register_miniapp, setup_menu_button
 from tgbot.middlewares.environment import EnvironmentMiddleware
@@ -103,6 +104,10 @@ def register_all_handlers(dp):
         register_project_handlers(dp)
         register_shop(dp)
         register_qr_handlers(dp)
+
+    # 🤖 Помощник (FAQ + бесплатный ИИ) и 🎙 команды админа — свои состояния,
+    # кнопки меню с state="*" выше по-прежнему срабатывают первыми.
+    register_assistant(dp)
 
     # «⬅️ Назад» → главное меню. После профиля: там «Назад» из выбора
     # региона ведёт в меню профиля, а не в главное.

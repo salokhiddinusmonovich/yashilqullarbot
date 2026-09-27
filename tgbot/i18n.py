@@ -825,6 +825,7 @@ TEXTS = {
               "📅 <b>Tadbirlar</b> — qatnashchilar, Excel, odam qo'shish, xabar yuborish\n"
               "🔎 <b>Qidirish</b> — odamni topish, rol yoki adminlik berish\n"
               "📋 <b>Kelganlar hisoboti</b> — kim keldi: kun/hafta/oy, hudud bo'yicha, Excel\n"
+              "🎙 <b>Buyruq</b> — yozing yoki aytib yuboring: «bugun toshkent excel»\n"
               "📥 <b>Excel</b> — barcha foydalanuvchilar ro'yxati\n"
               "📢 <b>Rassilka</b> — hammaga xabar yuborish yo'riqnomasi\n\n"
               "👇 Bo'limni tanlang",
@@ -833,6 +834,7 @@ TEXTS = {
               "📅 <b>Мероприятия</b> — участники, Excel, добавить человека, написать участникам\n"
               "🔎 <b>Поиск</b> — найти человека, выдать роль или админку\n"
               "📋 <b>Отчёт: кто пришёл</b> — за день/неделю/месяц, по региону, Excel\n"
+              "🎙 <b>Команда</b> — напишите или продиктуйте: «сегодня ташкент excel»\n"
               "📥 <b>Excel</b> — список всех пользователей\n"
               "📢 <b>Рассылка</b> — как отправить сообщение всем\n\n"
               "👇 Выберите раздел",
@@ -841,6 +843,7 @@ TEXTS = {
               "📅 <b>Events</b> — participants, Excel, add a person, message participants\n"
               "🔎 <b>Search</b> — find a person, give a role or admin rights\n"
               "📋 <b>Attendance report</b> — who came: day/week/month, by region, Excel\n"
+              "🎙 <b>Command</b> — type or dictate: «today tashkent excel»\n"
               "📥 <b>Excel</b> — list of all users\n"
               "📢 <b>Broadcast</b> — how to message everyone\n\n"
               "👇 Choose a section",
@@ -883,6 +886,62 @@ TEXTS = {
         "ru": ["№", "Мероприятие", "Регион", "Дата", "Записались", "Пришли", "%"],
         "en": ["#", "Event", "Region", "Date", "Registered", "Attended", "%"],
     },
+    "ask_btn": {"uz": "🤖 Savol berish", "ru": "🤖 Задать вопрос", "en": "🤖 Ask a question"},
+    "ask_exit_btn": {"uz": "⬅️ Chiqish", "ru": "⬅️ Выйти", "en": "⬅️ Exit"},
+    "ask_intro": {
+        "uz": "🤖 <b>Savolingizni yozing</b> — bot, sayt, ilova, tadbirlar, ballar, sertifikat haqida.\n\n💡 Yozish shart emas: klaviaturadagi 🎙 mikrofonni bosib aytib yuboring.\nChiqish — «⬅️ Chiqish».",
+        "ru": "🤖 <b>Напишите вопрос</b> — про бота, сайт, приложение, мероприятия, баллы, сертификаты.\n\n💡 Можно не печатать: нажмите 🎙 на клавиатуре и продиктуйте.\nВыйти — «⬅️ Выйти».",
+        "en": "🤖 <b>Type your question</b> — about the bot, website, app, events, points, certificates.\n\n💡 No need to type: tap 🎙 on your keyboard and dictate.\nTo leave — «⬅️ Exit».",
+    },
+    "ask_bye": {"uz": "👌 Yana savol bo'lsa — «❓ Qo'llanma» → «🤖 Savol berish» yoki /ask.",
+                "ru": "👌 Будут вопросы — «❓ Инструкция» → «🤖 Задать вопрос» или /ask.",
+                "en": "👌 More questions? «❓ How it works» → «🤖 Ask a question» or /ask."},
+    "ask_fallback": {"uz": "🙏 Bu savolga javob topolmadim. Hududingiz koordinatorlariga yozing: ilova → Reyting → «Jamoa».",
+                     "ru": "🙏 Не нашёл ответа на этот вопрос. Напишите координаторам вашего региона: приложение → Рейтинг → «Команда».",
+                     "en": "🙏 I couldn't find an answer. Please message your region's coordinators: app → Top → «Team»."},
+    "ask_limit": {"uz": "⏳ Bugungi savollar limiti tugadi ({n} ta). Ertaga yana so'rang yoki koordinatorga yozing: ilova → Reyting → «Jamoa».",
+                  "ru": "⏳ Лимит вопросов на сегодня исчерпан ({n}). Спросите завтра или напишите координатору: приложение → Рейтинг → «Команда».",
+                  "en": "⏳ Today's question limit is used up ({n}). Ask again tomorrow or message a coordinator: app → Top → «Team»."},
+    "ask_ai_note": {"uz": "\n\n<i>🤖 Sun'iy intellekt javobi — xato bo'lishi mumkin.</i>", "ru": "\n\n<i>🤖 Ответ ИИ — может содержать ошибки.</i>",
+                    "en": "\n\n<i>🤖 AI answer — may contain mistakes.</i>"},
+    "voice_tip": {"uz": "🎤 Ovozli xabarni tinglay olmayman. Klaviaturadagi 🎙 mikrofonni bosib aytib yozing — telefon uni o'zi matnga aylantiradi.",
+                  "ru": "🎤 Голосовые сообщения я не слушаю. Нажмите 🎙 на клавиатуре и продиктуйте — телефон сам превратит речь в текст.",
+                  "en": "🎤 I can't listen to voice messages. Tap 🎙 on your keyboard and dictate — your phone turns it into text."},
+    "adm_btn_cmd": {"uz": "🎙 Buyruq (matn yoki ovoz)", "ru": "🎙 Команда (текст или голос)", "en": "🎙 Command (text or voice)"},
+    "cmd_help": {
+        "uz": "🎙 <b>Buyruq rejimi</b> — yozing yoki klaviaturadagi 🎙 bilan aytib yuboring:\n\n"
+              "• <code>bugun toshkent excel</code> — kim keldi, Excel\n• <code>kecha samarqand kelganlar</code>\n"
+              "• <code>hafta statistika</code> — yangi odamlar, kelganlar, tadbirlar\n• <code>farg'ona koordinatorlari</code>\n"
+              "• <code>kelgusi tadbirlar</code>\n• <code>top Aziza</code> yoki <code>top +99890…</code>\n\n"
+              "Faqat ko'rish va hisobotlar. Rol berish, xabar yuborish — tugmalar orqali.{ai}\nChiqish — «⬅️ Menyu».",
+        "ru": "🎙 <b>Режим команд</b> — напишите или продиктуйте через 🎙 на клавиатуре:\n\n"
+              "• <code>сегодня ташкент excel</code> — кто пришёл, Excel\n• <code>вчера самарканд пришли</code>\n"
+              "• <code>статистика за неделю</code> — новые, пришедшие, мероприятия\n• <code>координаторы фергана</code>\n"
+              "• <code>ближайшие мероприятия</code>\n• <code>найди Азиза</code> или <code>найди +99890…</code>\n\n"
+              "Только просмотр и отчёты. Роли и рассылки — кнопками.{ai}\nВыйти — «⬅️ Меню».",
+        "en": "🎙 <b>Command mode</b> — type or dictate with 🎙 on your keyboard:\n\n"
+              "• <code>today tashkent excel</code> — who came, Excel\n• <code>yesterday samarkand attended</code>\n"
+              "• <code>stats this week</code> — new users, attendance, events\n• <code>coordinators fergana</code>\n"
+              "• <code>upcoming events</code>\n• <code>find Aziza</code> or <code>find +99890…</code>\n\n"
+              "Read-only: reports and lookups. Roles and broadcasts — via buttons.{ai}\nLeave — «⬅️ Menu».",
+    },
+    "cmd_ai_on": {"uz": "\n🤖 Boshqacha aytsangiz ham tushunaman (bepul AI).", "ru": "\n🤖 Понимаю и свободные формулировки (бесплатный ИИ).",
+                  "en": "\n🤖 Free-form phrasing works too (free AI)."},
+    "cmd_doing": {"uz": "⏳ Tayyorlayapman: {what}", "ru": "⏳ Готовлю: {what}", "en": "⏳ Preparing: {what}"},
+    "cmd_unknown": {"uz": "🤷 Tushunmadim. Masalan: <code>bugun toshkent excel</code>, <code>hafta statistika</code>, <code>samarqand koordinatorlari</code>, <code>kelgusi tadbirlar</code>, <code>top Aziza</code>.",
+                    "ru": "🤷 Не понял. Например: <code>сегодня ташкент excel</code>, <code>статистика за неделю</code>, <code>координаторы самарканд</code>, <code>ближайшие мероприятия</code>, <code>найди Азиза</code>.",
+                    "en": "🤷 Didn't get that. E.g.: <code>today tashkent excel</code>, <code>stats this week</code>, <code>coordinators samarkand</code>, <code>upcoming events</code>, <code>find Aziza</code>."},
+    "cmd_stats": {
+        "uz": "📊 <b>Statistika</b> · {period} · {region}\n\n🆕 Yangi foydalanuvchilar: <b>{new}</b>\n✅ Kelganlar (qatnashuv): <b>{att}</b> · {people} kishi\n📅 Tadbirlar: <b>{events}</b>\n👥 Jami foydalanuvchilar: {total}",
+        "ru": "📊 <b>Статистика</b> · {period} · {region}\n\n🆕 Новых пользователей: <b>{new}</b>\n✅ Пришли (отметок): <b>{att}</b> · {people} чел.\n📅 Мероприятий: <b>{events}</b>\n👥 Всего пользователей: {total}",
+        "en": "📊 <b>Stats</b> · {period} · {region}\n\n🆕 New users: <b>{new}</b>\n✅ Attended (check-ins): <b>{att}</b> · {people} people\n📅 Events: <b>{events}</b>\n👥 Total users: {total}",
+    },
+    "cmd_coord_title": {"uz": "👥 <b>Jamoa</b> · {region} — {n}", "ru": "👥 <b>Команда</b> · {region} — {n}", "en": "👥 <b>Team</b> · {region} — {n}"},
+    "cmd_events_title": {"uz": "📅 <b>Kelgusi tadbirlar</b> (30 kun) · {region} — {n}", "ru": "📅 <b>Ближайшие мероприятия</b> (30 дней) · {region} — {n}",
+                         "en": "📅 <b>Upcoming events</b> (30 days) · {region} — {n}"},
+    "cmd_none": {"uz": "🤷 Hech narsa topilmadi.", "ru": "🤷 Ничего не найдено.", "en": "🤷 Nothing found."},
+    "cmd_find_none": {"uz": "🤷 «{q}» topilmadi.", "ru": "🤷 «{q}» не найден.", "en": "🤷 «{q}» not found."},
+    "cmd_found": {"uz": "🔎 Topildi: {n}", "ru": "🔎 Найдено: {n}", "en": "🔎 Found: {n}"},
     "adm_btn_stats": {"uz": "📊 Statistika", "ru": "📊 Статистика", "en": "📊 Statistics"},
     "adm_btn_events": {"uz": "📅 Tadbirlar", "ru": "📅 Мероприятия", "en": "📅 Events"},
     "adm_btn_find": {"uz": "🔎 Qidirish", "ru": "🔎 Поиск", "en": "🔎 Search"},
