@@ -171,6 +171,8 @@ T = {
     "cert_default_note": ("PNG yuklanmagan — standart (kuzgi) dizayn ishlatiladi.", "PNG не загружен — используется стандартный (осенний) дизайн.",
                           "No PNG uploaded — the default (autumn) design is used."),
     "cert_delete": ("🗑 Bu dizaynni o'chirish", "🗑 Удалить этот дизайн", "🗑 Delete this design"),
+    "act_zip_certs": ("📦 Sertifikatlarni ZIP qilib yuklab olish", "📦 Скачать сертификаты ZIP-архивом", "📦 Download certificates as ZIP"),
+    "msg_zip_empty": ("Tanlangan tadbirlarda kelganlar yo'q.", "На выбранных мероприятиях нет пришедших.", "No attendees in the selected events."),
     "msg_rejected": ("❌ Bekor qilindi: {n}", "❌ Отменено: {n}", "❌ Cancelled: {n}"),
     "msg_remind": ("🔔 «{title}»: {n} kishiga taklif yuborilmoqda (fonda).",
                    "🔔 «{title}»: приглашение отправляется {n} людям (в фоне).",

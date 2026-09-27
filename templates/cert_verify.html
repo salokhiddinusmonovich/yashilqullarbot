@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% if ok %}✅ Haqiqiy sertifikat{% else %}❌ Sertifikat topilmadi{% endif %} · Yashil Qo'llar</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Playfair+Display:ital,wght@1,700&display=swap" rel="stylesheet">
+<style>
+  :root { --paper: #f7f3ea; --ink: #16241c; --muted: #6f6a5c; --green: #15803d; --line: #e4dccb; --red: #b91c1c; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font-family: Manrope, system-ui, sans-serif; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 28px 16px 48px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: .06em; color: var(--green); margin-bottom: 22px; }
+  .brand img { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 20px; padding: 22px; box-shadow: 0 16px 40px rgba(22,36,28,.08); }
+  .status { display: flex; align-items: center; gap: 12px; font-size: 1.35rem; font-weight: 800; margin-bottom: 4px; }
+  .status .ico { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: var(--green); font-size: 1.4rem; }
+  .status.bad .ico { background: var(--red); }
+  .sub { color: var(--muted); margin: 0 0 18px; font-size: .92rem; }
+  .name { font-family: "Playfair Display", serif; font-style: italic; font-size: 2rem; color: #bf5310; margin: 8px 0 14px; }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; margin: 0 0 18px; }
+  dt { color: var(--muted); font-size: .85rem; } dd { margin: 0; font-weight: 700; }
+  .img { width: 100%; border-radius: 12px; border: 1px solid var(--line); display: block; }
+  .btn { display: inline-block; margin-top: 14px; padding: 11px 18px; border-radius: 12px; background: var(--green); color: #fff; text-decoration: none; font-weight: 800; }
+  .foot { margin-top: 18px; font-size: .8rem; color: var(--muted); text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand"><img src="https://app.yashilqollar.uz/logo.jpg" alt="">YASHIL QO'LLAR</div>
+  <div class="card">
+    {% if ok %}
+      <div class="status"><span class="ico">✓</span>Haqiqiy sertifikat</div>
+      <p class="sub">Сертификат подлинный · Certificate is genuine</p>
+      <div class="name">{{ name }}</div>
+      <dl>
+        <dt>Tadbir · Event</dt><dd>«{{ event }}»</dd>
+        <dt>Sana · Date</dt><dd>{{ date }}</dd>
+        {% if region %}<dt>Hudud · Region</dt><dd>{{ region }}</dd>{% endif %}
+        <dt>Raqam · №</dt><dd>{{ number }}</dd>
+      </dl>
+      <img class="img" src="{{ img }}" alt="">
+      <a class="btn" href="{{ pdf }}">📄 PDF</a>
+    {% else %}
+      <div class="status bad"><span class="ico">✕</span>Sertifikat topilmadi</div>
+      <p class="sub">Сертификат не найден или отозван · Certificate not found or revoked</p>
+    {% endif %}
+  </div>
+  <div class="foot">Qatnashuv tadbirda QR-kod orqali tasdiqlangan · yashilqollar.uz</div>
+</div>
+</body>
+</html>

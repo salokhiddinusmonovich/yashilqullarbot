@@ -18,15 +18,27 @@ def _my(tg_id: int):
 
 
 async def certs_handler(message: types.Message):
+    from app_telegram.certificates import season_of
+    from tgbot.i18n import current_lang
     items = await _my(message.from_user.id)
     if not items:
         await message.answer(t("cert_none"))
         return
+    lang = current_lang.get() or "uz"
     kb = InlineKeyboardMarkup(row_width=1)
-    for pp in items:
-        d = timezone.localtime(pp.project.date).strftime('%d.%m.%Y')
+    last = None
+    for pp in items:                       # уже по убыванию даты — сезоны идут от новых к старым
+        _, label = season_of(pp.project.date, lang)
+        if label != last:
+            kb.add(InlineKeyboardButton(f"— {label} —", callback_data="noop"))
+            last = label
+        d = timezone.localtime(pp.project.date).strftime('%d.%m')
         kb.add(InlineKeyboardButton(f"🎓 {d} · {pp.project.title[:40]}", callback_data=f"cert:{pp.id}"))
     await message.answer(t("cert_list", n=len(items)), reply_markup=kb)
+
+
+async def noop_callback(call: types.CallbackQuery):
+    await call.answer()
 
 
 @sync_to_async
@@ -71,3 +83,4 @@ def register_certs(dp: Dispatcher):
     dp.register_message_handler(cv_handler, commands=["cv", "rezyume", "резюме"], state="*")
     dp.register_message_handler(certs_handler, commands=["sertifikat", "certificate", "certificates", "cert"], state="*")
     dp.register_callback_query_handler(cert_callback, lambda c: c.data.startswith("cert:"), state="*")
+    dp.register_callback_query_handler(noop_callback, text="noop", state="*")

@@ -165,7 +165,7 @@ def bootstrap_data(request, user: TGUser, lang: str = None):
 
     history = list(
         ProjectParticipation.objects.filter(user=user, status='attended')
-        .select_related('project').order_by('-project__date')[:20]
+        .select_related('project').order_by('-project__date')[:80]
     )
 
     return {

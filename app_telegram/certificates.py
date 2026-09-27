@@ -39,6 +39,8 @@ DEFAULT_LAYOUT = {
     # Шрифт сам уменьшается, чтобы обычный текст уложился в body_lines строк.
     "body_x": 573, "body_y": 690, "body_max_w": 860, "body_size": 25, "body_line": 33, "body_lines": 4,
     "body_color": "#545F5B", "body_show": False, "body_text": "",
+    # QR для проверки подлинности (ведёт на /c/v/…) — в пустом левом верхнем углу
+    "qr_x": 72, "qr_y": 100, "qr_size": 130, "qr_color": "#3B4A42", "qr_show": True,
 }
 
 # Встроенный осенний дизайн: абзац из Canva («...in the Plogging Campaign...») убран с картинки
@@ -228,7 +230,8 @@ def display_name(fullname: str) -> str:
     return n or "—"
 
 
-def render(name: str, date_text: str, number: str, lay: dict | None = None, slug: str | None = None, event_title: str = "") -> Image.Image:
+def render(name: str, date_text: str, number: str, lay: dict | None = None, slug: str | None = None, event_title: str = "",
+           verify_url: str = "") -> Image.Image:
     lay = lay or layout(slug)
     tp = template_path(slug)
     img = _template(str(tp), tp.stat().st_mtime).copy()
@@ -251,10 +254,27 @@ def render(name: str, date_text: str, number: str, lay: dict | None = None, slug
         d.text((lay["event_x"], lay["event_y"]), text, font=ef, fill=lay["event_color"], anchor="ms")
     if lay.get("body_show") and lay.get("body_text"):
         _draw_body(d, lay, event_title or "Yashil Qo'llar")
+    if lay.get("qr_show"):
+        _draw_qr(img, d, lay, verify_url or f"{PUBLIC_URL}/c/v/")
     if lay.get("show_number") and number:
         d.text((lay["number_x"], lay["number_y"]), f"№ {number}", font=_font("number", int(lay["number_size"])),
                fill=lay["number_color"], anchor="ls")
     return img
+
+
+def _draw_qr(img, d, lay: dict, data: str):
+    """Небольшой QR на прозрачном фоне дизайна + подпись «Tekshirish · Verify»."""
+    import qrcode
+    size = int(lay["qr_size"])
+    qr = qrcode.QRCode(border=0, box_size=10, error_correction=qrcode.constants.ERROR_CORRECT_M)
+    qr.add_data(data)
+    qr.make(fit=True)
+    # маска: модули QR = 255 (туда кладём цвет), фон = 0 (остаётся сам дизайн, без белого квадрата)
+    mask = qr.make_image(fill_color="white", back_color="black").convert("L").resize((size, size), Image.NEAREST)
+    ink = Image.new("RGB", (size, size), lay["qr_color"])
+    img.paste(ink, (int(lay["qr_x"]), int(lay["qr_y"])), mask)
+    d.text((int(lay["qr_x"]) + size / 2, int(lay["qr_y"]) + size + 22), "Tekshirish · Verify",
+           font=_font("number", max(12, size // 9)), fill=lay["qr_color"], anchor="ms")
 
 
 def _wrap(text: str, font, max_w: int) -> list:
@@ -296,7 +316,8 @@ def number_of(pp) -> str:
 
 def render_for(pp) -> Image.Image:
     date = timezone.localtime(pp.project.date).strftime("%d.%m.%Y") if pp.project.date else ""
-    return render(display_name(pp.user.fullname), date, number_of(pp), slug=design_for(pp.project), event_title=pp.project.title)
+    return render(display_name(pp.user.fullname), date, number_of(pp), slug=design_for(pp.project), event_title=pp.project.title,
+                  verify_url=verify_url(pp.id))
 
 
 def to_pdf(img: Image.Image) -> bytes:
@@ -327,6 +348,36 @@ def sign(pid: int) -> str:
 
 def verify(pid: int, sig: str) -> bool:
     return hmac.compare_digest(sign(pid), sig or "")
+
+
+def verify_url(pid: int) -> str:
+    """Публичная страница проверки (ссылка в QR на сертификате)."""
+    return f"{PUBLIC_URL}/c/v/{pid}-{sign(pid)[:10]}"
+
+
+def verify_short(pid: int, sig: str) -> bool:
+    return hmac.compare_digest(sign(pid)[:10], sig or "")
+
+
+# ─────────── сезоны: для группировки «🍂 Kuz 2025 / ❄️ Qish 2025–26» ───────────
+SEASON_NAMES = {"kuz": ("Kuz", "Осень", "Autumn"), "qish": ("Qish", "Зима", "Winter"),
+                "bahor": ("Bahor", "Весна", "Spring"), "yoz": ("Yoz", "Лето", "Summer")}
+
+
+def season_of(dt, lang: str = "uz") -> tuple:
+    """(ключ для сортировки, подпись): зима декабря относится к сезону «2025–26»."""
+    d = timezone.localtime(dt)
+    m, y = d.month, d.year
+    slug = next(sl for sl, meta_ in SEASONS.items() if m in meta_["months"])
+    if slug == "qish":
+        start = y if m == 12 else y - 1
+        year = f"{start}–{str(start + 1)[2:]}"
+        order = start * 10 + 4
+    else:
+        year = str(y)
+        order = y * 10 + {"bahor": 1, "yoz": 2, "kuz": 3}[slug]
+    idx = {"uz": 0, "ru": 1, "en": 2}.get(lang, 0)
+    return order, f"{SEASONS[slug]['emoji']} {SEASON_NAMES[slug][idx]} {year}"
 
 
 def url(pid: int, ext="pdf") -> str:

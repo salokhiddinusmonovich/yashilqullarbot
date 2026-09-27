@@ -36,3 +36,20 @@ def cv_file(request, uid: int, sig: str):
     resp = HttpResponse(cv.build(user, lang if lang in ("uz", "ru", "en") else "uz"), content_type="application/pdf")
     resp["Content-Disposition"] = f'inline; filename="{cv.filename(user)}"'
     return resp
+
+
+def certificate_verify(request, pid: int, sig: str):
+    """GET /c/v/<id>-<подпись> — публичная проверка подлинности (сюда ведёт QR на сертификате)."""
+    from django.shortcuts import render
+    from django.utils import timezone
+    from tgbot.i18n import region_label
+    pp = C.attended(pid) if C.verify_short(pid, sig) else None
+    ctx = {"ok": bool(pp)}
+    if pp:
+        ctx.update({
+            "name": C.display_name(pp.user.fullname), "event": pp.project.title,
+            "date": timezone.localtime(pp.project.date).strftime("%d.%m.%Y") if pp.project.date else "",
+            "region": region_label(pp.project.region, "uz") if pp.project.region else "",
+            "number": C.number_of(pp), "img": C.url(pp.id, "jpg") + "?small=1", "pdf": C.url(pp.id, "pdf"),
+        })
+    return render(request, "cert_verify.html", ctx, status=200 if pp else 404)

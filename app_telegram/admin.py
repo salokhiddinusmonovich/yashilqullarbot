@@ -452,7 +452,7 @@ class EcoProjectAdmin(admin.ModelAdmin):
     list_filter = ('is_active', 'region', 'date')
     list_editable = ('is_active',)
     inlines = [EcoProjectImageInline]
-    actions = ['remind_local_users', 'send_certificates_now']
+    actions = ['remind_local_users', 'send_certificates_now', 'download_certificates_zip']
     ordering = ('-date',)
 
     def get_queryset(self, request):
@@ -474,6 +474,29 @@ class EcoProjectAdmin(admin.ModelAdmin):
     def has_group(self, obj):
         # без ссылки на группу волонтёры не узнают, где ждать сертификат
         return bool(obj.chat_link)
+
+    @admin.action(description=tr('act_zip_certs'))
+    def download_certificates_zip(self, request, queryset):
+        """📦 ZIP: папка на каждое мероприятие («2026-09-27 Plogging»), внутри PDF всех пришедших."""
+        import re
+        import zipfile
+        from io import BytesIO
+        from django.http import HttpResponse
+        from . import certificates as C
+        buf = BytesIO()
+        n = 0
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            for project in queryset.order_by('date'):
+                folder = f"{timezone.localtime(project.date):%Y-%m-%d} " + re.sub(r'[\\/:*?"<>|]+', "_", project.title)[:60]
+                for pp in ProjectParticipation.objects.filter(project=project, status='attended').select_related('user', 'project'):
+                    z.writestr(f"{folder}/{C.display_name(pp.user.fullname)} ({C.number_of(pp)}).pdf", C.to_pdf(C.render_for(pp)))
+                    n += 1
+        if not n:
+            self.message_user(request, trn("msg_zip_empty"), messages.WARNING)
+            return None
+        resp = HttpResponse(buf.getvalue(), content_type="application/zip")
+        resp["Content-Disposition"] = f'attachment; filename="sertifikatlar_{timezone.localdate():%Y-%m-%d}.zip"'
+        return resp
 
     @admin.action(description=tr('act_send_certs'))
     def send_certificates_now(self, request, queryset):
