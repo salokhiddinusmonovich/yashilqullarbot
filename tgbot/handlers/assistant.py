@@ -93,6 +93,7 @@ async def answer_user(message: types.Message, state: FSMContext | None, text: st
       ИИ недоступен → FAQ, если нашёлся хоть какой-то ответ, иначе «напишите координатору».
     """
     lang = current_lang.get() or "uz"
+    failed = ""
     entry = faq.match(text) if text else None
     if entry and len(faq.words(text)) <= 7:
         await message.answer(faq.answer(entry, lang), reply_markup=kb)
@@ -109,6 +110,7 @@ async def answer_user(message: types.Message, state: FSMContext | None, text: st
             answer = await ai.ask(text, lang, ctx, history, audio=audio)
         except ai.Unavailable as e:
             log.warning("ai unavailable: %s | %s", e, ai.LAST_ERROR)
+            failed = str(e)
         else:
             if state:
                 await state.update_data(hist=(history + [[text[:500] or "(voice)", answer[:800]]])[-3:])
@@ -117,8 +119,10 @@ async def answer_user(message: types.Message, state: FSMContext | None, text: st
 
     if entry:
         await message.answer(faq.answer(entry, lang), reply_markup=kb)
-    elif ai.enabled() and ai.LAST_ERROR and "429" in ai.LAST_ERROR or await ai._cooling():
+    elif ai.enabled() and failed == "rate limit":
         await message.answer(t("ai_busy"), reply_markup=kb)      # бесплатный лимит Google на минуту — попробуйте чуть позже
+    elif ai.enabled() and failed:
+        await message.answer(t("ai_error"), reply_markup=kb)
     elif audio is not None or message.voice:
         await message.answer(t("voice_tip"), reply_markup=kb)
     else:
@@ -227,12 +231,14 @@ async def cmd_message(message: types.Message, state: FSMContext):
         await message.answer(t("voice_tip") if not ai.enabled() else t("voice_long"))
         return
     cmd = parse_rules(text) if text else None
+    failed = ""
     if cmd is None and ai.enabled():
         try:
             await message.bot.send_chat_action(message.chat.id, "typing")
             cmd = await ai.parse_command(text, list(reports.REGION_CHOICES), audio=audio, lang=current_lang.get() or "uz")
         except ai.Unavailable as e:
             log.warning("ai cmd unavailable: %s | %s", e, ai.LAST_ERROR)
+            failed = str(e)
     heard = f"🎙 «{escape(str(cmd.get('transcript'))[:300])}»\n" if audio and cmd and cmd.get("transcript") else ""
     action = (cmd or {}).get("action", "unknown")
     if action in ("question", "unknown") or cmd is None:
@@ -241,7 +247,7 @@ async def cmd_message(message: types.Message, state: FSMContext):
             await message.answer(heard + ai._safe_html(str(cmd["answer"])) + t("ask_ai_note"))
             return
         if cmd is None and ai.enabled() and (audio is not None or not text):
-            await message.answer(t("ai_busy"))
+            await message.answer(t("ai_busy") if failed == "rate limit" else t("ai_error"))
             return
         if text and parse_rules(text) is None and faq.match(text) is None and not ai.enabled():
             await message.answer(t("cmd_unknown"))

@@ -86,12 +86,34 @@ def _retry_delay(data) -> float:
     return 30.0
 
 
-async def _generate(system: str, contents: list, json_mode=False, max_tokens=2048) -> str:
+def _extract(data) -> tuple[str, str]:
+    """(текст, finishReason). Мысли модели (thought) пропускаем."""
+    try:
+        cand = data["candidates"][0]
+    except (KeyError, IndexError, TypeError):
+        return "", "NO_CANDIDATE"
+    parts = (cand.get("content") or {}).get("parts") or []
+    text = "".join(p.get("text", "") for p in parts if not p.get("thought")).strip()
+    return text, cand.get("finishReason", "")
+
+
+def _body(system, contents, json_mode, max_tokens, model, thinking_off=True):
+    cfg = {"temperature": 0.2 if json_mode else 0.4, "maxOutputTokens": max_tokens}
+    if json_mode:
+        cfg["responseMimeType"] = "application/json"
+    # Gemini 2.5 по умолчанию «думает» и может потратить на это весь лимит ответа (MAX_TOKENS, пустой ответ).
+    # Нам размышления не нужны — выключаем: быстрее, дешевле для бесплатного лимита.
+    if thinking_off and "2.5" in model:
+        cfg["thinkingConfig"] = {"thinkingBudget": 0}
+    return {"system_instruction": {"parts": [{"text": system}]}, "contents": contents, "generationConfig": cfg}
+
+
+async def _generate(system: str, contents: list, json_mode=False, max_tokens=4096) -> str:
     """
     Запрос к Gemini. Модели пробуем по очереди: у каждой СВОЙ бесплатный лимит,
-    поэтому «лимит» у одной (429) — не повод сдаваться: идём к следующей.
-    Короткое «подождите N сек» (≤ 12) — ждём и повторяем. Все исчерпаны — пауза на
-    столько, сколько просит Google, и честное «ИИ занят».
+    поэтому 429 у одной — не повод сдаваться. Короткое «подождите N сек» (≤ 12) — ждём.
+    Пустой ответ (обрезан/только мысли) — ещё раз без размышлений и с большим запасом, потом другая модель.
+    Все модели на лимите — пауза и честное «ИИ занят» (Unavailable("rate limit")).
     """
     global _working, LAST_ERROR
     if not API_KEY:
@@ -99,58 +121,46 @@ async def _generate(system: str, contents: list, json_mode=False, max_tokens=204
         raise Unavailable("no key")
     if await _cooling():
         raise Unavailable("rate limit")
-    body = {
-        "system_instruction": {"parts": [{"text": system}]},
-        "contents": contents,
-        "generationConfig": {"temperature": 0.2 if json_mode else 0.4, "maxOutputTokens": max_tokens},
-    }
-    if json_mode:
-        body["generationConfig"]["responseMimeType"] = "application/json"
     order = ([_working] if _working else []) + [m for m in MODELS if m != _working]
-    data, limited, wait_max = None, False, 0.0
+    limited, wait_max = False, 0.0
     for model in order:
-        for attempt in (1, 2):
+        thinking_off, tokens = True, max_tokens
+        for attempt in range(3):
             try:
-                status, data = await _post(model, body)
+                status, data = await _post(model, _body(system, contents, json_mode, tokens, model, thinking_off))
             except (aiohttp.ClientError, TimeoutError) as e:
                 LAST_ERROR = f"network: {e}"
                 raise Unavailable(str(e))
-            if status != 429:
-                break
-            delay = _retry_delay(data)
-            wait_max = max(wait_max, delay)
-            if attempt == 1 and delay <= 12:
-                await asyncio.sleep(delay + 0.5)
+            msg = (data or {}).get("error", {}).get("message", "") if isinstance(data, dict) else str(data)
+            if status == 200:
+                text, finish = _extract(data)
+                if text:
+                    _working = model
+                    return text
+                LAST_ERROR = f"{model}: empty answer ({finish})"
+                log.warning("gemini %s", LAST_ERROR)
+                tokens = min(tokens * 2, 8192)      # обрезало — больше места и ещё раз
                 continue
-            break
-        if status == 200:
-            _working = model
-            break
-        msg = (data or {}).get("error", {}).get("message", "") if isinstance(data, dict) else str(data)
-        LAST_ERROR = f"{model}: HTTP {status} {msg[:200]}"
-        log.warning("gemini %s", LAST_ERROR)
-        if status == 429:
-            limited = True
-            continue                               # у другой модели — свой лимит
-        if status in (400, 403) and "API key" in msg:
-            raise Unavailable("bad key")          # ключ неверный — другие модели не помогут
-        if status in (404, 400):
-            continue                               # модель не найдена/не поддерживает — следующая
-        raise Unavailable(f"http {status}")
-    else:
-        if limited:
-            await _cool_down(int(min(max(wait_max, 15), 90)))
-            raise Unavailable("rate limit")
-        raise Unavailable("no working model")
-    try:
-        parts = data["candidates"][0]["content"]["parts"]
-        text = "".join(p.get("text", "") for p in parts if not p.get("thought")).strip()
-    except (KeyError, IndexError, TypeError):
-        LAST_ERROR = f"empty answer: {str(data)[:200]}"
-        raise Unavailable("empty answer")
-    if not text:
-        raise Unavailable("empty answer")
-    return text
+            if status == 400 and "thinking" in msg.lower() and thinking_off:
+                thinking_off = False                 # модель не знает thinkingConfig — без него
+                continue
+            LAST_ERROR = f"{model}: HTTP {status} {msg[:200]}"
+            log.warning("gemini %s", LAST_ERROR)
+            if status == 429:
+                delay = _retry_delay(data)
+                wait_max = max(wait_max, delay)
+                if attempt == 0 and delay <= 12:
+                    await asyncio.sleep(delay + 0.5)
+                    continue
+                limited = True
+                break                                # у другой модели — свой лимит
+            if status in (400, 403) and "API key" in msg:
+                raise Unavailable("bad key")        # ключ неверный — другие модели не помогут
+            break                                    # 404/400/5xx — следующая модель
+    if limited:
+        await _cool_down(int(min(max(wait_max, 15), 90)))
+        raise Unavailable("rate limit")
+    raise Unavailable("failed")
 
 
 async def status() -> str:
@@ -162,7 +172,7 @@ async def status() -> str:
     except Exception:
         pass
     try:
-        await _generate("Reply with one word: OK", [{"role": "user", "parts": [{"text": "ping"}]}], max_tokens=50)
+        await _generate("Reply with one word: OK", [{"role": "user", "parts": [{"text": "ping"}]}], max_tokens=256)
         last = f"\nOxirgi xato: {LAST_ERROR}" if LAST_ERROR else ""
         return f"✅ AI ishlayapti. Model: {_working}.{last}\nModellar: {', '.join(MODELS)}"
     except Unavailable as e:
@@ -201,7 +211,7 @@ async def ask(question: str, lang: str, user_ctx: str, history: list | None = No
     else:
         parts = [{"text": question[:1000]}]
     contents.append({"role": "user", "parts": parts})
-    text = await _generate(system, contents, max_tokens=1500)
+    text = await _generate(system, contents, max_tokens=2048)
     return _safe_html(text)
 
 
@@ -248,7 +258,7 @@ HANDBOOK:
 async def parse_command(text: str, regions: list[str], audio: bytes | None = None, lang: str = "uz") -> dict:
     parts = [_audio_part(audio), {"text": "Voice command (probably Uzbek or Russian)."}] if audio else [{"text": text[:500]}]
     raw = await _generate(_CMD_SYSTEM.format(regions=", ".join(regions), lang=LANG_NAMES.get(lang, "Uzbek"), kb=faq.knowledge_text()),
-                          [{"role": "user", "parts": parts}], json_mode=True, max_tokens=1500)
+                          [{"role": "user", "parts": parts}], json_mode=True, max_tokens=2048)
     try:
         return json.loads(raw)
     except ValueError:
