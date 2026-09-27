@@ -68,6 +68,7 @@ def main_kb() -> InlineKeyboardMarkup:
         InlineKeyboardButton(t("adm_btn_find"), callback_data="adm:find"),
         InlineKeyboardButton(t("adm_btn_users_xlsx"), callback_data="adm:usersx"),
     )
+    kb.add(InlineKeyboardButton(t("adm_btn_report"), callback_data="adm:rep"))
     kb.add(InlineKeyboardButton(t("adm_btn_bc"), callback_data="adm:bchelp"))
     return kb
 
@@ -309,6 +310,87 @@ async def cb_users_excel(call, state):
         types.InputFile(buf, filename=f"users_{timezone.localdate().isoformat()}.xlsx"),
         caption=t("adm_users_caption", n=len(rows)),
     )
+
+
+# ─────────────────────────── отчёт «кто пришёл» ───────────────────────────
+# /admin → 📋 → период → регион → Excel (+ список в чат). Логика — app_telegram/reports.py,
+# та же, что в Django-админке.
+
+from app_telegram import reports
+
+
+async def cb_report(call, state):
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(*[InlineKeyboardButton(t(f"rep_p_{p}"), callback_data=f"adm:repp:{p}") for p in reports.PERIODS])
+    kb.add(InlineKeyboardButton(t("adm_btn_menu"), callback_data="adm:menu"))
+    await _edit_or_send(call, t("rep_pick_period"), kb)
+
+
+async def cb_report_period(call, state, period):
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(InlineKeyboardButton(t("rep_all_regions"), callback_data=f"adm:repr:{period}:all"))
+    kb.add(InlineKeyboardButton("🏙 " + t("rep_tashkent"), callback_data=f"adm:repr:{period}:tashkent"))
+    kb.add(*[InlineKeyboardButton(region_label(r), callback_data=f"adm:repr:{period}:{r}") for r in reports.REGION_CHOICES[2:]])
+    kb.add(InlineKeyboardButton(t("btn_back"), callback_data="adm:rep"))
+    await _edit_or_send(call, t("rep_pick_region", period=t(f"rep_p_{period}")), kb)
+
+
+@sync_to_async
+def _report_data(period, region):
+    d_from, d_to = reports.period_range(period)
+    regions = reports.region_codes(region)
+    return d_from, d_to, reports.attendance(d_from, d_to, regions), reports.event_summary(d_from, d_to, regions)
+
+
+async def cb_report_run(call, state, period, region):
+    if period not in reports.PERIODS or region not in reports.REGION_CHOICES:
+        return
+    await call.answer(t("adm_preparing"))
+    lang = await lang_of(call.from_user.id)
+    d_from, d_to, parts, events = await _report_data(period, region)
+    ptxt = f"{t(f'rep_p_{period}')} ({reports.period_text(d_from, d_to)})" if d_from else t("rep_p_all")
+    rtxt = reports.region_choice_label(region)
+    again = InlineKeyboardMarkup(row_width=1).add(
+        InlineKeyboardButton(t("rep_btn_again"), callback_data="adm:rep"),
+        InlineKeyboardButton(t("adm_btn_menu"), callback_data="adm:menu"),
+    )
+    if not parts:
+        await call.message.answer(t("rep_empty", period=ptxt, region=escape(rtxt)), reply_markup=again)
+        return
+    title = f"{t('rep_sheet_people')} · {reports.period_text(d_from, d_to)} · {rtxt}"
+    buf = await sync_to_async(reports.build_xlsx)(parts, events, lang, title)
+    with_att = [e for e in events if e.attended]
+    lines = "\n".join(f"• {escape(e.title)} — <b>{e.attended}</b>/{e.registered}" for e in with_att[:12])
+    if len(with_att) > 12:
+        lines += f"\n… +{len(with_att) - 12}"
+    kb = InlineKeyboardMarkup(row_width=1).add(
+        InlineKeyboardButton(t("rep_btn_text"), callback_data=f"adm:rept:{period}:{region}"),
+        InlineKeyboardButton(t("rep_btn_again"), callback_data="adm:rep"),
+    )
+    caption = t("rep_caption", n=len(parts), people=len({pp.user_id for pp in parts}), events=len(with_att),
+                period=ptxt, region=escape(rtxt), lines=lines)
+    await call.message.answer_document(
+        types.InputFile(buf, filename=reports.filename(d_from, d_to, region)),
+        caption=caption[:1020], reply_markup=kb,
+    )
+
+
+async def cb_report_text(call, state, period, region):
+    if period not in reports.PERIODS or region not in reports.REGION_CHOICES:
+        return
+    d_from, d_to, parts, _ = await _report_data(period, region)
+    head = t("rep_list_title", period=t(f"rep_p_{period}"), region=escape(reports.region_choice_label(region)), n=len(parts))
+    lines, cur = [head], None
+    for i, pp in enumerate(parts, 1):
+        if pp.project_id != cur:
+            cur = pp.project_id
+            lines += ["", f"📅 <b>{escape(pp.project.title)}</b>"]
+        u = pp.user
+        extra = " · ".join(x for x in (u.phone, f"@{u.username}" if u.username else "") if x)
+        lines.append(f"{i}. {escape(u.fullname or '—')}" + (f" — {escape(extra)}" if extra else ""))
+    text = "\n".join(lines)
+    for x in range(0, len(text), 4000):
+        await call.message.answer(text[x:x + 4000])
 
 
 # ─────────────────────────── добавление участника ───────────────────────────
@@ -577,6 +659,10 @@ CALLBACKS = {
     "evmsg": cb_event_msg,
     "addu": cb_add_user,
     "usersx": cb_users_excel,
+    "rep": cb_report,
+    "repp": cb_report_period,
+    "repr": cb_report_run,
+    "rept": cb_report_text,
     "find": cb_find,
     "u": cb_user,
     "ur": cb_user_roles,

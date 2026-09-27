@@ -564,6 +564,21 @@ class StaffCheckInView(_Staff):
         if not volunteer:
             return Response({"result": "not_found"})
 
+        # Человек из другого региона — почти всегда выбрано не то мероприятие.
+        # Не отмечаем сразу, а спрашиваем (force=true — «да, отметить»).
+        if not request.data.get("force") and volunteer.region and not services.same_region(volunteer.region, project.region):
+            already = ProjectParticipation.objects.filter(user=volunteer, project=project, status='attended').exists()
+            if not already:
+                lang = lang_of_sync(request.user.tg_id) if request.user.tg_id else "uz"
+                return Response({
+                    "result": "confirm_region",
+                    "person": {"id": volunteer.id, "fullname": volunteer.fullname,
+                               "photo": _abs(request, thumb_url(volunteer.photo, 120)), "balance": volunteer.balance},
+                    "person_region": region_label(volunteer.region, lang),
+                    "event_region": region_label(project.region, lang) if project.region else "",
+                    "event_title": project.title,
+                })
+
         result, auto_added = services.check_in(volunteer, project)
         volunteer.refresh_from_db(fields=['balance'])
 
@@ -585,6 +600,19 @@ class StaffCheckInView(_Staff):
             },
             "counts": counts,
         })
+
+
+class StaffUndoView(_Staff):
+    """POST /webapp/staff/undo/ { project_id, user_id, auto_added } — отменить последнюю отметку (ошибся мероприятием/человеком)."""
+
+    def post(self, request):
+        project = EcoProject.objects.filter(id=request.data.get("project_id")).first()
+        volunteer = TGUser.objects.filter(id=request.data.get("user_id")).first()
+        if not project or not volunteer or not services.can_scan_project(request.user, project):
+            return Response({"result": "error"}, status=status.HTTP_400_BAD_REQUEST)
+        done = services.undo_check_in(volunteer, project, bool(request.data.get("auto_added")))
+        counts = services.with_counts(EcoProject.objects.filter(id=project.id)).values('registered', 'attended').first()
+        return Response({"result": "undone" if done else "nothing", "counts": counts})
 
 
 class StaffSearchView(_Staff):

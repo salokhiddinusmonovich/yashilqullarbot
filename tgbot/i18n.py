@@ -766,6 +766,11 @@ TEXTS = {
         "ru": "\n➕ <i>Не был записан на мероприятие — добавлен автоматически.</i>",
         "en": "\n➕ <i>Wasn't registered for the event — added automatically.</i>",
     },
+    "attended_moved": {
+        "uz": "✏️ <b>Tuzatish:</b> siz <b>«{project}»</b> tadbirida qatnashgansiz — skanerda xato bilan boshqa tadbir tanlangan edi. Ballaringiz joyida: <b>{balance} ball</b>.",
+        "ru": "✏️ <b>Исправление:</b> вы участвовали в <b>«{project}»</b> — при сканировании по ошибке было выбрано другое мероприятие. Баллы на месте: <b>{balance}</b>.",
+        "en": "✏️ <b>Correction:</b> you took part in <b>«{project}»</b> — a different event was selected by mistake when scanning. Your points are safe: <b>{balance}</b>.",
+    },
     "attended_notify": {
         "uz": "🌟 <b>«{project}» tadbirida ishtirok etganingiz tasdiqlandi!</b>\n\n"
               "Sizga 10 ball berildi. Hozirgi balansingiz: <b>{balance} ball</b>.\n"
@@ -819,6 +824,7 @@ TEXTS = {
               "📊 <b>Statistika</b> — bugungi raqamlar\n"
               "📅 <b>Tadbirlar</b> — qatnashchilar, Excel, odam qo'shish, xabar yuborish\n"
               "🔎 <b>Qidirish</b> — odamni topish, rol yoki adminlik berish\n"
+              "📋 <b>Kelganlar hisoboti</b> — kim keldi: kun/hafta/oy, hudud bo'yicha, Excel\n"
               "📥 <b>Excel</b> — barcha foydalanuvchilar ro'yxati\n"
               "📢 <b>Rassilka</b> — hammaga xabar yuborish yo'riqnomasi\n\n"
               "👇 Bo'limni tanlang",
@@ -826,6 +832,7 @@ TEXTS = {
               "📊 <b>Статистика</b> — цифры за сегодня\n"
               "📅 <b>Мероприятия</b> — участники, Excel, добавить человека, написать участникам\n"
               "🔎 <b>Поиск</b> — найти человека, выдать роль или админку\n"
+              "📋 <b>Отчёт: кто пришёл</b> — за день/неделю/месяц, по региону, Excel\n"
               "📥 <b>Excel</b> — список всех пользователей\n"
               "📢 <b>Рассылка</b> — как отправить сообщение всем\n\n"
               "👇 Выберите раздел",
@@ -833,9 +840,48 @@ TEXTS = {
               "📊 <b>Statistics</b> — today's numbers\n"
               "📅 <b>Events</b> — participants, Excel, add a person, message participants\n"
               "🔎 <b>Search</b> — find a person, give a role or admin rights\n"
+              "📋 <b>Attendance report</b> — who came: day/week/month, by region, Excel\n"
               "📥 <b>Excel</b> — list of all users\n"
               "📢 <b>Broadcast</b> — how to message everyone\n\n"
               "👇 Choose a section",
+    },
+    "adm_btn_report": {"uz": "📋 Kelganlar hisoboti", "ru": "📋 Отчёт: кто пришёл", "en": "📋 Attendance report"},
+    "rep_pick_period": {"uz": "📋 <b>Kelganlar hisoboti</b>\n\n1/2 · Qaysi davr?", "ru": "📋 <b>Отчёт: кто пришёл</b>\n\n1/2 · За какой период?",
+                        "en": "📋 <b>Attendance report</b>\n\n1/2 · Which period?"},
+    "rep_pick_region": {"uz": "📋 <b>Kelganlar hisoboti</b> · {period}\n\n2/2 · Qaysi hudud? (tadbir o'tgan hudud)",
+                        "ru": "📋 <b>Отчёт: кто пришёл</b> · {period}\n\n2/2 · Какой регион? (где прошло мероприятие)",
+                        "en": "📋 <b>Attendance report</b> · {period}\n\n2/2 · Which region? (where the event took place)"},
+    "rep_p_today": {"uz": "📅 Bugun", "ru": "📅 Сегодня", "en": "📅 Today"},
+    "rep_p_yesterday": {"uz": "⏪ Kecha", "ru": "⏪ Вчера", "en": "⏪ Yesterday"},
+    "rep_p_week": {"uz": "🗓 Oxirgi 7 kun", "ru": "🗓 Последние 7 дней", "en": "🗓 Last 7 days"},
+    "rep_p_month": {"uz": "📆 Shu oy", "ru": "📆 Этот месяц", "en": "📆 This month"},
+    "rep_p_all": {"uz": "♾ Butun vaqt", "ru": "♾ За всё время", "en": "♾ All time"},
+    "rep_all_regions": {"uz": "🌍 Barcha hududlar", "ru": "🌍 Все регионы", "en": "🌍 All regions"},
+    "rep_tashkent": {"uz": "Toshkent (shahar + viloyat)", "ru": "Ташкент (город + область)", "en": "Tashkent (city + region)"},
+    "rep_caption": {
+        "uz": "📋 <b>Kelganlar</b>: {n} ta qatnashuv · {people} kishi · {events} ta tadbir\n📅 {period}\n📍 {region}\n\n{lines}",
+        "ru": "📋 <b>Пришли</b>: {n} отметок · {people} чел. · {events} мероприятий\n📅 {period}\n📍 {region}\n\n{lines}",
+        "en": "📋 <b>Attended</b>: {n} check-ins · {people} people · {events} events\n📅 {period}\n📍 {region}\n\n{lines}",
+    },
+    "rep_empty": {"uz": "🤷 Bu davrda va hududda hech kim belgilanmagan.\n📅 {period} · 📍 {region}",
+                  "ru": "🤷 За этот период в этом регионе никто не отмечен.\n📅 {period} · 📍 {region}",
+                  "en": "🤷 Nobody was checked in for this period and region.\n📅 {period} · 📍 {region}"},
+    "rep_btn_text": {"uz": "💬 Ro'yxatni chatda ko'rsatish", "ru": "💬 Показать список в чате", "en": "💬 Show the list in chat"},
+    "rep_btn_again": {"uz": "🔁 Boshqa hisobot", "ru": "🔁 Другой отчёт", "en": "🔁 Another report"},
+    "rep_list_title": {"uz": "📋 <b>Kelganlar</b> · {period} · {region} — {n}", "ru": "📋 <b>Пришли</b> · {period} · {region} — {n}",
+                       "en": "📋 <b>Attended</b> · {period} · {region} — {n}"},
+    "rep_sheet_people": {"uz": "Kelganlar", "ru": "Пришли", "en": "Attended"},
+    "rep_sheet_events": {"uz": "Tadbirlar", "ru": "Мероприятия", "en": "Events"},
+    "rep_total": {"uz": "JAMI", "ru": "ИТОГО", "en": "TOTAL"},
+    "rep_people_headers": {
+        "uz": ["№", "F.I.Sh", "Telefon", "Telegram", "Email", "Yosh", "O'qish joyi", "Volontyor hududi", "Tadbir", "Tadbir hududi", "Tadbir sanasi", "Ball"],
+        "ru": ["№", "ФИО", "Телефон", "Telegram", "Email", "Возраст", "Место учёбы", "Регион волонтёра", "Мероприятие", "Регион мероприятия", "Дата", "Баллы"],
+        "en": ["#", "Full name", "Phone", "Telegram", "Email", "Age", "Education", "Volunteer region", "Event", "Event region", "Date", "Points"],
+    },
+    "rep_event_headers": {
+        "uz": ["№", "Tadbir", "Hudud", "Sana", "Yozilgan", "Kelgan", "%"],
+        "ru": ["№", "Мероприятие", "Регион", "Дата", "Записались", "Пришли", "%"],
+        "en": ["#", "Event", "Region", "Date", "Registered", "Attended", "%"],
     },
     "adm_btn_stats": {"uz": "📊 Statistika", "ru": "📊 Статистика", "en": "📊 Statistics"},
     "adm_btn_events": {"uz": "📅 Tadbirlar", "ru": "📅 Мероприятия", "en": "📅 Events"},

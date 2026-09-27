@@ -7,7 +7,9 @@ from pathlib import Path
 from aiogram import Bot
 from asgiref.sync import async_to_sync
 from django.conf import settings
+from django import forms
 from django.contrib import admin, messages
+from django.contrib.admin.helpers import ActionForm
 from django.core.cache import cache
 from django.db.models import Count, Q
 from django.utils import timezone
@@ -88,15 +90,90 @@ class ParticipationResource(resources.ModelResource):
 STATUS_COLORS = {'pending': '#d97706', 'approved': '#0284c7', 'attended': '#16a34a', 'rejected': '#dc2626'}
 
 
+class MoveActionForm(ActionForm):
+    """Поле рядом с выпадающим списком действий — для «перенести на другое мероприятие»."""
+    target_project = forms.ModelChoiceField(
+        queryset=EcoProject.objects.order_by('-date'), required=False, label=tr('move_target'),
+    )
+
+
 @admin.register(ProjectParticipation)
 class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
     resource_class = ParticipationResource
+    action_form = MoveActionForm
+    # кнопка «📋 Отчёт: кто пришёл» над списком (рядом с «Экспорт»)
+    change_list_template = "admin/app_telegram/projectparticipation/change_list.html"
+
+    def get_urls(self):
+        from django.urls import path
+        return [
+            path('report/', self.admin_site.admin_view(self.report_view), name='app_telegram_projectparticipation_report'),
+        ] + super().get_urls()
+
+    def report_view(self, request):
+        """Отчёт «кто пришёл»: период + регион → таблица на странице и Excel (app_telegram/reports.py)."""
+        from django.core.exceptions import PermissionDenied
+        from django.http import HttpResponse
+        from django.template.response import TemplateResponse
+        from django.utils.dateparse import parse_date
+        from django.utils.translation import get_language
+        from tgbot.i18n import t as bt
+        from . import reports
+
+        if not self.has_view_permission(request):
+            raise PermissionDenied
+        lang = (get_language() or "ru")[:2]
+        lang = lang if lang in ("uz", "ru", "en") else "ru"
+        g = request.GET
+        period = g.get("period", "today")
+        region = g.get("region", "all")
+        if region not in reports.REGION_CHOICES:
+            region = "all"
+        if period == "custom":
+            d_from = parse_date(g.get("from") or "")
+            d_to = parse_date(g.get("to") or "") or d_from
+            d_from = d_from or d_to
+            if d_from and d_to and d_from > d_to:
+                d_from, d_to = d_to, d_from
+        else:
+            period = period if period in reports.PERIODS else "today"
+            d_from, d_to = reports.period_range(period)
+        regions = reports.region_codes(region)
+        parts = reports.attendance(d_from, d_to, regions)
+        events = reports.event_summary(d_from, d_to, regions)
+        ptxt = reports.period_text(d_from, d_to, lang)
+        rtxt = reports.region_choice_label(region, lang)
+
+        if g.get("download"):
+            title = f"{bt('rep_sheet_people', lang)} · {ptxt} · {rtxt}"
+            buf = reports.build_xlsx(parts, events, lang, title)
+            resp = HttpResponse(buf.getvalue(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            resp["Content-Disposition"] = f'attachment; filename="{reports.filename(d_from, d_to, region)}"'
+            return resp
+
+        q = request.GET.copy(); q["download"] = "1"
+        ctx = {
+            **self.admin_site.each_context(request),
+            "title": trn("rep_title"), "opts": self.model._meta,
+            "periods": [(p, bt(f"rep_p_{p}", lang)) for p in reports.PERIODS],
+            "regions": [(r, reports.region_choice_label(r, lang)) for r in reports.REGION_CHOICES],
+            "period": period, "region": region,
+            "d_from": d_from.isoformat() if d_from else "", "d_to": d_to.isoformat() if d_to else "",
+            "ptxt": ptxt, "rtxt": rtxt,
+            "parts": parts[:100], "more": max(0, len(parts) - 100),
+            "n_checkins": len(parts), "n_people": len({pp.user_id for pp in parts}),
+            "events": events, "n_events": sum(1 for e in events if e.attended),
+            "headers": bt("rep_people_headers", lang), "eheaders": bt("rep_event_headers", lang),
+            "download_qs": q.urlencode(),
+        }
+        return TemplateResponse(request, "admin/yq_report.html", ctx)
 
     list_display = ('display_face', 'get_fullname', 'get_project_title', 'colored_status', 'applied_at')
-    list_filter = (('project', admin.RelatedOnlyFieldListFilter), 'status', 'applied_at')
+    # регион волонтёра — чтобы быстро найти «самаркандцев на ташкентском мероприятии»
+    list_filter = (('project', admin.RelatedOnlyFieldListFilter), 'status', 'user__region', 'applied_at')
     search_fields = ('user__fullname', 'user__username', 'user__phone', 'project__title')
     autocomplete_fields = ['user', 'project']
-    actions = ['make_attended_with_msg', 'make_rejected']
+    actions = ['make_attended_with_msg', 'make_rejected', 'move_to_project']
 
     # СКОРОСТЬ: раньше 500 строк на страницу и без select_related —
     # это ~1000 отдельных SQL-запросов (юзер + проект на каждую строку)
@@ -156,6 +233,27 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
         self.message_user(request, trn("msg_attended", n=len(to_notify)))
         if already:
             self.message_user(request, trn("msg_already", n=already), messages.WARNING)
+
+    @admin.action(description=tr('act_move'))
+    def move_to_project(self, request, queryset):
+        from . import services
+        target = None
+        tid = request.POST.get('target_project')
+        if tid:
+            target = EcoProject.objects.filter(pk=tid).first()
+        if not target:
+            self.message_user(request, trn("msg_pick_target"), messages.ERROR)
+            return
+        moved = services.move_participations(queryset, target)
+        attended = [u for u, was_attended in moved if was_attended and u.tg_id]
+        langs = langs_of_sync([u.tg_id for u in attended])
+        msgs = []
+        for u in attended:
+            u.refresh_from_db(fields=['balance'])
+            msgs.append((u.tg_id, bot_t("attended_moved", langs.get(u.tg_id), project=escape(target.title), balance=u.balance)))
+        if msgs:
+            send_in_background(msgs)
+        self.message_user(request, trn("msg_moved", n=len(moved), title=target.title))
 
     @admin.action(description=tr('act_rejected'))
     def make_rejected(self, request, queryset):

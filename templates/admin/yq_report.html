@@ -1,0 +1,100 @@
+{% extends "admin/base_site.html" %}
+{% load yq %}
+{% block extrastyle %}{{ block.super }}
+<style>
+  .rep { max-width: 1200px; }
+  .rep-head h1 { margin: 0 0 4px; font-size: 1.6rem; font-weight: 800; letter-spacing: -.02em; }
+  .rep-head p { margin: 0 0 18px; color: var(--body-quiet-color); }
+  .rep-form { display: grid; gap: 14px; padding: 18px; border-radius: 16px; background: var(--darkened-bg); border: 1px solid var(--hairline-color); margin-bottom: 20px; }
+  .rep-label { font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; color: var(--body-quiet-color); margin-bottom: 6px; }
+  .rep-seg { display: flex; flex-wrap: wrap; gap: 6px; }
+  .rep-seg input { display: none; }
+  .rep-seg label { padding: 8px 14px; border-radius: 99px; border: 1px solid var(--hairline-color); background: var(--body-bg); cursor: pointer; font-weight: 600; font-size: .85rem; }
+  .rep-seg input:checked + label { background: var(--primary); color: #fff; border-color: transparent; }
+  .rep-dates { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .rep-dates input, .rep-form select { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--hairline-color); background: var(--body-bg); color: var(--body-fg); font-size: .9rem; }
+  .rep-btns { display: flex; gap: 10px; flex-wrap: wrap; }
+  .rep-btns button { padding: 10px 18px; border-radius: 12px; border: 0; font-weight: 700; cursor: pointer; font-size: .9rem; }
+  .rep-btns .show { background: var(--body-bg); color: var(--body-loud-color); border: 1px solid var(--hairline-color); }
+  .rep-btns .dl { background: linear-gradient(135deg, #15803d, #16a34a); color: #fff; }
+  .rep-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 18px; }
+  .rep-stat { padding: 14px 16px; border-radius: 14px; border: 1px solid var(--hairline-color); background: var(--body-bg); }
+  .rep-stat b { display: block; font-size: 1.8rem; font-weight: 800; color: var(--body-loud-color); }
+  .rep-stat span { color: var(--body-quiet-color); font-size: .8rem; }
+  .rep-meta { margin-bottom: 14px; color: var(--body-quiet-color); }
+  .rep h2 { font-size: 1rem; margin: 22px 0 10px; }
+  .rep table { width: 100%; }
+  .rep .pct { font-weight: 700; color: #16a34a; }
+</style>
+{% endblock %}
+{% block breadcrumbs %}<div class="breadcrumbs"><a href="{% url 'admin:index' %}">⌂</a> › <a href="{% url 'admin:app_telegram_projectparticipation_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a> › {% yq "rep_title" %}</div>{% endblock %}
+{% block content %}
+<div class="rep">
+  <div class="rep-head"><h1>📋 {% yq "rep_title" %}</h1><p>{% yq "rep_sub" %}</p></div>
+
+  <form class="rep-form" method="get">
+    <div>
+      <div class="rep-label">{% yq "rep_period" %}</div>
+      <div class="rep-seg">
+        {% for code, label in periods %}
+          <input type="radio" name="period" id="p-{{ code }}" value="{{ code }}" {% if period == code %}checked{% endif %}><label for="p-{{ code }}">{{ label }}</label>
+        {% endfor %}
+        <input type="radio" name="period" id="p-custom" value="custom" {% if period == "custom" %}checked{% endif %}><label for="p-custom">{% yq "rep_custom" %}</label>
+      </div>
+    </div>
+    <div class="rep-dates">
+      <input type="date" name="from" value="{{ d_from }}" onchange="document.getElementById('p-custom').checked = true"> {% yq "rep_from" %}
+      <input type="date" name="to" value="{{ d_to }}" onchange="document.getElementById('p-custom').checked = true"> {% yq "rep_to" %}
+    </div>
+    <div>
+      <div class="rep-label">{% yq "rep_region" %}</div>
+      <select name="region">
+        {% for code, label in regions %}<option value="{{ code }}" {% if region == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="rep-btns">
+      <button type="submit" class="show">🔍 {% yq "rep_show" %}</button>
+      <button type="submit" class="dl" name="download" value="1">{% yq "rep_download" %}</button>
+    </div>
+  </form>
+
+  <div class="rep-meta">📅 {{ ptxt }} · 📍 {{ rtxt }}</div>
+  <div class="rep-stats">
+    <div class="rep-stat"><b>{{ n_people }}</b><span>{% yq "rep_people_n" %}</span></div>
+    <div class="rep-stat"><b>{{ n_checkins }}</b><span>{% yq "rep_checkins" %}</span></div>
+    <div class="rep-stat"><b>{{ n_events }}</b><span>{% yq "rep_events_n" %}</span></div>
+  </div>
+
+  {% if events %}
+  <h2>{% yq "rep_by_event" %}</h2>
+  <table>
+    <thead><tr>{% for h in eheaders %}<th>{{ h }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for e in events %}
+      <tr><td>{{ forloop.counter }}</td><td><a href="{% url 'admin:app_telegram_ecoproject_change' e.id %}">{{ e.title }}</a></td><td>{{ e.get_region_display }}</td>
+        <td>{{ e.date|date:"d.m.Y H:i" }}</td><td>{{ e.registered }}</td><td><b>{{ e.attended }}</b></td>
+        <td class="pct">{% if e.registered %}{% widthratio e.attended e.registered 100 %}%{% else %}—{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <h2>{% yq "rep_people" %}</h2>
+  {% if parts %}
+  <table>
+    <thead><tr>{% for h in headers %}<th>{{ h }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for pp in parts %}
+      <tr><td>{{ forloop.counter }}</td><td><a href="{% url 'admin:app_telegram_tguser_change' pp.user.id %}">{{ pp.user.fullname }}</a></td>
+        <td>{{ pp.user.phone|default:"" }}</td><td>{% if pp.user.username %}@{{ pp.user.username }}{% endif %}</td><td>{{ pp.user.email|default:"" }}</td>
+        <td>{{ pp.user.age|default:"" }}</td><td>{{ pp.user.education_place|default:"" }}</td><td>{{ pp.user.get_region_display|default:"" }}</td>
+        <td>{{ pp.project.title }}</td><td>{{ pp.project.get_region_display }}</td><td>{{ pp.project.date|date:"d.m.Y" }}</td><td>{{ pp.user.balance }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if more %}<p class="rep-meta">{% yq "rep_more" n=more %}</p>{% endif %}
+  {% else %}
+  <p class="rep-meta">🤷 {% yq "rep_none" %}</p>
+  {% endif %}
+</div>
+{% endblock %}
