@@ -33,13 +33,23 @@ LAST_ERROR = ""
 # зато обычно намного больший дневной лимит. Отключить: AI_GEMMA=0.
 GEMMA = os.environ.get("GEMMA_MODEL", "gemma-3-27b-it").strip()
 GEMMA_ON = os.environ.get("AI_GEMMA", "1") != "0" and bool(GEMMA)
+# Второй бесплатный провайдер (необязательно): Groq — свой ключ (console.groq.com → API Keys, бесплатно).
+# Llama — ответы текстом (свой дневной лимит), Whisper — голосовые, понимает узбекский.
+GROQ_KEY = os.environ.get("GROQ_API_KEY", "").strip()
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
+GROQ_STT = os.environ.get("GROQ_STT_MODEL", "whisper-large-v3").strip()
+GROQ_URL = "https://api.groq.com/openai/v1"
 DAILY_LIMIT = int(os.environ.get("AI_DAILY_LIMIT", "15"))
 URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 LANG_NAMES = {"uz": "Uzbek (Latin script)", "ru": "Russian", "en": "English"}
 
 
 def enabled() -> bool:
-    return bool(API_KEY)
+    return bool(API_KEY or GROQ_KEY)
+
+
+def groq_enabled() -> bool:
+    return bool(GROQ_KEY)
 
 
 class Unavailable(Exception):
@@ -48,7 +58,7 @@ class Unavailable(Exception):
 
 async def _cooling() -> bool:
     """Все модели на лимите?"""
-    for m in MODELS + ([GEMMA] if GEMMA_ON else []):
+    for m in (MODELS + ([GEMMA] if GEMMA_ON else []) if API_KEY else []) + ([f"groq:{GROQ_MODEL}"] if GROQ_KEY else []):
         if not await _dead_ttl(m):
             return False
     return True
@@ -145,18 +155,85 @@ async def _on_429(model: str, data, msg: str) -> float:
     return delay
 
 
-async def _generate(system: str, contents: list, json_mode=False, max_tokens=4096, gemma_contents: list | None = None) -> str:
+async def _groq_chat(system: str, history: list, text: str, json_mode: bool, max_tokens: int) -> str:
+    """Groq (OpenAI-совместимый API). Бросает Unavailable; при лимите помечает модель."""
+    global LAST_ERROR
+    key = f"groq:{GROQ_MODEL}"
+    if not GROQ_KEY or await _dead_ttl(key):
+        raise Unavailable("groq off")
+    msgs = [{"role": "system", "content": system + ("\nReturn ONLY a JSON object." if json_mode else "")}]
+    for q, a in (history or [])[-2:]:
+        msgs += [{"role": "user", "content": q}, {"role": "assistant", "content": a}]
+    msgs.append({"role": "user", "content": text})
+    body = {"model": GROQ_MODEL, "messages": msgs, "temperature": 0.3, "max_tokens": min(max_tokens, 1500)}
+    if json_mode:
+        body["response_format"] = {"type": "json_object"}
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=40)) as s:
+            async with s.post(f"{GROQ_URL}/chat/completions", json=body, headers={"Authorization": f"Bearer {GROQ_KEY}"}) as r:
+                status, data = r.status, await r.json(content_type=None)
+                retry = float(r.headers.get("retry-after", "30") or 30)
+    except (aiohttp.ClientError, TimeoutError) as e:
+        LAST_ERROR = f"groq network: {e}"
+        raise Unavailable(str(e))
+    if status == 200:
+        try:
+            out = (data["choices"][0]["message"]["content"] or "").strip()
+        except (KeyError, IndexError, TypeError):
+            out = ""
+        if out:
+            return out
+        LAST_ERROR = "groq: empty answer"
+        raise Unavailable("empty answer")
+    msg = (data or {}).get("error", {}).get("message", "") if isinstance(data, dict) else str(data)
+    LAST_ERROR = f"groq {GROQ_MODEL}: HTTP {status} {msg[:200]}"
+    log.warning(LAST_ERROR)
+    if status == 429:
+        await _mark_dead(key, _until_daily_reset() if "per day" in msg.lower() or "(RPD)" in msg or "(TPD)" in msg else max(retry, 20))
+        raise Unavailable("rate limit")
+    raise Unavailable(f"groq http {status}")
+
+
+async def transcribe(audio: bytes) -> str:
+    """Голосовое → текст через Groq Whisper (узбекский тоже). Нужен GROQ_API_KEY."""
+    global LAST_ERROR
+    key = f"groq:{GROQ_STT}"
+    if not GROQ_KEY or await _dead_ttl(key):
+        raise Unavailable("stt off")
+    form = aiohttp.FormData()
+    form.add_field("file", audio, filename="voice.ogg", content_type="audio/ogg")
+    form.add_field("model", GROQ_STT)
+    form.add_field("response_format", "json")
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60)) as s:
+            async with s.post(f"{GROQ_URL}/audio/transcriptions", data=form, headers={"Authorization": f"Bearer {GROQ_KEY}"}) as r:
+                status, data = r.status, await r.json(content_type=None)
+    except (aiohttp.ClientError, TimeoutError) as e:
+        LAST_ERROR = f"groq stt network: {e}"
+        raise Unavailable(str(e))
+    if status == 200 and (data or {}).get("text", "").strip():
+        return data["text"].strip()
+    msg = (data or {}).get("error", {}).get("message", "") if isinstance(data, dict) else str(data)
+    LAST_ERROR = f"groq whisper: HTTP {status} {msg[:200]}"
+    if status == 429:
+        await _mark_dead(key, 600)
+        raise Unavailable("rate limit")
+    raise Unavailable("stt failed")
+
+
+async def _generate(system: str, contents: list, json_mode=False, max_tokens=4096, small: tuple | None = None) -> str:
     """
     Запрос к ИИ. Модели Gemini по очереди (у каждой СВОЙ бесплатный лимит); модели на лимите
     пропускаем, пока не «отдохнут». Все Gemini исчерпаны — запасная Gemma (если передан
     gemma_contents: только текст, компактный справочник). Пустой ответ — ещё раз с запасом.
     Ничего не вышло из-за лимитов — Unavailable("rate limit") → «ИИ занят».
+    small = (компактная инструкция, история, текст вопроса) — для запасных Groq/Gemma (только текст).
     """
     global _working, LAST_ERROR
-    if not API_KEY:
+    if not API_KEY and not GROQ_KEY:
         LAST_ERROR = "GEMINI_API_KEY yo'q (.env)"
         raise Unavailable("no key")
-    order = ([_working] if _working and _working != GEMMA else []) + [m for m in MODELS if m != _working]
+    order = (([_working] if _working and _working != GEMMA else []) + [m for m in MODELS if m != _working]) if API_KEY else []
     limited = False
     for model in order:
         if await _dead_ttl(model):
@@ -194,8 +271,14 @@ async def _generate(system: str, contents: list, json_mode=False, max_tokens=409
             if status in (400, 403) and "API key" in msg:
                 raise Unavailable("bad key")
             break
-    # ── запасная Gemma: только текст ──
-    if GEMMA_ON and gemma_contents is not None and not await _dead_ttl(GEMMA):
+    # ── запасные (только текст): Groq, потом Gemma ──
+    if small is not None and GROQ_KEY:
+        try:
+            return await _groq_chat(small[0], small[1], small[2], json_mode, max_tokens)
+        except Unavailable as e:
+            limited = limited or str(e) == "rate limit"
+    gemma_contents = _gemma_contents(small[0] + ("\nReturn ONLY the JSON object, no other text." if json_mode else ""), small[1], small[2]) if small else None
+    if API_KEY and GEMMA_ON and gemma_contents is not None and not await _dead_ttl(GEMMA):
         cfg = {"temperature": 0.3, "maxOutputTokens": min(max_tokens, 2048)}
         try:
             status, data = await _post(GEMMA, {"contents": gemma_contents, "generationConfig": cfg})
@@ -231,7 +314,12 @@ def _gemma_contents(system: str, history: list, text: str) -> list:
 
 async def models_state() -> str:
     lines = []
-    for m in MODELS + ([GEMMA + " (zaxira, faqat matn)"] if GEMMA_ON else []):
+    names = (MODELS + ([GEMMA + " (zaxira, faqat matn)"] if GEMMA_ON else [])) if API_KEY else []
+    if GROQ_KEY:
+        names += [f"groq:{GROQ_MODEL} (matn)", f"groq:{GROQ_STT} (ovoz → matn)"]
+    else:
+        lines.append("• Groq: ulanmagan (GROQ_API_KEY yo'q) — ovoz va matn uchun qo'shimcha bepul limit beradi")
+    for m in names:
         name = m.split(" ")[0]
         ttl = await _dead_ttl(name)
         mark = "✅" if not ttl else f"⏳ limit, {ttl // 3600} soat {ttl % 3600 // 60} daq qoldi" if ttl > 3600 else f"⏳ limit, {ttl} soniya"
@@ -239,13 +327,29 @@ async def models_state() -> str:
     return "\n".join(lines)
 
 
+def reset_time_local() -> str:
+    """Во сколько по Ташкенту сбросятся дневные лимиты Google."""
+    from datetime import datetime, timedelta
+    return (datetime.utcnow() + timedelta(seconds=_until_daily_reset(), hours=5)).strftime("%H:%M")
+
+
+async def all_daily_dead() -> bool:
+    """Все Gemini-модели исчерпали ДНЕВНОЙ лимит (осталось больше часа)?"""
+    if not API_KEY:
+        return False
+    for m in MODELS:
+        if await _dead_ttl(m) < 3600:
+            return False
+    return True
+
+
 async def status() -> str:
     """Для /ai — проверка: есть ли ключ, какая модель отвечает, какая ошибка, какие модели на лимите."""
-    if not API_KEY:
+    if not API_KEY and not GROQ_KEY:
         return "❌ GEMINI_API_KEY topilmadi. .env ga qo'shing va botni qayta yarating: docker compose up -d --force-recreate bot"
     try:
         await _generate("Reply with one word: OK", [{"role": "user", "parts": [{"text": "ping"}]}], max_tokens=256,
-                        gemma_contents=[{"role": "user", "parts": [{"text": "Reply with one word: OK"}]}])
+                        small=("Reply with one word: OK", [], "ping"))
         last = f"\nOxirgi xato: {LAST_ERROR}" if LAST_ERROR else ""
         return f"✅ AI ishlayapti.{last}\n\n{await models_state()}"
     except Unavailable as e:
@@ -388,11 +492,11 @@ async def ask(question: str, lang: str, user_ctx: str, history: list | None = No
     else:
         parts = [{"text": question[:1000]}]
     contents.append({"role": "user", "parts": parts})
-    gemma = None
-    if not audio and GEMMA_ON:
-        small = _SYSTEM.format(lang=LANG_NAMES.get(lang, "Uzbek"), kb=await knowledge_small(question, lang), user=user_ctx or "—")
-        gemma = _gemma_contents(small, history, question[:1000])
-    text = await _generate(system, contents, max_tokens=2048, gemma_contents=gemma)
+    small = None
+    if not audio:
+        small_sys = _SYSTEM.format(lang=LANG_NAMES.get(lang, "Uzbek"), kb=await knowledge_small(question, lang), user=user_ctx or "—")
+        small = (small_sys, history, question[:1000])
+    text = await _generate(system, contents, max_tokens=2048, small=small)
     return _safe_html(text)
 
 
@@ -438,15 +542,66 @@ HANDBOOK:
 
 async def parse_command(text: str, regions: list[str], audio: bytes | None = None, lang: str = "uz") -> dict:
     parts = [_audio_part(audio), {"text": "Voice command (probably Uzbek or Russian)."}] if audio else [{"text": text[:500]}]
-    gemma = None
-    if not audio and GEMMA_ON:
-        small = _CMD_SYSTEM.format(regions=", ".join(regions), lang=LANG_NAMES.get(lang, "Uzbek"), kb=await knowledge_small(text, lang))
-        gemma = _gemma_contents(small + "\nReturn ONLY the JSON object, no other text.", [], text[:500])
+    small = None
+    if not audio:
+        small = (_CMD_SYSTEM.format(regions=", ".join(regions), lang=LANG_NAMES.get(lang, "Uzbek"), kb=await knowledge_small(text, lang)), [], text[:500])
     raw = await _generate(_CMD_SYSTEM.format(regions=", ".join(regions), lang=LANG_NAMES.get(lang, "Uzbek"), kb=await knowledge()),
-                          [{"role": "user", "parts": parts}], json_mode=True, max_tokens=2048, gemma_contents=gemma)
+                          [{"role": "user", "parts": parts}], json_mode=True, max_tokens=2048, small=small)
     import re as _re
     m = _re.search(r"\{.*\}", raw, _re.S)
     try:
         return json.loads(m.group(0) if m else raw)
     except ValueError:
         raise Unavailable("bad json")
+
+
+# ─────────────────────────── «кто такой …» без ИИ ───────────────────────────
+
+WHO_WORDS = ("kim", "кто", "who", "ким", "haqida", "о ком", "tanishtir")
+
+
+def _norm_name(x: str) -> str:
+    """Имя для сравнения: кириллицу (узб. и рус.) всегда в латиницу, без апострофов; kh→x (Khabibullayev = Xabibullayev)."""
+    import re as _re
+    low = faq._APOS.sub("'", (x or "").lower())
+    low = "".join(faq._UZ_CYR.get(ch, ch) for ch in low).replace("'", "").replace("kh", "x")
+    return _re.sub(r"[^a-z0-9 ]+", " ", low)
+
+
+def people_answer_sync(question: str) -> str | None:
+    """
+    Вопрос про человека из команды → ответ из базы (имя, роль, регион, био с сайта). Бесплатно, мгновенно.
+    Только команда (роль не «волонтёр») и команда с сайта; телефонов не даём.
+    """
+    from difflib import SequenceMatcher
+    from app_telegram.models import TGUser, TeamMemberYashilQullar
+    from tgbot.i18n import region_label, role_label
+    who = {_norm_name(w) for w in WHO_WORDS}
+    toks = [w for w in _norm_name(question).split() if len(w) >= 4 and w not in who]
+    if not toks:
+        return None
+
+    def score(fullname: str) -> float:
+        parts = [p for p in _norm_name(fullname).split() if len(p) >= 3]
+        best = 0.0
+        for t in toks:
+            for p in parts:
+                r = SequenceMatcher(None, t[:len(p) + 2], p).ratio()
+                best = max(best, r)
+        return best
+
+    found = []
+    for m in TeamMemberYashilQullar.objects.all()[:200]:
+        sc = score(m.fullname)
+        if sc >= 0.84:
+            bio = " ".join((m.bio or "").split())[:300]
+            tg = f" · Telegram @{m.telegram_username.lstrip('@')}" if m.telegram_username else ""
+            found.append((sc, f"👤 <b>{m.fullname}</b> — {m.get_focus_display()}{tg}" + (f"\n{bio}" if bio else "")))
+    for u in TGUser.objects.exclude(role=TGUser.Role.VOLUNTEER)[:400]:
+        sc = score(u.fullname or "")
+        if sc >= 0.84 and not any(u.fullname and u.fullname in f for _, f in found):
+            found.append((sc, f"👤 <b>{u.fullname}</b> — {role_label(u.role)}" + (f", {region_label(u.region)}" if u.region else "")))
+    if not found:
+        return None
+    found.sort(key=lambda x: -x[0])
+    return "\n\n".join(f for _, f in found[:3])

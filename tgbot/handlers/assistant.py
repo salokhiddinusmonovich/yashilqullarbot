@@ -85,15 +85,30 @@ async def _voice_bytes(message: types.Message) -> bytes | None:
     return bio.getvalue()
 
 
+async def _busy_text(failed: str) -> str:
+    if failed == "rate limit" and await ai.all_daily_dead() and not ai.groq_enabled():
+        return t("ai_busy_day", time=ai.reset_time_local())
+    return t("ai_busy") if failed == "rate limit" else t("ai_error")
+
+
 async def answer_user(message: types.Message, state: FSMContext | None, text: str = "", audio: bytes | None = None, kb=None):
     """
     Один ответ на любой вопрос (текст или голос):
-      короткий понятный вопрос → FAQ сразу (бесплатно, мгновенно);
-      остальное → бесплатный ИИ по нашему справочнику;
-      ИИ недоступен → FAQ, если нашёлся хоть какой-то ответ, иначе «напишите координатору».
+      «кто такой …» про команду → из базы, без ИИ;
+      короткий понятный вопрос → FAQ сразу;
+      остальное → бесплатный ИИ (Gemini → Groq → Gemma);
+      голос, а Gemini на лимите → Groq Whisper расшифрует, дальше как текст;
+      ИИ недоступен → FAQ, если есть хоть что-то, иначе честное сообщение.
     """
     lang = current_lang.get() or "uz"
     failed = ""
+    if text:
+        low = faq.normalize(text)
+        if any(w in low for w in ai.WHO_WORDS):
+            who = await sync_to_async(ai.people_answer_sync)(text)
+            if who:
+                await message.answer(who, reply_markup=kb)
+                return
     entry = faq.match(text) if text else None
     if entry and len(faq.words(text)) <= 7:
         await message.answer(faq.answer(entry, lang), reply_markup=kb)
@@ -107,10 +122,21 @@ async def answer_user(message: types.Message, state: FSMContext | None, text: st
         ctx, _ = await _user_ctx(message.from_user.id)
         history = (await state.get_data()).get("hist", []) if state else []
         try:
+            if audio is not None and not ai.API_KEY:
+                raise ai.Unavailable("no gemini")
             answer = await ai.ask(text, lang, ctx, history, audio=audio)
         except ai.Unavailable as e:
             log.warning("ai unavailable: %s | %s", e, ai.LAST_ERROR)
             failed = str(e)
+            # голос, а Gemini не смог — расшифруем через Groq Whisper и ответим как на текст
+            if audio is not None and ai.groq_enabled():
+                try:
+                    heard = await ai.transcribe(audio)
+                except ai.Unavailable as e2:
+                    failed = str(e2) if str(e2) == "rate limit" else failed
+                else:
+                    await message.answer(f"🎙 «{escape(heard[:300])}»")
+                    return await answer_user(message, state, heard, None, kb)
         else:
             if state:
                 await state.update_data(hist=(history + [[text[:500] or "(voice)", answer[:800]]])[-3:])
@@ -119,10 +145,8 @@ async def answer_user(message: types.Message, state: FSMContext | None, text: st
 
     if entry:
         await message.answer(faq.answer(entry, lang), reply_markup=kb)
-    elif ai.enabled() and failed == "rate limit":
-        await message.answer(t("ai_busy"), reply_markup=kb)      # бесплатный лимит Google на минуту — попробуйте чуть позже
     elif ai.enabled() and failed:
-        await message.answer(t("ai_error"), reply_markup=kb)
+        await message.answer(await _busy_text(failed), reply_markup=kb)
     elif audio is not None or message.voice:
         await message.answer(t("voice_tip"), reply_markup=kb)
     else:
@@ -230,15 +254,31 @@ async def cmd_message(message: types.Message, state: FSMContext):
     if not text and audio is None:
         await message.answer(t("voice_tip") if not ai.enabled() else t("voice_long"))
         return
+    await _run_cmd(message, text, audio)
+
+
+async def _run_cmd(message: types.Message, text: str, audio: bytes | None):
+    from .admin_panel import send_report, search_users, _user_line
+    from app_telegram import reports
     cmd = parse_rules(text) if text else None
     failed = ""
     if cmd is None and ai.enabled():
         try:
             await message.bot.send_chat_action(message.chat.id, "typing")
+            if audio is not None and not ai.API_KEY:
+                raise ai.Unavailable("no gemini")
             cmd = await ai.parse_command(text, list(reports.REGION_CHOICES), audio=audio, lang=current_lang.get() or "uz")
         except ai.Unavailable as e:
             log.warning("ai cmd unavailable: %s | %s", e, ai.LAST_ERROR)
             failed = str(e)
+            if audio is not None and ai.groq_enabled():
+                try:
+                    heard = await ai.transcribe(audio)
+                except ai.Unavailable:
+                    pass
+                else:
+                    await message.answer(f"🎙 «{escape(heard[:300])}»")
+                    return await _run_cmd(message, heard, None)
     heard = f"🎙 «{escape(str(cmd.get('transcript'))[:300])}»\n" if audio and cmd and cmd.get("transcript") else ""
     action = (cmd or {}).get("action", "unknown")
     if action in ("question", "unknown") or cmd is None:
@@ -247,7 +287,7 @@ async def cmd_message(message: types.Message, state: FSMContext):
             await message.answer(heard + ai._safe_html(str(cmd["answer"])) + t("ask_ai_note"))
             return
         if cmd is None and ai.enabled() and (audio is not None or not text):
-            await message.answer(t("ai_busy") if failed == "rate limit" else t("ai_error"))
+            await message.answer(await _busy_text(failed))
             return
         if text and parse_rules(text) is None and faq.match(text) is None and not ai.enabled():
             await message.answer(t("cmd_unknown"))
