@@ -98,3 +98,6 @@ redis.conf
 /home/salokhiddin/Python/tg_bot_projects/
 .yashilqollar/venv/
 .yashilqollar/venv
+# бэкапы не нужны внутри образов
+backups/
+backup_*.sql

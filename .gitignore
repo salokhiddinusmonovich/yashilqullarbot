@@ -72,3 +72,15 @@ redis.conf
 # Runtime cache — Telegram file_id cache (tgbot/services/photo_cache.py),
 # regenerates itself on first send, nothing to version-control here.
 media/.tg_file_id_cache.json
+# Бэкапы — в них телефоны и email людей: в git НЕЛЬЗЯ (scripts/backup.sh кладёт их в backups/)
+backups/
+backup_*.sql
+schema.sql
+*.sql.gz
+*.tar.gz.enc
+
+# Загруженное людьми — живёт только на сервере (и в недельном бэкапе фото)
+media/spots/
+media/impact/
+media/thumbs/
+media/assistant/
