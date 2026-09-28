@@ -4,7 +4,7 @@
 Шаги: 📸 1–5 фото → 📍 геолокация (своя или точка на карте) → регион (сам по OpenStreetMap) →
 🗑 сколько → ♻️ какой → 🚶 можно ли подойти → ✍️ комментарий → ✅ отправить.
 Рядом (100 м) уже есть открытое сообщение — предлагаем просто подтвердить его.
-Модераторам (админы, основатели, координаторы региона) — фото, точка и карточка с кнопками;
+Только админам (галочка is_admin, роль не важна) — фото, точка и карточка с кнопками;
 автору — каждый шаг: принято (+5), мероприятие назначено, убрано (+10, «до / после»), отклонено.
 Логика и хранение — app_telegram/spots.py.
 """
@@ -17,7 +17,7 @@ from io import BytesIO
 from aiogram import types, Dispatcher
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
-from aiogram.types import (InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto, KeyboardButton,
+from aiogram.types import (InlineKeyboardMarkup, InlineKeyboardButton, InputFile, InputMediaPhoto, KeyboardButton,
                            ReplyKeyboardMarkup, ReplyKeyboardRemove, WebAppInfo)
 from aiogram.utils import exceptions
 from asgiref.sync import sync_to_async
@@ -317,18 +317,32 @@ def mod_kb(s: dict, lang: str) -> InlineKeyboardMarkup | None:
     return kb
 
 
-async def notify_moderators(bot, spot: dict, fids: list, author) -> int:
+def _file(rel: str) -> InputFile:
+    """Фото из MEDIA_ROOT — отправляем файлом (не ссылкой: Telegram не нужно ходить к нам на сервер)."""
+    from django.conf import settings
+    from pathlib import Path
+    return InputFile(str(Path(settings.MEDIA_ROOT) / rel))
+
+
+async def notify_moderators(bot, spot: dict, fids: list | None, author) -> int:
+    """Карточка модераторам. fids — file_id из чата с ботом; None — фото с диска (сообщение из Mini App).
+    После первой отправки берём file_id из ответа Telegram, чтобы остальным не загружать файлы заново."""
     from app_telegram import spots as SP
     mods = await sync_to_async(SP.moderators_for)(spot["region"])
     langs = await langs_of([m.tg_id for m in mods])
+    items = list(fids) if fids else [_file(p) for p in spot["photos"]]
     sent = 0
     for m in mods:
         lang = langs.get(m.tg_id) or "uz"
         try:
-            if len(fids) > 1:
-                await bot.send_media_group(m.tg_id, [InputMediaPhoto(f) for f in fids])
-            elif fids:
-                await bot.send_photo(m.tg_id, fids[0])
+            if len(items) > 1:
+                res = await bot.send_media_group(m.tg_id, [InputMediaPhoto(f) for f in items])
+                if res and getattr(res[0], "photo", None):
+                    items = [x.photo[-1].file_id for x in res]
+            elif items:
+                res = await bot.send_photo(m.tg_id, items[0])
+                if res and getattr(res, "photo", None):
+                    items = [res.photo[-1].file_id]
             await bot.send_location(m.tg_id, spot["lat"], spot["lon"])
             await bot.send_message(m.tg_id, card_text(spot, lang, author.fullname, author.username or ""),
                                    reply_markup=mod_kb(spot, lang), disable_web_page_preview=True)
@@ -355,12 +369,11 @@ async def notify_author(bot, s: dict, pts: int = 0, reason: str = "", event=None
     st = s["status"]
     try:
         if st == "cleaned":
-            from app_telegram.spots import photo_url
             before = s["photos"][:1]
             after = s["after"][:3]
             if before and after:
-                media = [InputMediaPhoto(photo_url(before[0]), caption=t("spot_before", lang))]
-                media += [InputMediaPhoto(photo_url(x), caption=t("spot_after", lang) if i == 0 else None) for i, x in enumerate(after)]
+                media = [InputMediaPhoto(_file(before[0]), caption=t("spot_before", lang))]
+                media += [InputMediaPhoto(_file(x), caption=t("spot_after", lang) if i == 0 else None) for i, x in enumerate(after)]
                 await bot.send_media_group(s["tg"], media)
         from app_telegram.spots import author_text
         text = author_text(s, pts, reason, event, lang)

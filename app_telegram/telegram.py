@@ -87,6 +87,26 @@ def send_documents_in_background(docs: list, on_done=None):
     threading.Thread(target=run, daemon=True).start()
 
 
+def run_with_bot_in_background(fn):
+    """fn(bot) — async-функция бота (например, карточка «Iflos joy» модераторам) в фоновом потоке."""
+    async def go():
+        bot = Bot(token=BOT_TOKEN, parse_mode="HTML")
+        try:
+            await fn(bot)
+        finally:
+            await (await bot.get_session()).close()
+
+    def run():
+        try:
+            asyncio.run(go())
+        except Exception:
+            logger.exception("Background bot task failed")
+        finally:
+            close_old_connections()
+
+    threading.Thread(target=run, daemon=True).start()
+
+
 def is_channel_member(tg_id: int) -> bool:
     """Подписан ли на канал. При сбое Telegram — не блокируем (True), как и в боте."""
     try:

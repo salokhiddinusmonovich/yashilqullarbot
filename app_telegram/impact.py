@@ -121,7 +121,11 @@ def clear_photos(pid: int):
     cache.delete(TOTALS_KEY)
 
 
-def photo_url(rel: str) -> str:
+def photo_url(rel: str, width: int | None = None) -> str:
+    """Полное фото или уменьшенная копия width px (Mini App и сайт грузят копии — быстрее)."""
+    if width:
+        from .thumbs import thumb_rel_url
+        return f"{PUBLIC_URL}{thumb_rel_url(rel, width)}"
     return f"{PUBLIC_URL}{settings.MEDIA_URL.rstrip('/')}/{rel}"
 
 
@@ -197,7 +201,7 @@ def recent_photos(limit=24, pids=None) -> list:
     out = []
     for p in sorted(events.values(), key=lambda p: p.date, reverse=True):
         for rel in res.get(p.id, {}).get("photos", []):
-            out.append({"url": photo_url(rel), "event": p.id, "title": p.title,
+            out.append({"url": photo_url(rel, 400), "event": p.id, "title": p.title,
                         "date": timezone.localtime(p.date).date().isoformat()})
             if len(out) >= limit:
                 return out
@@ -210,7 +214,7 @@ def event_payload(project) -> dict | None:
     if not res:
         return None
     attended = _attended_counts([project.id]).get(project.id, 0)
-    return {**{k: res[k] for k in KINDS}, "attended": attended, "photos": [photo_url(p) for p in res["photos"]]}
+    return {**{k: res[k] for k in KINDS}, "attended": attended, "photos": [photo_url(p, 1000) for p in res["photos"]]}
 
 
 # ─────────── кому напомнить ввести итоги ───────────

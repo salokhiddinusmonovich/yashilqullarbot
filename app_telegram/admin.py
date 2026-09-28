@@ -240,7 +240,8 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
         rows = []
         for x in items[:200]:
             from datetime import datetime, timezone as dt_tz
-            rows.append({**x, "photo_urls": [SP.photo_url(p) for p in x["photos"]], "after_urls": [SP.photo_url(p) for p in x["after"]],
+            rows.append({**x, "pics": [{"s": SP.photo_url(p, 400), "f": SP.photo_url(p)} for p in x["photos"]],
+                         "after_pics": [{"s": SP.photo_url(p, 200), "f": SP.photo_url(p)} for p in x["after"]],
                          "region_label": region_label(x["region"], lang) if x.get("region") else "—",
                          "status_label": bt(f"spot_st_{x['status']}", lang), "size_label": bt(f"spot_size_{x['size']}", lang),
                          "kind_label": bt(f"spot_kind_{x['kind']}", lang), "access_label": bt(f"spot_acc_{x['access']}", lang),
@@ -254,7 +255,7 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
             "acts": [(k, bt(f"spot_st_{k}", lang)) for k in ("accepted", "cleaned", "rejected", "duplicate")],
             "event_label": bt("spot_m_event", lang),
             "points": _json.dumps([{"id": r["id"], "lat": r["lat"], "lon": r["lon"], "st": r["status"], "t": r["status_label"],
-                                    "img": r["photo_urls"][0] if r["photo_urls"] else ""} for r in rows]),
+                                    "img": r["pics"][0]["s"] if r["pics"] else ""} for r in rows]),
         }
         return TemplateResponse(request, "admin/yq_spots.html", ctx)
 

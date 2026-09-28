@@ -1,8 +1,8 @@
 """
 📍 Iflos joy — волонтёр сообщает о замусоренном месте; 🗺 эко-карта всех таких мест.
 
-Поток: бот (tgbot/handlers/spots.py) спрашивает фото → геолокацию → регион → сколько/какой мусор →
-можно ли подойти → комментарий, и присылает карточку админам + координаторам региона с кнопками
+Поток: бот (tgbot/handlers/spots.py) или Mini App спрашивает фото → геолокацию → сколько/какой мусор →
+можно ли подойти → комментарий, и присылает карточку ТОЛЬКО админам (галочка is_admin) с кнопками
 ✅ Qabul · ❌ Rad · 📅 Tadbir · 🔁 Dublikat · 🧹 Tozalandi. Автору — статусы и баллы:
 +5, когда место принято, +10, когда убрано. Когда координатор вносит итоги мероприятия, созданного
 из этого места (/natija), место само становится «убрано», а автору приходит «до / после».
@@ -27,7 +27,7 @@ from io import BytesIO
 from pathlib import Path
 
 from django.conf import settings
-from django.db.models import F, Q
+from django.db.models import F
 from django.utils import timezone
 from PIL import Image, ImageOps
 
@@ -177,10 +177,40 @@ def save_jpeg(data: bytes, rel: str, size=1600) -> str:
     return rel
 
 
-def create(user, lat, lon, region, size, kind, access, note="", address="", photos: list[bytes] = ()) -> dict:
+# фото из Mini App грузятся по одному заранее (маленькие запросы — надёжно на мобильном интернете)
+def save_tmp_photo(uid: int, data: bytes) -> str:
+    token = uuid.uuid4().hex[:16]
+    save_jpeg(data, f"spots/tmp/{uid}/{token}.jpg")
+    r = _r()
+    r.sadd(f"spot:tmp:{uid}", token)
+    r.expire(f"spot:tmp:{uid}", 86400)
+    return token
+
+
+def _take_tmp(uid: int, tokens, sid: int) -> list:
+    """Забрать загруженные заранее фото (только свои) в папку места."""
+    r = _r()
+    out = []
+    for tok in list(tokens)[:MAX_PHOTOS]:
+        if not (isinstance(tok, str) and tok.isalnum() and r.srem(f"spot:tmp:{uid}", tok)):
+            continue
+        src = Path(settings.MEDIA_ROOT) / f"spots/tmp/{uid}/{tok}.jpg"
+        rel = f"spots/{sid}/{tok[:10]}.jpg"
+        dst = Path(settings.MEDIA_ROOT) / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            src.replace(dst)
+            out.append(rel)
+        except OSError:
+            pass
+    return out
+
+
+def create(user, lat, lon, region, size, kind, access, note="", address="", photos: list[bytes] = (), tokens=()) -> dict:
     r = _r()
     sid = int(r.incr("spot:seq"))
     rels = [save_jpeg(p, f"spots/{sid}/{uuid.uuid4().hex[:10]}.jpg") for p in list(photos)[:MAX_PHOTOS]]
+    rels += _take_tmp(user.id, tokens, sid)[:MAX_PHOTOS - len(rels)]
     now = int(time.time())
     r.hset(f"spot:{sid}", mapping={
         "tg": user.tg_id or 0, "uid": user.id, "name": user.fullname or "", "lat": f"{lat:.6f}", "lon": f"{lon:.6f}",
@@ -197,28 +227,15 @@ def create(user, lat, lon, region, size, kind, access, note="", address="", phot
 
 # ─────────── модерация ───────────
 
-def can_moderate(user, spot: dict) -> bool:
-    """Админ (is_admin), основатель — всё; координатор и др. команда — места своего региона."""
-    from . import services
-    if not user:
-        return False
-    if user.is_admin or user.role == "Founder":
-        return True
-    if not services.is_staff(user):
-        return False
-    allowed = services.scan_regions(user)
-    return allowed is None or spot.get("region") in allowed
+def can_moderate(user, spot: dict | None = None) -> bool:
+    """Решают только админы — галочка is_admin у пользователя. Роль (координатор, основатель и т.д.) не важна."""
+    return bool(user and user.is_admin)
 
 
-def moderators_for(region: str) -> list:
-    """Кому приходит новое сообщение: все админы и основатели + координаторы/организаторы региона."""
-    from . import services
+def moderators_for(region: str | None = None) -> list:
+    """Кому приходит новое сообщение: только пользователи с галочкой is_admin (роль и регион не важны)."""
     from .models import TGUser
-    qs = TGUser.objects.filter(tg_id__isnull=False).filter(
-        Q(is_admin=True) | Q(role=TGUser.Role.FOUNDER)
-        | (Q(region__in=services.region_group(region)) & (Q(role__icontains="coordinator") | Q(role="organizer")))
-    )
-    return list(qs.distinct())
+    return list(TGUser.objects.filter(is_admin=True, tg_id__isnull=False))
 
 
 def _award(uid: int, n: int):
@@ -318,7 +335,11 @@ def author_text(s: dict, pts: int = 0, reason: str = "", event=None, lang: str =
 
 # ─────────── для Mini App и сайта ───────────
 
-def photo_url(rel: str) -> str:
+def photo_url(rel: str, width: int | None = None) -> str:
+    """Полное фото (для Telegram) или уменьшенная копия width px (для Mini App — быстрее)."""
+    if width:
+        from .thumbs import thumb_rel_url
+        return f"{PUBLIC_URL}{thumb_rel_url(rel, width)}"
     return f"{PUBLIC_URL}{settings.MEDIA_URL.rstrip('/')}/{rel}"
 
 
@@ -328,14 +349,14 @@ def payload(s: dict, lang: str = "uz", viewer=None, full=False) -> dict:
         "id": s["id"], "lat": s["lat"], "lon": s["lon"], "status": s["status"],
         "region": s.get("region"), "region_label": region_label(s["region"], lang) if s.get("region") else "",
         "size": s.get("size"), "kind": s.get("kind"), "created": s["created"], "confirms": s.get("confirms", 0),
-        "photo": photo_url(s["photos"][0]) if s["photos"] else None,
+        "photo": photo_url(s["photos"][0], 240) if s["photos"] else None,
         "mine": bool(viewer and s.get("uid") == viewer.id),
     }
     if full:
         from .models import EcoProject
         p = EcoProject.objects.filter(id=s["event_id"]).first() if s.get("event_id") else None
         out.update({
-            "photos": [photo_url(x) for x in s["photos"]], "after": [photo_url(x) for x in s["after"]],
+            "photos": [photo_url(x, 900) for x in s["photos"]], "after": [photo_url(x, 900) for x in s["after"]],
             "access": s.get("access"), "note": s.get("note") or "", "address": s.get("address") or "",
             "maps": maps_links(s["lat"], s["lon"]), "updated": s["updated"],
             "event": {"id": p.id, "title": p.title, "date": timezone.localtime(p.date).isoformat(), "active": p.is_active} if p else None,

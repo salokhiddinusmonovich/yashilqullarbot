@@ -55,7 +55,7 @@
     {% for r in rows %}
       <div class="sp-card" id="spot-{{ r.id }}">
         <div class="sp-photos">
-          {% for u in r.photo_urls %}<a href="{{ u }}" target="_blank"><img src="{{ u }}" alt="" loading="lazy"></a>{% endfor %}
+          {% for p in r.pics %}<a href="{{ p.f }}" target="_blank"><img src="{{ p.s }}" alt="" loading="lazy"></a>{% endfor %}
         </div>
         <div class="sp-info">
           <h3>#{{ r.id }} · {{ r.region_label }} <span class="sp-pill">{{ r.status_label }}</span></h3>
@@ -65,7 +65,7 @@
           {% if r.note %}<div>✍️ {{ r.note }}</div>{% endif %}
           <div class="sp-muted">👤 {% yq "spots_author" %}: {% if r.tg %}<a href="tg://user?id={{ r.tg }}">{{ r.name|default:r.tg }}</a>{% else %}{{ r.name }}{% endif %} · 🕒 {{ r.date|date:"d.m.Y H:i" }}{% if r.confirms %} · 👍 {{ r.confirms }}{% endif %}</div>
           <div><a href="{{ r.maps.google }}" target="_blank">Google Maps</a> · <a href="{{ r.maps.yandex }}" target="_blank">Yandex</a>{% if r.event_id %} · <a href="../../ecoproject/{{ r.event_id }}/change/">📅 #{{ r.event_id }}</a>{% endif %}</div>
-          {% if r.after_urls %}<div class="sp-after">{% for u in r.after_urls %}<a href="{{ u }}" target="_blank"><img src="{{ u }}" alt=""></a>{% endfor %}</div>{% endif %}
+          {% if r.after_pics %}<div class="sp-after">{% for p in r.after_pics %}<a href="{{ p.f }}" target="_blank"><img src="{{ p.s }}" alt=""></a>{% endfor %}</div>{% endif %}
         </div>
         <form method="post" class="sp-acts">{% csrf_token %}
           <input type="hidden" name="id" value="{{ r.id }}">

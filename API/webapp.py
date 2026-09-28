@@ -838,13 +838,78 @@ class PublicImpactView(views.APIView):
 # ─────────────────────────── 📍 Iflos joy / 🗺 эко-карта ───────────────────────────
 
 class SpotsView(_Auth):
-    """GET /webapp/spots/ — точки для эко-карты: проверенные всем + свои (любой статус)."""
+    """
+    GET  /webapp/spots/ — точки для эко-карты: проверенные всем + свои (любой статус).
+    POST /webapp/spots/ — 📍 сообщить о грязном месте прямо из Mini App (JSON):
+         tokens (1–5 фото, загруженных через /webapp/spots/photo/), lat, lon, size, kind, access, note,
+         force=true (не спрашивать про место рядом)
+         → {result: ok, spot} | near {spot} | not_uz | limit {n} | bad
+    Админам (галочка is_admin) бот присылает ту же карточку, что и из чата.
+    """
 
     def get(self, request):
         user = request.user
         lang = lang_of_sync(user.tg_id) if user.tg_id else "uz"
         items = [spots.payload(s, lang, user) for s in spots.all_spots() if spots.visible_to(s, user)]
         return Response({"spots": items})
+
+    def post(self, request):
+        from asgiref.sync import async_to_sync
+        from app_telegram.telegram import run_with_bot_in_background
+        from tgbot.services import geo
+        user = request.user
+        lang = lang_of_sync(user.tg_id) if user.tg_id else "uz"
+        d = request.data
+        tokens = [x for x in (d.get("tokens") or []) if isinstance(x, str)][:spots.MAX_PHOTOS]
+        try:
+            lat, lon = float(d.get("lat")), float(d.get("lon"))
+        except (TypeError, ValueError):
+            return Response({"result": "bad", "field": "location"}, status=status.HTTP_400_BAD_REQUEST)
+        size, kind, access = d.get("size"), d.get("kind"), d.get("access") or "unknown"
+        if not tokens or size not in spots.SIZES or kind not in spots.KINDS or access not in spots.ACCESS:
+            return Response({"result": "bad"}, status=status.HTTP_400_BAD_REQUEST)
+        if not spots.can_report(user.tg_id or user.id):
+            return Response({"result": "limit", "n": spots.PER_DAY})
+        g = async_to_sync(geo.reverse)(lat, lon, lang)
+        if (g and g["country"] and g["country"] != "uz") or (not g and not spots.in_uz_box(lat, lon)):
+            return Response({"result": "not_uz"})
+        if d.get("force") not in (True, "1", "true"):
+            near = spots.near_open(lat, lon)
+            if near:
+                return Response({"result": "near", "spot": spots.payload(near, lang, user)})
+        s = spots.create(user, lat, lon, (g or {}).get("region") or spots.nearest_region(lat, lon), size, kind, access,
+                         (d.get("note") or "")[:500], (g or {}).get("address", ""), tokens=tokens)
+        if not s["photos"]:
+            return Response({"result": "bad", "field": "photos"}, status=status.HTTP_400_BAD_REQUEST)
+
+        async def notify(bot):
+            from tgbot.handlers.spots import notify_moderators
+            await notify_moderators(bot, s, None, user)
+        run_with_bot_in_background(notify)
+        return Response({"result": "ok", "spot": spots.payload(s, lang, user)})
+
+
+class SpotPhotoView(_Auth):
+    """POST /webapp/spots/photo/ (multipart photo) — загрузить одно фото заранее → {token}."""
+
+    def post(self, request):
+        f = request.FILES.get("photo")
+        if not f or f.size > 15 * 1024 * 1024:
+            return Response({"result": "bad"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            return Response({"token": spots.save_tmp_photo(request.user.id, f.read())})
+        except Exception:
+            return Response({"result": "bad"}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class SpotConfirmView(_Auth):
+    """POST /webapp/spots/<id>/confirm/ — «да, это то же место, всё ещё грязно» (+1 к подтверждениям)."""
+
+    def post(self, request, pk):
+        s = spots.get(pk)
+        if not s or s["status"] not in spots.OPEN:
+            return Response({"result": "none"}, status=status.HTTP_404_NOT_FOUND)
+        return Response({"result": "ok", "confirms": spots.confirm(pk, request.user.tg_id or -request.user.id)})
 
 
 class SpotView(_Auth):

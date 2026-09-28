@@ -33,3 +33,21 @@ def thumb_url(field, width: int = 800) -> str | None:
         logger.warning("thumbnail failed for %s: %s", src, e)
         return field.url
     return settings.MEDIA_URL.rstrip("/") + "/" + dst_rel.as_posix()
+
+
+def thumb_rel_url(rel: str, width: int) -> str:
+    """То же для файла по пути в MEDIA_ROOT (фото «Iflos joy», итогов мероприятий): URL уменьшенной копии."""
+    src = Path(settings.MEDIA_ROOT) / rel
+    dst_rel = Path("thumbs") / f"{width}" / Path(rel).with_suffix(".jpg")
+    dst = Path(settings.MEDIA_ROOT) / dst_rel
+    try:
+        if not dst.exists():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            with Image.open(src) as im:
+                im = ImageOps.exif_transpose(im).convert("RGB")
+                im.thumbnail((width, width * 2))
+                im.save(dst, "JPEG", quality=78, optimize=True, progressive=True)
+    except Exception as e:
+        logger.warning("thumbnail failed for %s: %s", src, e)
+        return settings.MEDIA_URL.rstrip("/") + "/" + rel
+    return settings.MEDIA_URL.rstrip("/") + "/" + dst_rel.as_posix()

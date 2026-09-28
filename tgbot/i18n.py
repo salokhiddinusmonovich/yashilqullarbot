@@ -1409,7 +1409,7 @@ TEXTS = {
     "spot_m_event": {'uz': '📅 Tadbir yaratish', 'ru': '📅 Сделать мероприятие', 'en': '📅 Create event'},
     "spot_m_dup": {'uz': '🔁 Dublikat', 'ru': '🔁 Дубликат', 'en': '🔁 Duplicate'},
     "spot_m_clean": {'uz': '🧹 Tozalandi', 'ru': '🧹 Убрано', 'en': '🧹 Cleaned'},
-    "spot_m_denied": {'uz': 'Bu xabar sizning hududingizdan emas.', 'ru': 'Это сообщение не из вашего региона.', 'en': "This report isn't from your region."},
+    "spot_m_denied": {'uz': 'Buni faqat adminlar hal qiladi.', 'ru': 'Это решают только админы.', 'en': 'Only admins can do this.'},
     "spot_m_already": {'uz': 'Allaqachon: {status}', 'ru': 'Уже: {status}', 'en': 'Already: {status}'},
     "spot_m_done": {'uz': '— {status} · {who}', 'ru': '— {status} · {who}', 'en': '— {status} · {who}'},
     "spot_rr_clean": {'uz': 'Joy allaqachon toza', 'ru': 'Место уже чистое', 'en': 'Already clean'},
