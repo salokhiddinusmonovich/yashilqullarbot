@@ -43,9 +43,11 @@ services:
       - POSTGRES_HOST=db
     ports:
       - "127.0.0.1:8000:8000"
+    # migrate НЕ запускаем автоматически: файлы миграций в репозитории отстают от реальной базы
+    # (поля добавлялись вручную, см. sql/). Авто-migrate при старте мог уронить сайт или удалить
+    # старые колонки. Миграции — только вручную, после бэкапа: docker compose exec web python manage.py migrate
     command: >
-      sh -c "python manage.py migrate &&
-             python manage.py collectstatic --noinput &&
+      sh -c "python manage.py collectstatic --noinput &&
              gunicorn dj_ac.wsgi:application --bind 0.0.0.0:8000
                --workers 3 --threads 4 --timeout 120 --access-logfile -"
     depends_on:
