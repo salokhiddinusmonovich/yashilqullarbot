@@ -15,8 +15,8 @@
 #   BACKUP_PASSWORD=...     пароль шифрования. БЕЗ НЕГО БЭКАП НЕ ОТКРЫТЬ — храни отдельно!
 #
 # Запуск руками:      ./scripts/backup.sh               (--test — только проверить канал, --with-media — и фото)
-# По расписанию (cron, 03:00 по Ташкенту = 22:00 UTC):
-#   0 22 * * * cd /root/yashilqullarbot && ./scripts/backup.sh >> backups/backup.log 2>&1
+# По расписанию (cron; сервер в поясе CEST — полночь по серверу = 03:00 по Ташкенту летом, 04:00 зимой):
+#   0 0 * * * cd /root/yashilqullarbot && ./scripts/backup.sh >> backups/backup.log 2>&1
 #
 # Как восстановить (на своём компьютере или сервере):
 #   openssl enc -d -aes-256-cbc -pbkdf2 -in backup_XXXX.tar.gz.enc -out b.tar.gz -pass pass:'ПАРОЛЬ'
@@ -38,10 +38,12 @@ CHAT="$(env_get BACKUP_CHAT_ID)"
 PASS="$(env_get BACKUP_PASSWORD)"
 DC="${DC:-docker compose}"              # для тестов можно подменить
 
-tg() {  # tg sendMessage|sendDocument  -F ...
-  local method=$1; shift
-  curl -sS --max-time 120 "https://api.telegram.org/bot${TOKEN}/${method}" -F chat_id="${CHAT}" "$@" \
-    | grep -q '"ok":true'
+tg() {  # tg sendMessage|sendDocument  -F ...   (не вышло — печатает ответ Telegram, чтобы было видно почему)
+  local method=$1 resp; shift
+  resp="$(curl -sS --max-time 120 "https://api.telegram.org/bot${TOKEN}/${method}" -F chat_id="${CHAT}" "$@" 2>&1)" || true
+  if printf '%s' "$resp" | grep -q '"ok":true'; then return 0; fi
+  echo "Telegram ответил: $(printf '%s' "$resp" | grep -o '"description":"[^"]*"' || printf '%s' "$resp" | head -c 300)" >&2
+  return 1
 }
 human() { numfmt --to=iec --suffix=B "$1" 2>/dev/null || echo "$1 B"; }
 
@@ -70,7 +72,9 @@ flock -n 9 || { echo "Бэкап уже идёт"; exit 0; }
 mkdir -p "$DIR"
 chmod 700 "$DIR"
 TS="$(date +%F_%H%M)"
-WORK="$(mktemp -d)"
+# временная папка — внутри проекта: Docker из snap не видит системный /tmp
+WORK="$DIR/.work_$TS"
+mkdir -p "$WORK"
 trap 'rm -rf "$WORK"' EXIT
 
 # 1) Postgres — вся база (Django: имя и пользователь — postgres)
@@ -81,8 +85,9 @@ USERS=$($DC exec -T db psql -U postgres -d postgres -tAc "select count(*) from a
 
 # 2) Redis — снимок на диск и копия файла
 $DC exec -T redis redis-cli SAVE > /dev/null
-$DC cp redis:/data/dump.rdb "$WORK/redis.rdb"
+$DC exec -T redis cat /data/dump.rdb > "$WORK/redis.rdb"     # потоком (docker cp не работает с snap-Docker)
 REDIS_SIZE=$(stat -c %s "$WORK/redis.rdb")
+head -c 5 "$WORK/redis.rdb" | grep -q REDIS || { echo "Копия Redis не похожа на dump.rdb"; false; }
 
 # 3) Архив + шифрование
 export BACKUP_PASS_ENV="$PASS"          # пароль — через окружение, не в командной строке (не виден в ps)
