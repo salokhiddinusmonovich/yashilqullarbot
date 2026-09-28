@@ -38,6 +38,11 @@ def process_qr_logic(scanner_tg_id, target_tg_id):
         region = scanner_user.region if services.scan_regions(scanner_user) else volunteer.region
         return t("qr_no_project", region=region_label(region)), None, None, False
 
+    # человек из другого региона — ошибка, не отмечаем (Самарканд — только на самаркандские)
+    if services.wrong_region(volunteer, project):
+        return t("qr_wrong_region", name=escape(volunteer.fullname), pregion=region_label(volunteer.region),
+                 project=escape(project.title), eregion=region_label(project.region)), None, None, False
+
     result, auto_added = services.check_in(volunteer, project)
     if result == "already":
         return t("qr_already", name=escape(volunteer.fullname), project=escape(project.title)), volunteer, None, False

@@ -583,9 +583,10 @@ class StaffEventsView(_Staff):
 class StaffCheckInView(_Staff):
     """
     POST /webapp/staff/checkin/  { project_id, qr } или { project_id, user_id }
-    → { result: ok|already|not_found|bad_qr|other_region, auto_added, person, counts }
+    → { result: ok|already|not_found|bad_qr|other_region|wrong_region, auto_added, person, counts }
     Не записан — записывается автоматически (как и в боте).
     Мероприятие чужого региона — отказ (other_region), даже если id подставили вручную.
+    Человек из другого региона, чем мероприятие — отказ (wrong_region), для всех, даже is_admin.
     """
 
     def post(self, request):
@@ -605,14 +606,13 @@ class StaffCheckInView(_Staff):
         if not volunteer:
             return Response({"result": "not_found"})
 
-        # Человек из другого региона — почти всегда выбрано не то мероприятие.
-        # Не отмечаем сразу, а спрашиваем (force=true — «да, отметить»).
-        if not request.data.get("force") and volunteer.region and not services.same_region(volunteer.region, project.region):
+        # Человек из другого региона — это ошибка (выбрано не то мероприятие): не отмечаем никому.
+        if services.wrong_region(volunteer, project):
             already = ProjectParticipation.objects.filter(user=volunteer, project=project, status='attended').exists()
             if not already:
                 lang = lang_of_sync(request.user.tg_id) if request.user.tg_id else "uz"
                 return Response({
-                    "result": "confirm_region",
+                    "result": "wrong_region",
                     "person": {"id": volunteer.id, "fullname": volunteer.fullname,
                                "photo": _abs(request, thumb_url(volunteer.photo, 120)), "balance": volunteer.balance},
                     "person_region": region_label(volunteer.region, lang),

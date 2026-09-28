@@ -5,10 +5,11 @@
 Координаторы сканируют как раньше: только свой регион, мероприятие выбирается само.
 Админ:
   • открыл QR-ссылку (t.me/<бот>?start=qr_<id>) — бот спрашивает, на какое мероприятие отметить:
-    сначала мероприятия региона человека (60 дней назад … 7 вперёд), кнопка «🌍 все регионы»;
+    ТОЛЬКО мероприятия региона человека (60 дней назад … 7 вперёд) — самаркандца на ташкентское нельзя
+    (services.wrong_region); регион у человека не указан — все регионы;
   • переслал боту скриншот/фото QR — бот сам читает код (zxing-cpp) и спрашивает то же;
   • /belgila <имя, телефон или @username> — найти человека вообще без QR.
-callback: qa:<tg>:<pid> — отметить, qas:<tg>:<v|a> — список мероприятий (регион человека / все), qu:<tg> — выбран человек.
+callback: qa:<tg>:<pid> — отметить, qu:<tg> — выбран человек.
 """
 import logging
 from datetime import timedelta
@@ -65,7 +66,7 @@ def _events(target_tg: int, scope: str):
         return None, []
     now = timezone.now()
     qs = EcoProject.objects.filter(date__gte=now - timedelta(days=services.ADMIN_BACK_DAYS), date__lte=now + timedelta(days=7))
-    if scope == "v" and v.region:
+    if v.region:                       # только его регион — чужой регион это ошибка (services.wrong_region)
         qs = qs.filter(region__in=services.region_group(v.region))
     evs = list(qs.order_by('-date')[:12])
     done = set(ProjectParticipation.objects.filter(user=v, project__in=evs, status='attended').values_list('project_id', flat=True))
@@ -78,8 +79,6 @@ def _events_kb(target_tg: int, items, scope: str) -> InlineKeyboardMarkup:
         d = timezone.localtime(p.date).strftime('%d.%m')
         reg = f" · {region_label(p.region)}" if scope == "a" else ""
         kb.add(InlineKeyboardButton(f"{'✅' if done else '📍'} {d} · {p.title[:34]}{reg}", callback_data=f"qa:{target_tg}:{p.id}"))
-    kb.add(InlineKeyboardButton(t("ascan_btn_region") if scope == "a" else t("ascan_btn_all"),
-                                callback_data=f"qas:{target_tg}:{'v' if scope == 'a' else 'a'}"))
     return kb
 
 
@@ -89,9 +88,7 @@ async def admin_pick(chat: types.Message, target_tg: int, scope: str = "v", edit
     if not v:
         await chat.answer(t("qr_user_not_found"))
         return
-    if not items and scope == "v":
-        v, items = await _events(target_tg, "a")
-        scope = "a"
+    scope = "v" if v.region else "a"          # без региона — показываем регион у каждого мероприятия
     text = t("ascan_pick", name=escape(v.fullname), region=region_label(v.region) if v.region else "—", days=60)
     if not items:
         text += "\n\n" + t("ascan_no_events")
@@ -105,15 +102,6 @@ async def admin_pick(chat: types.Message, target_tg: int, scope: str = "v", edit
     await chat.answer(text, reply_markup=kb)
 
 
-async def scope_callback(call: types.CallbackQuery):
-    if not await _admin(call.from_user.id):
-        await call.answer(t("qr_no_rights"), show_alert=True)
-        return
-    await call.answer()
-    _, tg, scope = call.data.split(":")
-    await admin_pick(call.message, int(tg), scope, edit=True)
-
-
 @sync_to_async
 def _mark(target_tg: int, pid: int):
     from app_telegram import services
@@ -122,6 +110,8 @@ def _mark(target_tg: int, pid: int):
     p = EcoProject.objects.filter(id=pid).first()
     if not v or not p:
         return None, None, None, False
+    if services.wrong_region(v, p):
+        return v, p, "wrong_region", False
     result, auto_added = services.check_in(v, p)
     v.refresh_from_db(fields=['balance'])
     return v, p, result, auto_added
@@ -138,6 +128,9 @@ async def mark_callback(call: types.CallbackQuery):
     v, p, result, auto_added = await _mark(int(tg), int(pid))
     if not v:
         await call.answer(t("qr_user_not_found"), show_alert=True)
+        return
+    if result == "wrong_region":
+        await call.answer(t("qr_wrong_region_short", pregion=region_label(v.region), eregion=region_label(p.region)), show_alert=True)
         return
     await call.answer()
     when = timezone.localtime(p.date).strftime('%d.%m.%Y')
@@ -213,7 +206,6 @@ async def user_callback(call: types.CallbackQuery):
 def register_admin_scan(dp: Dispatcher):
     dp.register_message_handler(belgila_handler, commands=["belgila", "mark", "отметить"], state="*")
     dp.register_callback_query_handler(mark_callback, lambda c: c.data.startswith("qa:"), state="*")
-    dp.register_callback_query_handler(scope_callback, lambda c: c.data.startswith("qas:"), state="*")
     dp.register_callback_query_handler(user_callback, lambda c: c.data.startswith("qu:"), state="*")
     # только вне анкет/шагов (state=None): там фото — это ответ на вопрос, а не QR
     dp.register_message_handler(qr_photo, content_types=[types.ContentType.PHOTO, types.ContentType.DOCUMENT], state=None)

@@ -172,6 +172,15 @@ def same_region(a, b) -> bool:
     return bool(a and b) and b in region_group(a)
 
 
+def wrong_region(volunteer: TGUser, project: EcoProject) -> bool:
+    """
+    Волонтёр из другого региона, чем мероприятие — отмечать НЕЛЬЗЯ никому (даже is_admin):
+    это почти всегда ошибка (выбрано не то мероприятие). Самаркандца — только на самаркандские.
+    Регион у человека не указан — сверять не с чем, не мешаем. Переехал — сначала поменять регион в профиле.
+    """
+    return bool(volunteer.region and project.region) and not same_region(volunteer.region, project.region)
+
+
 @transaction.atomic
 def move_participations(participations, target: EcoProject):
     """

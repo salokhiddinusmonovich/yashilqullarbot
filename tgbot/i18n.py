@@ -740,6 +740,8 @@ TEXTS = {
         "en": "❌ You don't have permission to scan! This is for the team only.",
     },
     "qr_user_not_found": {"uz": "❌ Foydalanuvchi topilmadi!", "ru": "❌ Пользователь не найден!", "en": "❌ User not found!"},
+    "qr_wrong_region": {'uz': "⛔️ <b>{name}</b> — {pregion}dan. «{project}» esa {eregion} tadbiri.\nBoshqa hudud odamini belgilab bo'lmaydi — bu xato. Agar u ko'chib o'tgan bo'lsa, avval profilidagi hududni o'zgartiring.", 'ru': '⛔️ <b>{name}</b> — из региона {pregion}, а «{project}» — мероприятие региона {eregion}.\nОтмечать человека из другого региона нельзя — это ошибка. Если он переехал, сначала смените регион в его профиле.', 'en': "⛔️ <b>{name}</b> is from {pregion}, but «{project}» is a {eregion} event.\nYou can't mark someone from another region — it's a mistake. If they moved, change the region in their profile first."},
+    "qr_wrong_region_short": {'uz': "⛔️ Bu odam {pregion}dan, tadbir esa {eregion}da. Boshqa hudud — belgilab bo'lmaydi.", 'ru': '⛔️ Человек из региона {pregion}, а мероприятие — {eregion}. Другой регион — отметить нельзя.', 'en': "⛔️ This person is from {pregion}, the event is in {eregion}. Another region — can't mark."},
     "qr_no_project": {
         "uz": "❌ {region}: faol tadbir topilmadi!",
         "ru": "❌ {region}: активных мероприятий нет!",
@@ -1457,8 +1459,6 @@ TEXTS = {
     # ── 👑 отметка админом (tgbot/handlers/admin_scan.py) ──
     "ascan_pick": {'uz': '👑 <b>{name}</b> ({region})\nQaysi tadbirga «keldi» deb belgilaymiz? Oxirgi {days} kun va yaqin 7 kun (✅ — allaqachon belgilangan):', 'ru': '👑 <b>{name}</b> ({region})\nНа какое мероприятие отметить «пришёл»? Последние {days} дней и ближайшие 7 (✅ — уже отмечен):', 'en': '👑 <b>{name}</b> ({region})\nWhich event to mark as attended? Last {days} days and next 7 (✅ — already marked):'},
     "ascan_no_events": {'uz': "Bu davrda tadbir yo'q.", 'ru': 'За этот период мероприятий нет.', 'en': 'No events in this period.'},
-    "ascan_btn_all": {'uz': '🌍 Barcha hududlar tadbirlari', 'ru': '🌍 Мероприятия всех регионов', 'en': '🌍 Events in all regions'},
-    "ascan_btn_region": {'uz': '🏠 Faqat uning hududi', 'ru': '🏠 Только его регион', 'en': '🏠 Only their region'},
     "ascan_ok": {'uz': '✅ <b>{name}</b> — «{project}» ({date}) tadbirida keldi deb belgilandi.{note}\nBalans: {balance} ball.', 'ru': '✅ <b>{name}</b> отмечен(а) на «{project}» ({date}).{note}\nБаланс: {balance} баллов.', 'en': '✅ <b>{name}</b> marked as attended at «{project}» ({date}).{note}\nBalance: {balance} points.'},
     "ascan_already": {'uz': 'ℹ️ <b>{name}</b> «{project}» ({date}) tadbirida allaqachon belgilangan.', 'ru': 'ℹ️ <b>{name}</b> уже отмечен(а) на «{project}» ({date}).', 'en': 'ℹ️ <b>{name}</b> is already marked at «{project}» ({date}).'},
     "ascan_find_help": {'uz': "👑 Odamni QRsiz belgilash: <code>/belgila Ism</code> (yoki telefon, @username).\nYoki QR skrinshotini shu yerga yuboring — o'zim o'qib olaman.", 'ru': '👑 Отметить человека без QR: <code>/belgila Имя</code> (или телефон, @username).\nИли пришлите сюда скриншот QR — я сам его прочитаю.', 'en': "👑 Mark someone without a QR: <code>/belgila Name</code> (or phone, @username).\nOr send me a screenshot of the QR — I'll read it myself."},
