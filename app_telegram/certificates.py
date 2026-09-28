@@ -424,6 +424,32 @@ def url(pid: int, ext="pdf") -> str:
     return f"{PUBLIC_URL}/c/{pid}-{sign(pid)}.{ext}"
 
 
+def deliver_in_background(pp_id: int):
+    """Прислать сертификат сразу (сканер Mini App: отметили на уже прошедшем мероприятии) + пометить «отправлено»."""
+    from html import escape
+    from tgbot.i18n import t as bot_t
+    from tgbot.services.lang import lang_of_sync, _sclient
+    from .telegram import send_documents_in_background
+    box = {}
+
+    def build():
+        pp = attended(pp_id)
+        if not pp or not pp.user.tg_id:
+            return []
+        box["pp"] = pp
+        return [(pp.user.tg_id, to_pdf(render_for(pp)), filename(pp),
+                 bot_t("cert_caption", lang_of_sync(pp.user.tg_id), title=escape(pp.project.title), number=number_of(pp)))]
+
+    def done(delivered):
+        pp = box.get("pp")
+        if pp and delivered:
+            try:
+                r = _sclient(); r.sadd(f"cert:sent:{pp.project_id}", pp.user.tg_id); r.expire(f"cert:sent:{pp.project_id}", 30 * 86400)
+            except Exception:
+                pass
+    send_documents_in_background(build, on_done=done)
+
+
 def attended(pid: int):
     from .models import ProjectParticipation
     return ProjectParticipation.objects.select_related('user', 'project').filter(pk=pid, status='attended').first()

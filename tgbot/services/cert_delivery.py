@@ -49,6 +49,43 @@ def _pdf(pp):
     return C.to_pdf(C.render_for(pp)), C.filename(pp), C.number_of(pp)
 
 
+def event_over(project, now=None) -> bool:
+    """Мероприятие уже прошло (через 2 ч после начала) — сертификат можно слать сразу, не дожидаясь утра."""
+    return bool(project.date) and project.date <= (now or timezone.now()) - timedelta(hours=2)
+
+
+@sync_to_async
+def _participation(pp_id: int):
+    from app_telegram import certificates as C
+    return C.attended(pp_id)
+
+
+async def send_now(bot, pp_or_id) -> bool:
+    """👑 Сразу прислать сертификат человеку (его отметили задним числом) и пометить «отправлено»,
+    чтобы утренняя рассылка не прислала второй раз. False — нет Telegram / заблокировал бота / не «пришёл»."""
+    from tgbot.services.lang import lang_of
+    pp = await _participation(pp_or_id) if isinstance(pp_or_id, int) else pp_or_id
+    if not pp or not pp.user.tg_id:
+        return False
+    tg = pp.user.tg_id
+    try:
+        data, fname, number = await _pdf(pp)
+        await bot.send_document(tg, InputFile(BytesIO(data), filename=fname),
+                                caption=t("cert_caption", await lang_of(tg), title=escape(pp.project.title), number=number))
+    except exceptions.TelegramAPIError:
+        return False
+    except Exception:
+        log.exception("certificate send_now")
+        return False
+    try:
+        r = _aclient()
+        await r.sadd(f"cert:sent:{pp.project_id}", tg)
+        await r.expire(f"cert:sent:{pp.project_id}", 30 * 86400)
+    except Exception:
+        pass
+    return True
+
+
 async def send_due(bot, now=None):
     now = now or timezone.now()
     if timezone.localtime(now).hour < CERT_HOUR:

@@ -99,9 +99,9 @@ check(set(thanks) == {u.tg_id for u in vol} and "≈30" in thanks[200] and "≈2
 check(asyncio.run(IH.notify_volunteers(FakeBot(), ev.id)) == 0, "благодарность — только один раз")
 
 # ── напоминание координатору ──
-ev2 = EcoProject.objects.create(title="Bog' tozalash", region="tashkent_v", date=now - timedelta(hours=5), is_active=True, location_name="x")
-noon = timezone.localtime(now).replace(hour=15)
-b = FakeBot(); n = asyncio.run(IP.send_prompts(b, noon + (now - timezone.localtime(now)) * 0))
+noon = timezone.localtime(now).replace(hour=15, minute=0, second=0, microsecond=0)   # фиксированное «15:00», не зависит от часа запуска
+ev2 = EcoProject.objects.create(title="Bog' tozalash", region="tashkent_v", date=noon - timedelta(hours=5), is_active=True, location_name="x")
+b = FakeBot(); n = asyncio.run(IP.send_prompts(b, noon))
 got = {(tg, txt.split("«")[1].split("»")[0]) for tg, txt, kb in b.sent}
 check(got == {(100, "Bog&#x27; tozalash"), (101, "Sam")}, f"«введите итоги» — координатору своего региона, только где итогов нет {got}")
 check(asyncio.run(IP.send_prompts(FakeBot(), noon)) == 0, "повторно не шлём")

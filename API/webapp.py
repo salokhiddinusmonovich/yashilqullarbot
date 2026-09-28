@@ -628,6 +628,11 @@ class StaffCheckInView(_Staff):
             send_in_background([(volunteer.tg_id, bot_t(
                 "attended_notify", v_lang, project=escape(project.title), balance=volunteer.balance,
             ))])
+            # отметили задним числом (мероприятие уже прошло) — сертификат сразу, не ждать утренней рассылки
+            if project.date and project.date <= timezone.now() - timedelta(hours=2):
+                pp = ProjectParticipation.objects.filter(user=volunteer, project=project, status='attended').first()
+                if pp:
+                    certificates.deliver_in_background(pp.id)
 
         counts = services.with_counts(EcoProject.objects.filter(id=project.id)).values('registered', 'attended').first()
         return Response({

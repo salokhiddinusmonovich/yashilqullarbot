@@ -62,9 +62,11 @@ check(r["result"] == "wrong_region", "и «force» больше не помог�
 bot = Bot(token="123456:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw")
 dp = Dispatcher(bot, storage=MemoryStorage()); Dispatcher.set_current(dp)
 SENT = []
+DOCS = []
 class FB:
     def get(self, k, d=None): return None
     async def send_message(self, tg, text, reply_markup=None, **k): SENT.append(("to", tg, text))
+    async def send_document(self, tg, doc, caption=None, **k): DOCS.append((tg, doc.filename, caption))
 class Msg:
     def __init__(self, uid, text=None, args="", photo=None):
         self.from_user = type("U", (), {"id": uid, "full_name": "X", "username": None})(); self.chat = type("C", (), {"id": uid})()
@@ -89,10 +91,16 @@ check("Dilnoza" in text and btns(kb) == [f"qa:3:{ev_far_old.id}"] and "✅" in k
 c = Call(1, f"qa:3:{ev_sam_old.id}"); run(AS.mark_callback(c))
 check(c.alerts and "⛔" in c.alerts[0] and not PP.objects.filter(user=vol, project=ev_sam_old).exists(), "подставил самаркандское мероприятие — «⛔️ другой регион», не отмечено")
 ev_far_new = EcoProject.objects.create(title="Farg'ona plogging", region="fargona", date=now - timedelta(days=3), location_name="x")
-SENT.clear(); c = Call(1, f"qa:3:{ev_far_new.id}"); run(AS.mark_callback(c))
-check(PP.objects.get(user=vol, project=ev_far_new).status == "attended" and "belgilandi" in SENT[0][1], "ферганское 3 дня назад — отмечен")
+SENT.clear(); DOCS.clear(); c = Call(1, f"qa:3:{ev_far_new.id}"); run(AS.mark_callback(c))
+me_msgs = [x for x in SENT if x[0] == "me"]
+check(PP.objects.get(user=vol, project=ev_far_new).status == "attended" and "belgilandi" in me_msgs[-1][1], "ферганское 3 дня назад — отмечен")
+check(len(DOCS) == 1 and DOCS[0][0] == 3 and DOCS[0][1].endswith(".pdf") and "Farg" in DOCS[0][2] and "darhol" in me_msgs[-1][1],
+      "🎓 сертификат сразу ушёл человеку (PDF), админу — «сертификат отправлен»")
+check(3 in {int(x) for x in L._sync.smembers(f"cert:sent:{ev_far_new.id}")}, "помечен «отправлено» — утренняя рассылка не продублирует")
 check(any(x[0] == "to" and x[1] == 3 for x in SENT), "волонтёру — уведомление «вам засчитано»")
-c = Call(1, f"qa:3:{ev_far_new.id}"); run(AS.mark_callback(c)); check("allaqachon" in SENT[-1][1], "повторно — «уже отмечен»")
+DOCS.clear(); c = Call(1, f"qa:3:{ev_far_new.id}"); run(AS.mark_callback(c))
+check("allaqachon" in SENT[-1][1] and not DOCS and btns(SENT[-1][2])[0].startswith("csp:"), "повторно — «уже отмечен», сертификат не шлём сами, но есть кнопка «🎓 отправить»")
+c = Call(1, btns(SENT[-1][2])[0]); run(AS.cert_send_callback(c)); check(len(DOCS) == 1 and "Yuborildi" in SENT[-1][1], "кнопка «🎓 отправить сертификат» — ушёл")
 noreg = TGUser.objects.create(tg_id=4, fullname="Regionsiz", region=None)
 run(AS.admin_pick(Msg(1), 4)); b = btns(SENT[-1][2])
 check(f"qa:4:{ev_sam_old.id}" in b and f"qa:4:{ev_far_new.id}" in b, "у человека нет региона — видны все регионы")
@@ -131,6 +139,22 @@ check(btns(SENT[-1][2]) == ["qu:3"], "/belgila Dilnoza → нашёлся")
 c = Call(1, "qu:3"); run(AS.user_callback(c)); check("Dilnoza" in SENT[-1][1] and btns(c.message.kb)[0].startswith("qa:3:"), "выбрал человека → выбор мероприятия")
 from tgbot.i18n import t as T
 run(AS.belgila_handler(Msg(2, "/belgila Dilnoza", args="Dilnoza"))); check(SENT[-1][1] == T("qr_no_rights"), "координатору /belgila — нет прав")
+
+# 🎓 /sertifikat_yubor
+DOCS.clear(); run(AS.cert_send_handler(Msg(1, "/sertifikat_yubor Dilnoza", args="Dilnoza")))
+b = btns(SENT[-1][2]); check(b and all(x.startswith("csp:") for x in b) and len(b) == 2, f"/sertifikat_yubor Dilnoza — один человек, сразу его мероприятия: {b}")
+c = Call(1, b[0]); run(AS.cert_send_callback(c)); check(len(DOCS) == 1 and DOCS[0][0] == 3, "нажал — сертификат ушёл")
+run(AS.cert_send_handler(Msg(1, "/sertifikat_yubor Zzzz", args="Zzzz"))); check("belgila" in SENT[-1][1], "не нашёл — подсказка «сначала /belgila»")
+run(AS.cert_send_handler(Msg(2, "/sertifikat_yubor Dilnoza", args="Dilnoza"))); check(SENT[-1][1] == T("qr_no_rights"), "координатору — нет прав")
+# Mini App сканер: отметили на прошедшем мероприятии → сертификат сразу
+import app_telegram.certificates as CC
+DEL = []; CC.deliver_in_background = lambda pp_id: DEL.append(pp_id)
+ev_far_3 = EcoProject.objects.create(title="Farg'ona 2", region="fargona", date=now - timedelta(days=2), location_name="x")
+r = post(W.StaffCheckInView.as_view(), admin, {"project_id": ev_far_3.id, "user_id": vol.id}).data
+check(r["result"] == "ok" and DEL == [PP.objects.get(user=vol, project=ev_far_3).id], "Mini App: отметили задним числом → сертификат сразу")
+ev_today = EcoProject.objects.create(title="Farg'ona bugun", region="fargona", date=now + timedelta(minutes=30), location_name="x")
+DEL.clear(); post(W.StaffCheckInView.as_view(), admin, {"project_id": ev_today.id, "user_id": vol.id})
+check(DEL == [], "мероприятие ещё идёт — сертификат как обычно, утром")
 
 # настоящая маршрутизация: админ шлёт фото в бот
 import bot as B

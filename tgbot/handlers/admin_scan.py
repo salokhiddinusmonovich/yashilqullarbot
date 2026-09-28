@@ -134,21 +134,118 @@ async def mark_callback(call: types.CallbackQuery):
         return
     await call.answer()
     when = timezone.localtime(p.date).strftime('%d.%m.%Y')
+    from tgbot.services.cert_delivery import event_over, send_now
+    pp_id = await _pp_id(v.id, p.id)
     if result == "already":
         text = t("ascan_already", name=escape(v.fullname), project=escape(p.title), date=when)
     else:
         text = t("ascan_ok", name=escape(v.fullname), project=escape(p.title), date=when, balance=v.balance,
                  note=t("qr_auto_added") if auto_added else "")
-    try:
-        await call.message.edit_text(text)
-    except exceptions.TelegramAPIError:
-        await call.message.answer(text)
     if result == "ok" and v.tg_id:
         try:
             await call.bot.send_message(v.tg_id, t("attended_notify", await lang_of(v.tg_id), project=escape(p.title), balance=v.balance))
+        except Exception:
+            pass
+    # мероприятие уже прошло — сертификат сразу, человеку ничего не надо искать
+    kb = None
+    if event_over(p) and pp_id:
+        if result == "ok":
+            ok = await send_now(call.bot, pp_id)
+            text += "\n" + t("ascan_cert_sent" if ok else "ascan_cert_fail")
+        else:
+            kb = InlineKeyboardMarkup().add(InlineKeyboardButton(t("ascan_btn_cert"), callback_data=f"csp:{pp_id}"))
+    try:
+        await call.message.edit_text(text, reply_markup=kb)
+    except exceptions.TelegramAPIError:
+        await call.message.answer(text, reply_markup=kb)
+    if result == "ok" and v.tg_id:
+        try:
             await ask_feedback(call.bot, v.tg_id, p.id, p.title)
         except Exception:
             pass
+
+
+@sync_to_async
+def _pp_id(uid: int, pid: int):
+    from app_telegram.models import ProjectParticipation
+    return ProjectParticipation.objects.filter(user_id=uid, project_id=pid, status='attended').values_list('id', flat=True).first()
+
+
+# ─────────── 🎓 /sertifikat_yubor — прислать человеку сертификат (одна команда, два нажатия) ───────────
+
+@sync_to_async
+def _find_attended(q: str):
+    """Люди по имени / телефону / @username, у которых есть отметки «пришёл»."""
+    from app_telegram import services
+    from app_telegram.models import TGUser
+    return list(TGUser.objects.filter(services.user_search_q(q), tg_id__isnull=False, participations__status='attended')
+                .distinct().order_by('fullname')[:10])
+
+
+@sync_to_async
+def _attended_of(tg: int):
+    from app_telegram.models import ProjectParticipation, TGUser
+    u = TGUser.objects.filter(tg_id=tg).first()
+    pps = list(ProjectParticipation.objects.filter(user=u, status='attended').select_related('project').order_by('-project__date')[:10]) if u else []
+    return u, pps
+
+
+async def _events_for_cert(chat: types.Message, tg: int, edit: bool = False):
+    u, pps = await _attended_of(tg)
+    if not u or not pps:
+        text, kb = t("csend_none", name=escape(u.fullname if u else "—")), None
+    else:
+        text = t("csend_pick_event", name=escape(u.fullname))
+        kb = InlineKeyboardMarkup(row_width=1)
+        for pp in pps:
+            kb.add(InlineKeyboardButton(f"🎓 {timezone.localtime(pp.project.date).strftime('%d.%m.%Y')} · {pp.project.title[:34]}", callback_data=f"csp:{pp.id}"))
+    if edit:
+        try:
+            await chat.edit_text(text, reply_markup=kb); return
+        except exceptions.TelegramAPIError:
+            pass
+    await chat.answer(text, reply_markup=kb)
+
+
+async def cert_send_handler(message: types.Message):
+    """/sertifikat_yubor <имя | телефон | @username> — найти человека и прислать ему сертификат."""
+    if not await _admin(message.from_user.id):
+        await message.answer(t("qr_no_rights"))
+        return
+    q = (message.get_args() or "").strip()
+    if len(q) < 2:
+        await message.answer(t("csend_help"))
+        return
+    people = await _find_attended(q)
+    if not people:
+        await message.answer(t("csend_find_none", q=escape(q)))
+        return
+    if len(people) == 1:                              # один — сразу его мероприятия
+        await _events_for_cert(message, people[0].tg_id)
+        return
+    kb = InlineKeyboardMarkup(row_width=1)
+    for u in people:
+        kb.add(InlineKeyboardButton(f"👤 {u.fullname[:36]}" + (f" · @{u.username}" if u.username else ""), callback_data=f"csu:{u.tg_id}"))
+    await message.answer(t("ascan_find_pick", n=len(people)), reply_markup=kb)
+
+
+async def cert_user_callback(call: types.CallbackQuery):
+    if not await _admin(call.from_user.id):
+        await call.answer(t("qr_no_rights"), show_alert=True); return
+    await call.answer()
+    await _events_for_cert(call.message, int(call.data.split(":")[1]), edit=True)
+
+
+async def cert_send_callback(call: types.CallbackQuery):
+    from tgbot.services.cert_delivery import send_now, _participation
+    if not await _admin(call.from_user.id):
+        await call.answer(t("qr_no_rights"), show_alert=True); return
+    pp = await _participation(int(call.data.split(":")[1]))
+    if not pp:
+        await call.answer(t("cert_none"), show_alert=True); return
+    await call.answer(t("adm_preparing"))
+    ok = await send_now(call.bot, pp)
+    await call.message.answer(t("csend_sent" if ok else "csend_fail", name=escape(pp.user.fullname), project=escape(pp.project.title)))
 
 
 async def qr_photo(message: types.Message):
@@ -207,5 +304,8 @@ def register_admin_scan(dp: Dispatcher):
     dp.register_message_handler(belgila_handler, commands=["belgila", "mark", "отметить"], state="*")
     dp.register_callback_query_handler(mark_callback, lambda c: c.data.startswith("qa:"), state="*")
     dp.register_callback_query_handler(user_callback, lambda c: c.data.startswith("qu:"), state="*")
+    dp.register_message_handler(cert_send_handler, commands=["sertifikat_yubor", "sy", "certsend"], state="*")
+    dp.register_callback_query_handler(cert_user_callback, lambda c: c.data.startswith("csu:"), state="*")
+    dp.register_callback_query_handler(cert_send_callback, lambda c: c.data.startswith("csp:"), state="*")
     # только вне анкет/шагов (state=None): там фото — это ответ на вопрос, а не QR
     dp.register_message_handler(qr_photo, content_types=[types.ContentType.PHOTO, types.ContentType.DOCUMENT], state=None)
