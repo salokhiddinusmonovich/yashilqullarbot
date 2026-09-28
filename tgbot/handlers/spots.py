@@ -59,19 +59,226 @@ async def _menu(tg: int):
 # ─────────── волонтёр ───────────
 
 async def spot_start(message: types.Message, state: FSMContext):
+    """Сразу к сообщению о новом месте (t.me/<бот>?start=spot из Mini App)."""
+    await _begin(message, message.from_user.id, state)
+
+
+async def _begin(chat: types.Message, tg: int, state: FSMContext):
     from app_telegram import spots as SP
-    user = await _user(message.from_user.id)
+    user = await _user(tg)
     if not user:
-        await message.answer(t("spot_register"))
+        await chat.answer(t("spot_register"))
         return
-    if not await sync_to_async(SP.can_report)(message.from_user.id):
-        await message.answer(t("spot_limit", n=SP.PER_DAY))
+    if not await sync_to_async(SP.can_report)(tg):
+        await chat.answer(t("spot_limit", n=SP.PER_DAY))
         return
     await state.finish()
-    await _aclient().delete(_draft(message.from_user.id))
+    await _aclient().delete(_draft(tg))
     await SpotStates.photos.set()
-    await message.answer(t("spot_intro"), reply_markup=ReplyKeyboardRemove())
-    await message.answer(t("spot_q_photos"), reply_markup=_cancel_kb())
+    await chat.answer(t("spot_intro"), reply_markup=ReplyKeyboardRemove())
+    await chat.answer(t("spot_q_photos"), reply_markup=_cancel_kb())
+
+
+# ─────────── 🗺 эко-карта в боте (текстовый режим): меню и карточки мест ───────────
+# «📍 Iflos joy» в меню → сводка по своему региону + списки: грязно / в планах / убрано / мои.
+# Карточка — фото места, подпись и кнопки: ⬅️ ➡️, точка на карте, «до / после», «всё ещё грязно»,
+# «записаться на уборку» (тот же evreg:, что и в меню мероприятий).
+# callback: sph:<r|a> — меню (свой регион / вся страна), sphn — новое сообщение,
+#           spv:<d|p|c|m>:<r|a>:<i> — карточка, spl:<id> — точка, spba:<id> — до/после, spc:<id> — «всё ещё грязно».
+
+LIST_STATUS = {"d": ("accepted",), "p": ("planned",), "c": ("cleaned",)}
+
+
+@sync_to_async
+def _hub_data(tg: int, scope: str):
+    from app_telegram import services, spots as SP
+    from app_telegram.models import TGUser
+    user = TGUser.objects.filter(tg_id=tg).first()
+    group = services.region_group(user.region) if user and user.region else []
+    items = [s for s in SP.all_spots() if SP.visible_to(s, user)]
+    in_scope = [s for s in items if scope == "a" or not group or s.get("region") in group]
+    n = lambda st: sum(1 for s in in_scope if s["status"] == st)
+    mine = sum(1 for s in items if user and s.get("uid") == user.id)
+    return user, group, {"d": n("accepted"), "p": n("planned"), "c": n("cleaned"), "m": mine}
+
+
+def _hub_kb(bot, scope: str, c: dict) -> InlineKeyboardMarkup:
+    from tgbot.handlers.miniapp import app_url
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(InlineKeyboardButton(t("spot_btn_new"), callback_data="sphn"))
+    kb.add(InlineKeyboardButton(t("spot_btn_dirty", n=c["d"]), callback_data=f"spv:d:{scope}:0"),
+           InlineKeyboardButton(t("spot_btn_planned", n=c["p"]), callback_data=f"spv:p:{scope}:0"))
+    kb.add(InlineKeyboardButton(t("spot_btn_cleaned", n=c["c"]), callback_data=f"spv:c:{scope}:0"),
+           InlineKeyboardButton(t("spot_btn_mine", n=c["m"]), callback_data="spv:m:a:0"))
+    kb.add(InlineKeyboardButton(t("spot_btn_scope_region") if scope == "a" else t("spot_btn_scope_all"),
+                                callback_data=f"sph:{'r' if scope == 'a' else 'a'}"))
+    url = app_url(bot, map=1) if hasattr(bot, "get") and bot.get("config") else None
+    if url:
+        kb.add(InlineKeyboardButton(t("spot_btn_openmap"), web_app=WebAppInfo(url=url)))
+    return kb
+
+
+async def spot_hub(message: types.Message, state: FSMContext):
+    await state.finish()
+    await _send_hub(message, message.from_user.id, "r")
+
+
+async def _send_hub(chat: types.Message, tg: int, scope: str, edit: bool = False):
+    user, group, c = await _hub_data(tg, scope)
+    if not user:
+        await chat.answer(t("spot_register"))
+        return
+    where = t("spot_hub_all") if scope == "a" or not group else region_label(user.region)
+    text = t("spot_hub", scope=where, d=c["d"], p=c["p"], c=c["c"])
+    kb = _hub_kb(chat.bot, scope, c)
+    if edit:
+        try:
+            await chat.edit_text(text, reply_markup=kb)
+            return
+        except exceptions.TelegramAPIError:
+            pass
+    await chat.answer(text, reply_markup=kb)
+
+
+async def hub_callback(call: types.CallbackQuery, state: FSMContext):
+    await call.answer()
+    if call.data == "sphn":
+        await _begin(call.message, call.from_user.id, state)
+        return
+    scope = call.data.split(":")[1] if ":" in call.data else "r"
+    if call.message.photo:                      # из карточки «⬅️ Menyu» — карточку убираем, меню — новым сообщением
+        try:
+            await call.message.delete()
+        except exceptions.TelegramAPIError:
+            pass
+        await _send_hub(call.message, call.from_user.id, scope)
+    else:
+        await _send_hub(call.message, call.from_user.id, scope, edit=True)
+
+
+@sync_to_async
+def _list(tg: int, f: str, scope: str):
+    from app_telegram import services, spots as SP
+    from app_telegram.models import EcoProject, TGUser
+    user = TGUser.objects.filter(tg_id=tg).first()
+    if not user:
+        return None, []
+    if f == "m":
+        return user, [s for s in SP.all_spots() if s.get("uid") == user.id]
+    group = services.region_group(user.region) if user.region else []
+    items = [s for s in SP.all_spots(LIST_STATUS[f]) if scope == "a" or not group or s.get("region") in group]
+    for s in items:
+        s["_event"] = EcoProject.objects.filter(id=s["event_id"]).first() if s.get("event_id") else None
+    return user, items
+
+
+async def _photo(rel: str):
+    """Фото места для карточки: уменьшенная копия с диска; file_id запоминаем — второй раз не грузим."""
+    from pathlib import Path
+    from django.conf import settings
+    from app_telegram.thumbs import thumb_rel_url
+    r = _aclient()
+    fid = await r.get(f"spot:fid:{rel}")
+    if fid:
+        return fid
+    await sync_to_async(thumb_rel_url)(rel, 1000)
+    return InputFile(str(Path(settings.MEDIA_ROOT) / "thumbs" / "1000" / Path(rel).with_suffix(".jpg")))
+
+
+def _card(s: dict, i: int, n: int, viewer, nav: str) -> tuple[str, InlineKeyboardMarkup]:
+    """Подпись и кнопки карточки места. nav — начало callback для ⬅️ ➡️ (spv:<список>:<охват>)."""
+    from app_telegram.spots import maps_links
+    ev = s.get("_event")
+    lines = [t("spot_view", id=s["id"], status=t(f"spot_st_{s['status']}"),
+               region=region_label(s["region"]) if s.get("region") else "—",
+               address=f" · {escape(s['address'])}" if s.get("address") else "",
+               size=t(f"spot_size_{s['size']}"), kind=t(f"spot_kind_{s['kind']}"),
+               date=timezone.localtime(datetime.fromtimestamp(s["created"], tz=dt_tz.utc)).strftime("%d.%m.%Y"),
+               confirms=s.get("confirms", 0) + 1)]
+    if s.get("note"):
+        lines.append(f"✍️ {escape(s['note'])}")
+    if ev:
+        lines.append(t("spot_ev_line", title=escape(ev.title), date=timezone.localtime(ev.date).strftime("%d.%m %H:%M"))
+                     + ("" if ev.is_active else t("spot_ev_soon")))
+    kb = InlineKeyboardMarkup(row_width=3)
+    if n > 1:
+        kb.add(InlineKeyboardButton("⬅️", callback_data=f"{nav}:{max(i - 1, 0)}"),
+               InlineKeyboardButton(f"{i + 1} / {n}", callback_data="noop"),
+               InlineKeyboardButton("➡️", callback_data=f"{nav}:{min(i + 1, n - 1)}"))
+    kb.row(InlineKeyboardButton(t("spot_btn_loc"), callback_data=f"spl:{s['id']}"),
+           InlineKeyboardButton("🧭 Google Maps", url=maps_links(s["lat"], s["lon"])["google"]))
+    if s["status"] == "cleaned" and s.get("after"):
+        kb.row(InlineKeyboardButton(t("spot_btn_ba"), callback_data=f"spba:{s['id']}"))
+    if ev and ev.is_active and ev.date > timezone.now():
+        kb.row(InlineKeyboardButton(t("spot_btn_join"), callback_data=f"evreg:{ev.id}"))
+    if s["status"] in ("accepted", "planned") and not (viewer and s.get("uid") == viewer.id):
+        kb.row(InlineKeyboardButton(t("spot_btn_still"), callback_data=f"spc:{s['id']}"))
+    kb.row(InlineKeyboardButton(t("spot_btn_menu"), callback_data="sph:r"))
+    return "\n".join(lines), kb
+
+
+async def view_callback(call: types.CallbackQuery):
+    _, f, scope, i = call.data.split(":")
+    user, items = await _list(call.from_user.id, f, scope)
+    if not items:
+        await call.answer(t("spot_empty"), show_alert=True)
+        return
+    await call.answer()
+    i = max(0, min(int(i), len(items) - 1))
+    s = items[i]
+    caption, kb = _card(s, i, len(items), user, f"spv:{f}:{scope}")
+    photo = await _photo(s["photos"][0]) if s["photos"] else None
+    try:
+        if call.message.photo and photo:            # листаем — меняем фото в той же карточке
+            msg = await call.message.edit_media(InputMediaPhoto(photo, caption=caption), reply_markup=kb)
+        elif photo:
+            msg = await call.message.answer_photo(photo, caption=caption, reply_markup=kb)
+        else:
+            msg = await call.message.answer(caption, reply_markup=kb)
+        if photo and not isinstance(photo, str) and getattr(msg, "photo", None):
+            await _aclient().set(f"spot:fid:{s['photos'][0]}", msg.photo[-1].file_id, ex=30 * 86400)
+    except exceptions.MessageNotModified:
+        pass
+    except exceptions.TelegramAPIError:
+        log.exception("spot card")
+
+
+@sync_to_async
+def _spot(sid: int):
+    from app_telegram import spots as SP
+    return SP.get(sid)
+
+
+async def location_callback(call: types.CallbackQuery):
+    s = await _spot(int(call.data.split(":")[1]))
+    await call.answer()
+    if s:
+        await call.message.answer_location(s["lat"], s["lon"])
+
+
+async def before_after_callback(call: types.CallbackQuery):
+    s = await _spot(int(call.data.split(":")[1]))
+    await call.answer()
+    if not s or not s["photos"] or not s["after"]:
+        return
+    media = [InputMediaPhoto(_file(s["photos"][0]), caption=t("spot_before"))]
+    media += [InputMediaPhoto(_file(x), caption=t("spot_after") if k == 0 else None) for k, x in enumerate(s["after"][:3])]
+    await call.message.answer_media_group(media)
+
+
+async def still_dirty_callback(call: types.CallbackQuery):
+    from app_telegram import spots as SP
+    sid = int(call.data.split(":")[1])
+    s = await _spot(sid)
+    user = await _user(call.from_user.id)
+    if not s or s["status"] not in SP.OPEN:
+        await call.answer()
+        return
+    if user and s.get("uid") == user.id:
+        await call.answer(t("spot_confirm_own"), show_alert=True)
+        return
+    n = await sync_to_async(SP.confirm)(sid, call.from_user.id)
+    await call.answer(t("spot_confirm_ok", n=n + 1), show_alert=True)
 
 
 async def photo_input(message: types.Message, state: FSMContext):
@@ -355,10 +562,43 @@ async def notify_moderators(bot, spot: dict, fids: list | None, author) -> int:
     return sent
 
 
-def _map_kb(bot, lang, sid) -> InlineKeyboardMarkup | None:
+def _map_kb(bot, lang, sid) -> InlineKeyboardMarkup:
+    """Автору: «📍 Посмотреть» — карточка места прямо в боте; если есть Mini App — ещё и на эко-карте."""
     from tgbot.handlers.miniapp import app_url
+    kb = InlineKeyboardMarkup(row_width=1).add(InlineKeyboardButton(t("spot_btn_view", lang), callback_data=f"spo:{sid}"))
     url = app_url(bot, spot=sid) if hasattr(bot, "get") and bot.get("config") else None
-    return InlineKeyboardMarkup().add(InlineKeyboardButton(t("spot_btn_map", lang), web_app=WebAppInfo(url=url))) if url else None
+    if url:
+        kb.add(InlineKeyboardButton(t("spot_btn_map", lang), web_app=WebAppInfo(url=url)))
+    return kb
+
+
+@sync_to_async
+def _one(tg: int, sid: int):
+    from app_telegram import spots as SP
+    from app_telegram.models import EcoProject, TGUser
+    user = TGUser.objects.filter(tg_id=tg).first()
+    s = SP.get(sid)
+    if not s or not (SP.visible_to(s, user) or SP.can_moderate(user)):
+        return user, None
+    s["_event"] = EcoProject.objects.filter(id=s["event_id"]).first() if s.get("event_id") else None
+    return user, s
+
+
+async def one_callback(call: types.CallbackQuery):
+    """spo:<id> — одна карточка места (из уведомления автору)."""
+    user, s = await _one(call.from_user.id, int(call.data.split(":")[1]))
+    if not s:
+        await call.answer(t("spot_empty"), show_alert=True)
+        return
+    await call.answer()
+    caption, kb = _card(s, 0, 1, user, f"spo:{s['id']}")
+    photo = await _photo(s["photos"][0]) if s["photos"] else None
+    if photo:
+        msg = await call.message.answer_photo(photo, caption=caption, reply_markup=kb)
+        if not isinstance(photo, str) and getattr(msg, "photo", None):
+            await _aclient().set(f"spot:fid:{s['photos'][0]}", msg.photo[-1].file_id, ex=30 * 86400)
+    else:
+        await call.message.answer(caption, reply_markup=kb)
 
 
 async def notify_author(bot, s: dict, pts: int = 0, reason: str = "", event=None):
@@ -453,8 +693,15 @@ def register_spots_start(dp: Dispatcher):
 
 
 def register_spots(dp: Dispatcher):
-    dp.register_message_handler(spot_start, commands=["iflos", "spot", "joy"], state="*")
-    dp.register_message_handler(spot_start, text=variants("btn_spot"), state="*")
+    # «📍 Iflos joy» и /iflos — меню эко-карты (там же «сообщить о новом месте»); /start spot — сразу сообщение
+    dp.register_message_handler(spot_hub, commands=["iflos", "spot", "joy", "xarita", "map"], state="*")
+    dp.register_message_handler(spot_hub, text=variants("btn_spot"), state="*")
+    dp.register_callback_query_handler(hub_callback, lambda c: c.data == "sphn" or c.data.startswith("sph:"), state="*")
+    dp.register_callback_query_handler(view_callback, lambda c: c.data.startswith("spv:"), state="*")
+    dp.register_callback_query_handler(one_callback, lambda c: c.data.startswith("spo:"), state="*")
+    dp.register_callback_query_handler(location_callback, lambda c: c.data.startswith("spl:"), state="*")
+    dp.register_callback_query_handler(before_after_callback, lambda c: c.data.startswith("spba:"), state="*")
+    dp.register_callback_query_handler(still_dirty_callback, lambda c: c.data.startswith("spc:"), state="*")
     dp.register_callback_query_handler(cancel_callback, text="spx", state="*")
     dp.register_callback_query_handler(next_callback, text="spn", state="*")
     dp.register_callback_query_handler(skip_note, text="spskip", state="*")

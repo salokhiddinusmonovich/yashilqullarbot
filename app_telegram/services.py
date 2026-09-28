@@ -26,14 +26,24 @@ def region_group(region):
 def is_staff(user: TGUser) -> bool:
     """
     Кто может сканировать QR и видит аналитику мероприятия (бот, Mini App):
-    решает ТОЛЬКО роль — любая, кроме «Волонтёр» (координаторы, IT,
-    медиа, организаторы, основатель).
-
-    Галочка is_admin сюда НЕ даёт доступа — она только про админ-панель
-    со статистикой (/admin в боте). Админу, которому нужен сканер, нужно
-    дать роль.
+    любая роль, кроме «Волонтёр» (координаторы, IT, медиа, организаторы,
+    основатель), и все с галочкой is_admin (даже с ролью «Волонтёр»).
     """
-    return bool(user) and user.role != TGUser.Role.VOLUNTEER
+    return bool(user) and (user.role != TGUser.Role.VOLUNTEER or user.is_admin)
+
+
+# 👑 is_admin — выше ролей: любой регион и прошедшие мероприятия (человек забыл показать QR —
+# прислал скриншот потом). Координаторы — только свой регион и «вчера … +7 дней».
+ADMIN_BACK_DAYS = 60
+
+
+def is_super_scanner(user: TGUser) -> bool:
+    return bool(user) and user.is_admin
+
+
+def scan_back_days(user: TGUser) -> int:
+    """На сколько дней назад видны мероприятия в сканере."""
+    return ADMIN_BACK_DAYS if is_super_scanner(user) else 1
 
 
 def with_counts(qs):
@@ -47,10 +57,10 @@ def scan_regions(user: TGUser):
     """
     Мероприятия каких регионов человек может сканировать.
     Координатор, медиа, IT и т.д. — только своего региона (Ташкент-город
-    и область — одна группа). None — без ограничений: основатель, или
-    регион в профиле не указан (тогда фильтровать не по чему).
+    и область — одна группа). None — без ограничений: галочка is_admin,
+    основатель, или регион в профиле не указан (тогда фильтровать не по чему).
     """
-    if user.role == TGUser.Role.FOUNDER or not user.region:
+    if user.is_admin or user.role == TGUser.Role.FOUNDER or not user.region:
         return None
     return region_group(user.region)
 

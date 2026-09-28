@@ -57,6 +57,13 @@ async def user_start(message: Message, state: FSMContext, lang: str = None):
             await message.answer(t("qr_bad_format"))
             return
 
+        # 👑 админ (is_admin) — любой регион и прошедшие мероприятия: сам выбирает, куда отметить
+        scanner = await sync_to_async(TGUser.objects.filter(tg_id=message.from_user.id, is_admin=True).first)()
+        if scanner:
+            from .admin_scan import admin_pick
+            await admin_pick(message, target_id)
+            return
+
         result_text, volunteer, project, confirmed = await process_qr_logic(message.from_user.id, target_id)
         await message.answer(result_text)
 

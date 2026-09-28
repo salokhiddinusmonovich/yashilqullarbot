@@ -557,16 +557,19 @@ class StaffEventsView(_Staff):
     """
     GET /webapp/staff/events/ — мероприятия для сканирования (вчера…+7 дней) + какое выбрать по умолчанию.
     Только своего региона (services.scan_regions), у основателя — все.
+    👑 is_admin — все регионы и прошедшие за 60 дней (отметить тех, кто забыл показать QR), новые первыми.
     """
 
     def get(self, request):
         now = timezone.now()
         lang = lang_of_sync(request.user.tg_id) if request.user.tg_id else "uz"
-        qs = EcoProject.objects.filter(date__gte=now - timedelta(days=1), date__lte=now + timedelta(days=7))
+        back = services.scan_back_days(request.user)
+        qs = EcoProject.objects.filter(date__gte=now - timedelta(days=back), date__lte=now + timedelta(days=7))
         allowed = services.scan_regions(request.user)
         if allowed is not None:
             qs = qs.filter(region__in=allowed)
-        qs = services.with_counts(qs).order_by('date')[:20]
+        super_ = services.is_super_scanner(request.user)
+        qs = services.with_counts(qs).order_by('-date' if super_ else 'date')[:60 if super_ else 20]
         events = [_event_payload(request, p, None, lang) for p in qs]
         today = timezone.localdate().isoformat()
         mine = services.region_group(request.user.region)
@@ -574,7 +577,7 @@ class StaffEventsView(_Staff):
             (e["id"] for e in events if e["date"][:10] == today and e["region"] in mine),
             next((e["id"] for e in events if e["date"][:10] == today), events[0]["id"] if events else None),
         )
-        return Response({"events": events, "default": default})
+        return Response({"events": events, "default": default, "admin": super_})
 
 
 class StaffCheckInView(_Staff):

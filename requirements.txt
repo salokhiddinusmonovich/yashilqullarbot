@@ -42,3 +42,4 @@ python-dotenv
 django-cors-headers
 google-auth
 gunicorn
+zxing-cpp>=2.2   # чтение QR со скриншота (админ пересылает боту)

@@ -43,6 +43,7 @@ from tgbot.handlers.certs import register_certs
 from tgbot.handlers.impact import register_impact
 from tgbot.handlers.wrapped import register_wrapped
 from tgbot.handlers.spots import register_spots, register_spots_start
+from tgbot.handlers.admin_scan import register_admin_scan
 from tgbot.services.impact_prompt import impact_prompt_loop
 from tgbot.services.wrapped import wrapped_loop
 from tgbot.handlers.digest import register_digest
@@ -100,6 +101,7 @@ def register_all_handlers(dp):
     register_impact(dp)              # 📊 /natija — координатор вносит итоги мероприятия (кг, деревья, фото)
     register_wrapped(dp)             # 🎁 /yakun — итоги года
     register_spots(dp)               # 📍 Iflos joy — сообщить о мусорном месте (кнопка меню, /iflos)
+    register_admin_scan(dp)          # 👑 is_admin: отметить на любом мероприятии (скриншот QR, /belgila)
     register_digest(dp)              # 📅 недельный дайджест: /digest, «🔕»
     register_register(dp)            # регистрация — СТАТИКА, всегда через бота,
                                       # не переключается флагом USE_MINI_APP
