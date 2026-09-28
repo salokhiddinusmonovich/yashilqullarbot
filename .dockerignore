@@ -101,3 +101,6 @@ redis.conf
 # бэкапы не нужны внутри образов
 backups/
 backup_*.sql
+
+# тесты запускаются локально (python tests/run.py), в образах не нужны
+tests/
