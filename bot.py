@@ -20,6 +20,7 @@ setup_django()
 
 # --- 2. ТЕПЕРЬ ИМПОРТЫ ХЕНДЛЕРОВ (ОНИ ТЕПЕРЬ НЕ УПАДУТ) ---
 from tgbot.config import load_config
+from tgbot.handlers.subscriptions import register_subscription
 from tgbot.filters.admin import AdminFilter
 from tgbot.handlers.admin import register_admin
 from tgbot.handlers.start import register_user
@@ -109,6 +110,7 @@ def register_all_handlers(dp):
     register_eco_clubs(dp)           # инфо про эко-клубы — не дублируется в Mini App
     register_feedback(dp)            # рейтинг после посещения (пуш от бота, не кнопка меню)
     register_link_account_handlers(dp)
+    register_subscription(dp)
     if USE_MINI_APP:
         # ── РЕЖИМ MINI APP ──
         # Ничего из старых текстовых кнопок ниже НЕ регистрируется —
