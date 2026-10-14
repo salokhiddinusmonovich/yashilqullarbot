@@ -8,86 +8,22 @@ from asgiref.sync import sync_to_async
 from tgbot.i18n import t
 from tgbot.services.lang import lang_of
 from ..keyboards import reply
-from ..keyboards.subscription import subscription_keyboard
 from .qr_handler import process_qr_logic
 from .feedback import ask_feedback
 from .link_account import ask_if_registered
 from .language import ask_language
 
 
-CHANNEL_USERNAME = "@yashilqollar"
-
-
-async def is_subscribed(bot, user_id: int) -> bool:
-    """
-    Проверяет, подписан ли пользователь на канал.
-    """
-
-    try:
-        member = await bot.get_chat_member(
-            chat_id=CHANNEL_USERNAME,
-            user_id=user_id
-        )
-
-        return member.status in (
-            "creator",
-            "administrator",
-            "member"
-        )
-
-    except Exception:
-        return False
-
-
 async def user_start(
     message: Message,
     state: FSMContext,
     lang: str = None,
-    _skip_subscription: bool = False,
-    _args: str = None
+    _args: str = None,
 ):
     from app_telegram.models import TGUser, LoginToken
 
-    # Получаем аргументы /start
-    if _args is not None:
-        args = _args
-    else:
-        args = message.get_args()
-
-    # ---------------------------------------------------------
-    # ПРОВЕРКА ПОДПИСКИ
-    # ---------------------------------------------------------
-
-    if not _skip_subscription:
-
-        subscribed = await is_subscribed(
-            message.bot,
-            message.from_user.id
-        )
-
-        if not subscribed:
-
-            # Сохраняем аргументы deep-link:
-            # login_xxx
-            # qr_xxx
-            # ref_xxx
-            await state.update_data(
-                start_args=args or ""
-            )
-
-            await message.answer(
-                "👋 Чтобы пользоваться ботом, сначала подпишитесь "
-                "на наш официальный канал.\n\n"
-                "После подписки нажмите кнопку "
-                "«✅ Я подписался».",
-                reply_markup=subscription_keyboard()
-            )
-
-            return
-
-    # ---------------------------------------------------------
-    # ДАЛЬШЕ ИДЁТ ТВОЯ СТАРАЯ ЛОГИКА
-    # ---------------------------------------------------------
+    # _args — продолжение после «✅ Я подписался» (ссылку запомнил tgbot/middlewares/subscription.py)
+    args = _args if _args is not None else message.get_args()
 
     await state.finish()
 

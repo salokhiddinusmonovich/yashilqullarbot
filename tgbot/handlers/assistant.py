@@ -7,7 +7,7 @@
 
 Админам: /admin → «🎙 Buyruq» — команды текстом или голосом через микрофон
   клавиатуры (телефон сам превращает речь в текст — бесплатно):
-  «bugun toshkent excel», «hafta statistika», «samarqand koordinatorlari»,
+  «bugun toshkent excel», «samarqand koordinatorlari»,
   «kelgusi tadbirlar», «top Aziza». Сначала правила (без ИИ), непонятное — Gemini
   переводит в команду. Только ЧТЕНИЕ: отчёты, цифры, поиск. Изменения
   (роли, рассылки) — по-прежнему кнопками, ИИ их не выполняет.
@@ -246,7 +246,6 @@ REGION_WORDS = {
 ACTION_WORDS = [   # порядок = приоритет
     ("report", ("excel", "эксель", "hisobot", "ҳисобот", "келган", "рўйхат", "kelgan", "keldi", "отчёт", "отчет", "пришл", "пришед", "report", "attend", "ro'yxat", "список")),
     ("coordinators", ("koordinator", "координатор", "coordinator", "jamoa", "команд", "team")),
-    ("stats", ("statistika", "статистик", "нечта", "stats", "nechta", "сколько", "raqam", "цифр", "yangi")),
     ("events", ("tadbir", "мероприят", "event", "тадбир")),
     ("find", ("top", "qidir", "найди", "найти", "find", "search", "kim bu", "кто такой")),
 ]
@@ -334,8 +333,6 @@ async def _run_cmd(message: types.Message, text: str, audio: bytes | None):
     if action == "report":
         await message.answer(t("cmd_doing", what=f"📋 {t(f'rep_p_{period}')} · {escape(reports.region_choice_label(region))}"))
         await send_report(message, message.from_user.id, period, region)
-    elif action == "stats":
-        await message.answer(await _stats_text(period, region), reply_markup=again)
     elif action == "coordinators":
         await message.answer(await _coordinators_text(region), reply_markup=again)
     elif action == "events":
@@ -352,28 +349,6 @@ async def _run_cmd(message: types.Message, text: str, audio: bytes | None):
         await message.answer(t("cmd_found", n=len(users)), reply_markup=kb)
     else:
         await message.answer(t("cmd_unknown"), reply_markup=again)
-
-
-@sync_to_async
-def _stats_text(period, region):
-    from app_telegram import reports
-    from app_telegram.models import TGUser, EcoProject, ProjectParticipation
-    d_from, d_to = reports.period_range(period)
-    regions = reports.region_codes(region)
-    users = TGUser.objects.all()
-    parts = ProjectParticipation.objects.filter(status='attended')
-    events = EcoProject.objects.all()
-    if d_from:
-        users = users.filter(created__date__gte=d_from, created__date__lte=d_to)
-        parts = parts.filter(project__date__date__gte=d_from, project__date__date__lte=d_to)
-        events = events.filter(date__date__gte=d_from, date__date__lte=d_to)
-    if regions:
-        users = users.filter(region__in=regions)
-        parts = parts.filter(project__region__in=regions)
-        events = events.filter(region__in=regions)
-    return t("cmd_stats", period=t(f"rep_p_{period}"), region=escape(reports.region_choice_label(region)),
-             new=users.count(), att=parts.count(), people=parts.values('user').distinct().count(),
-             events=events.count(), total=TGUser.objects.filter(region__in=regions).count() if regions else TGUser.objects.count())
 
 
 @sync_to_async

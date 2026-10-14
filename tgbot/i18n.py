@@ -598,6 +598,25 @@ TEXTS = {
         "ru": "❌ <b>К сожалению, мест больше нет.</b> Следите за следующими мероприятиями! 🌱",
         "en": "❌ <b>Sorry, no spots left.</b> Watch for upcoming events! 🌱",
     },
+    # 📢 обязательная подписка на канал (tgbot/middlewares/subscription.py)
+    "sub_gate": {
+        "uz": "👋 <b>Yashil Qo'llar</b> botiga xush kelibsiz!\n\nBotdan foydalanish uchun avval rasmiy kanalimizga obuna bo'ling — u yerda tadbirlar, yangiliklar va natijalar.\n\nObuna bo'lgach, <b>«✅ Obuna bo'ldim»</b> tugmasini bosing.",
+        "ru": "👋 Добро пожаловать в бот <b>Yashil Qo'llar</b>!\n\nЧтобы пользоваться ботом, сначала подпишитесь на наш официальный канал — там мероприятия, новости и итоги.\n\nПосле подписки нажмите <b>«✅ Я подписался»</b>.",
+        "en": "👋 Welcome to the <b>Yashil Qo'llar</b> bot!\n\nTo use the bot, please join our official channel first — events, news and results are posted there.\n\nAfter joining, tap <b>«✅ I've joined»</b>.",
+    },
+    "sub_btn_join": {"uz": "📢 Kanalga obuna bo'lish", "ru": "📢 Подписаться на канал", "en": "📢 Join the channel"},
+    "sub_btn_check": {"uz": "✅ Obuna bo'ldim", "ru": "✅ Я подписался", "en": "✅ I've joined"},
+    "sub_need": {
+        "uz": "📢 Avval kanalimizga obuna bo'ling",
+        "ru": "📢 Сначала подпишитесь на наш канал",
+        "en": "📢 Please join our channel first",
+    },
+    "sub_not_yet": {
+        "uz": "😕 Hali obuna bo'lmagansiz. «📢 Kanalga obuna bo'lish» tugmasini bosing, kanalda «Obuna bo'lish»ni bosing va qaytib keling.",
+        "ru": "😕 Вы ещё не подписаны. Нажмите «📢 Подписаться на канал», в канале — «Подписаться», и возвращайтесь.",
+        "en": "😕 You haven't joined yet. Tap «📢 Join the channel», press «Join» there and come back.",
+    },
+    "sub_ok": {"uz": "✅ Rahmat! Xush kelibsiz", "ru": "✅ Спасибо! Добро пожаловать", "en": "✅ Thanks! Welcome"},
     "event_subscribe_first": {
         "uz": "⚠️ <b>Ro'yxatdan o'tish uchun avval kanalimizga a'zo bo'ling!</b>\nKanalga a'zo bo'lib, qayta bosing.",
         "ru": "⚠️ <b>Чтобы записаться, сначала подпишитесь на наш канал!</b>\nПосле подписки нажмите ещё раз.",
@@ -820,7 +839,6 @@ TEXTS = {
     # ── админ-панель в боте ──
     "adm_menu": {
         "uz": "🛠 <b>Admin panel</b>\n\n"
-              "📊 <b>Statistika</b> — bugungi raqamlar\n"
               "📅 <b>Tadbirlar</b> — qatnashchilar, Excel, odam qo'shish, xabar yuborish\n"
               "🔎 <b>Qidirish</b> — odamni topish, rol yoki adminlik berish\n"
               "📋 <b>Kelganlar hisoboti</b> — kim keldi: kun/hafta/oy, hudud bo'yicha, Excel\n"
@@ -829,7 +847,6 @@ TEXTS = {
               "📢 <b>Rassilka</b> — hammaga xabar yuborish yo'riqnomasi\n\n"
               "👇 Bo'limni tanlang",
         "ru": "🛠 <b>Админ-панель</b>\n\n"
-              "📊 <b>Статистика</b> — цифры за сегодня\n"
               "📅 <b>Мероприятия</b> — участники, Excel, добавить человека, написать участникам\n"
               "🔎 <b>Поиск</b> — найти человека, выдать роль или админку\n"
               "📋 <b>Отчёт: кто пришёл</b> — за день/неделю/месяц, по региону, Excel\n"
@@ -838,7 +855,6 @@ TEXTS = {
               "📢 <b>Рассылка</b> — как отправить сообщение всем\n\n"
               "👇 Выберите раздел",
         "en": "🛠 <b>Admin panel</b>\n\n"
-              "📊 <b>Statistics</b> — today's numbers\n"
               "📅 <b>Events</b> — participants, Excel, add a person, message participants\n"
               "🔎 <b>Search</b> — find a person, give a role or admin rights\n"
               "📋 <b>Attendance report</b> — who came: day/week/month, by region, Excel\n"
@@ -910,31 +926,26 @@ TEXTS = {
     "cmd_help": {
         "uz": "🎙 <b>Buyruq rejimi</b> — yozing yoki <b>ovozli xabar</b> yuboring (o'zbekcha/ruscha):\n\n"
               "• <code>bugun toshkent excel</code> — kim keldi, Excel\n• <code>kecha samarqand kelganlar</code>\n"
-              "• <code>hafta statistika</code> — yangi odamlar, kelganlar, tadbirlar\n• <code>farg'ona koordinatorlari</code>\n"
+              "• <code>farg'ona koordinatorlari</code>\n"
               "• <code>kelgusi tadbirlar</code>\n• <code>top Aziza</code> yoki <code>top +99890…</code>\n\n"
               "Faqat ko'rish va hisobotlar. Rol berish, xabar yuborish — tugmalar orqali.{ai}\nChiqish — «⬅️ Menyu».",
         "ru": "🎙 <b>Режим команд</b> — напишите или отправьте <b>голосовое</b> (узбекский/русский):\n\n"
               "• <code>сегодня ташкент excel</code> — кто пришёл, Excel\n• <code>вчера самарканд пришли</code>\n"
-              "• <code>статистика за неделю</code> — новые, пришедшие, мероприятия\n• <code>координаторы фергана</code>\n"
+              "• <code>координаторы фергана</code>\n"
               "• <code>ближайшие мероприятия</code>\n• <code>найди Азиза</code> или <code>найди +99890…</code>\n\n"
               "Только просмотр и отчёты. Роли и рассылки — кнопками.{ai}\nВыйти — «⬅️ Меню».",
         "en": "🎙 <b>Command mode</b> — type or send a <b>voice message</b> (Uzbek/Russian):\n\n"
               "• <code>today tashkent excel</code> — who came, Excel\n• <code>yesterday samarkand attended</code>\n"
-              "• <code>stats this week</code> — new users, attendance, events\n• <code>coordinators fergana</code>\n"
+              "• <code>coordinators fergana</code>\n"
               "• <code>upcoming events</code>\n• <code>find Aziza</code> or <code>find +99890…</code>\n\n"
               "Read-only: reports and lookups. Roles and broadcasts — via buttons.{ai}\nLeave — «⬅️ Menu».",
     },
     "cmd_ai_on": {"uz": "\n🤖 Boshqacha aytsangiz ham tushunaman (bepul AI).", "ru": "\n🤖 Понимаю и свободные формулировки (бесплатный ИИ).",
                   "en": "\n🤖 Free-form phrasing works too (free AI)."},
     "cmd_doing": {"uz": "⏳ Tayyorlayapman: {what}", "ru": "⏳ Готовлю: {what}", "en": "⏳ Preparing: {what}"},
-    "cmd_unknown": {"uz": "🤷 Tushunmadim. Masalan: <code>bugun toshkent excel</code>, <code>hafta statistika</code>, <code>samarqand koordinatorlari</code>, <code>kelgusi tadbirlar</code>, <code>top Aziza</code>.",
-                    "ru": "🤷 Не понял. Например: <code>сегодня ташкент excel</code>, <code>статистика за неделю</code>, <code>координаторы самарканд</code>, <code>ближайшие мероприятия</code>, <code>найди Азиза</code>.",
-                    "en": "🤷 Didn't get that. E.g.: <code>today tashkent excel</code>, <code>stats this week</code>, <code>coordinators samarkand</code>, <code>upcoming events</code>, <code>find Aziza</code>."},
-    "cmd_stats": {
-        "uz": "📊 <b>Statistika</b> · {period} · {region}\n\n🆕 Yangi foydalanuvchilar: <b>{new}</b>\n✅ Kelganlar (qatnashuv): <b>{att}</b> · {people} kishi\n📅 Tadbirlar: <b>{events}</b>\n👥 Jami foydalanuvchilar: {total}",
-        "ru": "📊 <b>Статистика</b> · {period} · {region}\n\n🆕 Новых пользователей: <b>{new}</b>\n✅ Пришли (отметок): <b>{att}</b> · {people} чел.\n📅 Мероприятий: <b>{events}</b>\n👥 Всего пользователей: {total}",
-        "en": "📊 <b>Stats</b> · {period} · {region}\n\n🆕 New users: <b>{new}</b>\n✅ Attended (check-ins): <b>{att}</b> · {people} people\n📅 Events: <b>{events}</b>\n👥 Total users: {total}",
-    },
+    "cmd_unknown": {"uz": "🤷 Tushunmadim. Masalan: <code>bugun toshkent excel</code>, <code>samarqand koordinatorlari</code>, <code>kelgusi tadbirlar</code>, <code>top Aziza</code>.",
+                    "ru": "🤷 Не понял. Например: <code>сегодня ташкент excel</code>, <code>координаторы самарканд</code>, <code>ближайшие мероприятия</code>, <code>найди Азиза</code>.",
+                    "en": "🤷 Didn't get that. E.g.: <code>today tashkent excel</code>, <code>coordinators samarkand</code>, <code>upcoming events</code>, <code>find Aziza</code>."},
     "cmd_coord_title": {"uz": "👥 <b>Jamoa</b> · {region} — {n}", "ru": "👥 <b>Команда</b> · {region} — {n}", "en": "👥 <b>Team</b> · {region} — {n}"},
     "cmd_events_title": {"uz": "📅 <b>Kelgusi tadbirlar</b> (30 kun) · {region} — {n}", "ru": "📅 <b>Ближайшие мероприятия</b> (30 дней) · {region} — {n}",
                          "en": "📅 <b>Upcoming events</b> (30 days) · {region} — {n}"},
@@ -1051,7 +1062,6 @@ TEXTS = {
     "wait_promoted": {"uz": "🎉 <b>Joy bo'shadi!</b> Siz <b>«{title}»</b> tadbiriga yozildingiz ({when}).\n📌 Tadbir kuni <b>🌿 Mening QR-kodim</b> ni koordinatorga ko'rsating.",
                       "ru": "🎉 <b>Освободилось место!</b> Вы записаны на <b>«{title}»</b> ({when}).\n📌 В день мероприятия покажите координатору <b>🌿 Мой QR-код</b>.",
                       "en": "🎉 <b>A spot opened up!</b> You're signed up for <b>«{title}»</b> ({when}).\n📌 On the day, show <b>🌿 My QR code</b> to the coordinator."},
-    "adm_btn_stats": {"uz": "📊 Statistika", "ru": "📊 Статистика", "en": "📊 Statistics"},
     "adm_btn_events": {"uz": "📅 Tadbirlar", "ru": "📅 Мероприятия", "en": "📅 Events"},
     "adm_btn_find": {"uz": "🔎 Qidirish", "ru": "🔎 Поиск", "en": "🔎 Search"},
     "adm_btn_users_xlsx": {"uz": "📥 Excel (hamma)", "ru": "📥 Excel (все)", "en": "📥 Excel (all users)"},
@@ -1286,32 +1296,6 @@ TEXTS = {
     "chk_admin": {"uz": "👨‍✈️ Kanal admini", "ru": "👨‍✈️ Админ канала", "en": "👨‍✈️ Channel admin"},
     "chk_error": {"uz": "⚠️ Tekshirishda xato: {e}", "ru": "⚠️ Ошибка проверки: {e}", "en": "⚠️ Check failed: {e}"},
 
-    # ── ежедневный отчёт ──
-    "rep_title": {"uz": "📊 <b>Kunlik hisobot — {date}</b>", "ru": "📊 <b>Отчёт за день — {date}</b>", "en": "📊 <b>Daily report — {date}</b>"},
-    "rep_users": {
-        "uz": "👥 <b>Foydalanuvchilar:</b> {total} (Telegram bilan: {tg})",
-        "ru": "👥 <b>Пользователи:</b> {total} (с Telegram: {tg})",
-        "en": "👥 <b>Users:</b> {total} (with Telegram: {tg})",
-    },
-    "rep_new": {"uz": "🆕 Bugun qo'shildi: <b>+{n}</b>", "ru": "🆕 Новых сегодня: <b>+{n}</b>", "en": "🆕 New today: <b>+{n}</b>"},
-    "rep_week": {"uz": "📈 Oxirgi 7 kunda: +{n}", "ru": "📈 За 7 дней: +{n}", "en": "📈 Last 7 days: +{n}"},
-    "rep_active": {"uz": "🟢 Bugun botdan foydalandi: <b>{n}</b>", "ru": "🟢 Пользовались ботом сегодня: <b>{n}</b>", "en": "🟢 Used the bot today: <b>{n}</b>"},
-    "rep_blocked": {
-        "uz": "🚫 Bugun botni bloklagan: <b>{b}</b> · qaytgan: {u} · jami bloklagan: {total}",
-        "ru": "🚫 Заблокировали бота сегодня: <b>{b}</b> · вернулись: {u} · всего заблокировали: {total}",
-        "en": "🚫 Blocked the bot today: <b>{b}</b> · came back: {u} · total blocked: {total}",
-    },
-    "rep_regs": {"uz": "📝 Bugun tadbirga yozilganlar: <b>{n}</b>", "ru": "📝 Записались на мероприятия сегодня: <b>{n}</b>", "en": "📝 Event registrations today: <b>{n}</b>"},
-    "rep_attended": {"uz": "✅ Bugungi tadbirlarda tasdiqlangan: <b>{n}</b>", "ru": "✅ Отмечено на сегодняшних мероприятиях: <b>{n}</b>", "en": "✅ Checked in at today's events: <b>{n}</b>"},
-    "rep_feedback": {"uz": "⭐ Yangi fikrlar: {n} (o'rtacha {avg})", "ru": "⭐ Новых отзывов: {n} (средняя {avg})", "en": "⭐ New feedback: {n} (avg {avg})"},
-    "rep_upcoming": {"uz": "📅 <b>Yaqin 7 kundagi tadbirlar:</b>", "ru": "📅 <b>Мероприятия на 7 дней:</b>", "en": "📅 <b>Events in the next 7 days:</b>"},
-    "rep_note": {
-        "uz": "<i>«Bloklagan» hisobi shu funksiya qo'shilgan kundan boshlab yuritiladi.</i>",
-        "ru": "<i>Блокировки считаются с момента запуска этой функции.</i>",
-        "en": "<i>Blocks are counted since this feature was launched.</i>",
-    },
-    "src_bot": {"uz": "bot", "ru": "бот", "en": "bot"},
-    "src_site": {"uz": "sayt", "ru": "сайт", "en": "website"},
 
     # ── 📊 итоги мероприятия (tgbot/handlers/impact.py) ──
     "imp_staff_only": {"uz": "📊 Natijalarni faqat hudud koordinatorlari kiritadi.", "ru": "📊 Итоги вносят только координаторы региона.", "en": "📊 Only regional coordinators can enter results."},

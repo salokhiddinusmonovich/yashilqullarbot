@@ -22,7 +22,6 @@ from django.db.models import Q
 
 from app_telegram.models import TGUser
 from tgbot.i18n import t, REGIONS
-from tgbot.services import stats
 from tgbot.services.lang import langs_of
 
 logger = logging.getLogger(__name__)
@@ -49,7 +48,6 @@ async def _broadcast(tg_ids, send):
                 sent += 1
             except exceptions.BotBlocked:
                 blocked += 1
-                await stats.mark_blocked(tg_id)
             except exceptions.RetryAfter as e:
                 await asyncio.sleep(e.timeout)
                 continue  # одна повторная попытка после паузы от Telegram

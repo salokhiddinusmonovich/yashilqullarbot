@@ -209,9 +209,9 @@ T = {
     "dash_feedback": ("Fikrlar", "Отзывы", "Feedback"),
     "dash_regions": ("Hududlar bo'yicha", "По регионам", "By region"),
     "dash_all_sections": ("Barcha bo'limlar", "Все разделы", "All sections"),
-    "dash_bot_tip": ("Maslahat: botda /admin — telefondan Excel, odam qo'shish va statistika.",
-                     "Совет: в боте есть /admin — Excel, добавление людей и статистика прямо с телефона.",
-                     "Tip: the bot has /admin — Excel, adding people and stats right from your phone."),
+    "dash_bot_tip": ("Maslahat: botda /admin — telefondan Excel va odam qo'shish.",
+                     "Совет: в боте есть /admin — Excel и добавление людей прямо с телефона.",
+                     "Tip: the bot has /admin — Excel and adding people right from your phone."),
     "dash_no_group": ("Guruh havolasi yo'q!", "Нет ссылки на группу!", "No group link!"),
 }
 

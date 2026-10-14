@@ -29,6 +29,7 @@ services:
 
   web:
     container_name: yashilqollar-web
+    restart: always          # без этого после перезагрузки сервера сайт/API/Mini App не поднимались
     build:
       context: .
       dockerfile: Dockerfile.web

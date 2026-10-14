@@ -1,2 +1,4 @@
 # Для тестов (tests/run.py): Redis в памяти вместо настоящего
 fakeredis>=2.20
+# локально (Python 3.12): с redis==4.6 fakeredis падает «Queue … bound to a different event loop» → в тестовом venv ставить redis 5.x
+redis>=5,<6

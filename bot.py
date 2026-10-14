@@ -52,9 +52,8 @@ from tgbot.services.digest import digest_loop
 from tgbot.handlers.language import register_language
 from tgbot.handlers.miniapp import register_miniapp, setup_menu_button
 from tgbot.middlewares.environment import EnvironmentMiddleware
-from tgbot.middlewares.activity import ActivityMiddleware
 from tgbot.middlewares.i18n import I18nMiddleware
-from tgbot.services.daily_report import daily_report_loop
+from tgbot.middlewares.subscription import SubscriptionMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -78,8 +77,8 @@ USE_MINI_APP = False
 # --- 3. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
 def register_all_middlewares(dp, config):
     dp.setup_middleware(EnvironmentMiddleware(config=config))
-    dp.setup_middleware(ActivityMiddleware())
     dp.setup_middleware(I18nMiddleware())      # язык юзера → t("...") в хендлерах
+    dp.setup_middleware(SubscriptionMiddleware())  # 📢 без подписки на @yashilqollar бот не работает (после i18n — текст на языке человека)
 
 
 def register_all_filters(dp):
@@ -183,8 +182,6 @@ async def main():
     # Кнопка Mini App рядом с полем ввода (если задан MINIAPP_URL)
     await setup_menu_button(bot)
 
-    # Ежедневный отчёт админам (21:00 по Ташкенту, см. DAILY_REPORT_HOUR)
-    asyncio.create_task(daily_report_loop(bot))
     # Напоминания о мероприятиях: накануне в 19:00 и за 2 часа (tgbot/services/reminders.py)
     asyncio.create_task(reminders_loop(bot))
     # 🎓 Сертификаты — наутро после мероприятия всем, кто пришёл (tgbot/services/cert_delivery.py)

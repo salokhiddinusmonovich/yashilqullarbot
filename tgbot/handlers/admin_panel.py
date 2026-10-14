@@ -35,8 +35,6 @@ from app_telegram.models import TGUser, EcoProject, ProjectParticipation
 from tgbot.i18n import (
     t, variants, region_label, role_label, status_label, provider_label, LANG_NAMES, ROLES, REGIONS,
 )
-from ..services import stats
-from ..services.daily_report import build_report
 from ..services.lang import lang_of, langs_of
 
 logger = logging.getLogger(__name__)
@@ -62,7 +60,6 @@ async def is_admin(bot, tg_id: int) -> bool:
 def main_kb() -> InlineKeyboardMarkup:
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
-        InlineKeyboardButton(t("adm_btn_stats"), callback_data="adm:stats"),
         InlineKeyboardButton(t("adm_btn_events"), callback_data="adm:events"),
     )
     kb.add(
@@ -139,11 +136,6 @@ async def _edit_or_send(call: types.CallbackQuery, text: str, kb=None):
 async def cb_menu(call, state):
     await state.finish()
     await _edit_or_send(call, t("adm_menu"), main_kb())
-
-
-async def cb_stats(call, state):
-    await call.answer(t("adm_preparing"))
-    await _edit_or_send(call, await build_report(), back_kb())
 
 
 async def cb_cmd(call, state):
@@ -568,7 +560,6 @@ async def event_message_send(message: types.Message, state: FSMContext):
             sent += 1
         except exceptions.BotBlocked:
             blocked += 1
-            await stats.mark_blocked(tg_id)
         except exceptions.RetryAfter as e:
             await asyncio.sleep(e.timeout)
         except Exception as e:
@@ -705,21 +696,8 @@ async def cb_user_events(call, state, uid):
     await _edit_or_send(call, t("adm_choose_event"), kb)
 
 
-# ─────────────────────────── блокировка бота ───────────────────────────
-
-async def on_my_chat_member(update: types.ChatMemberUpdated):
-    if update.chat.type != types.ChatType.PRIVATE:
-        return
-    status = update.new_chat_member.status
-    if status == types.ChatMemberStatus.KICKED:
-        await stats.mark_blocked(update.from_user.id)
-    elif status == types.ChatMemberStatus.MEMBER:
-        await stats.mark_unblocked(update.from_user.id)
-
-
 CALLBACKS = {
     "menu": cb_menu,
-    "stats": cb_stats,
     "bchelp": cb_bchelp,
     "events": cb_events,
     "ev": cb_event,
@@ -752,4 +730,3 @@ def register_admin_panel(dp: Dispatcher):
     dp.register_message_handler(add_participant_query, state=AdminStates.add_participant)
     dp.register_message_handler(search_user_query, state=AdminStates.search_user)
     dp.register_message_handler(event_message_send, state=AdminStates.event_message, content_types=types.ContentTypes.ANY)
-    dp.register_my_chat_member_handler(on_my_chat_member)

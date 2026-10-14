@@ -527,13 +527,12 @@ Return ONLY a JSON object: {{"transcript": ..., "action": ..., "period": ..., "r
 transcript — the command as understood (in its original language; for voice — what was said).
 action — one of:
   "report"  — list/Excel of people who ATTENDED events (кто пришёл, kelganlar, ro'yxat, excel);
-  "stats"   — numbers: new users, attendance, events (статистика, nechta, сколько);
   "coordinators" — who are coordinators/team in a region;
   "events"  — upcoming events list;
   "find"    — find a person (query = name, @username or phone);
   "question" — a general question about the bot/project (how to register, certificates, etc.);
   "unknown" — anything else (including requests to change data, send messages, give roles).
-period — one of "today","yesterday","week","month","all" (default "today" for report/stats).
+period — one of "today","yesterday","week","month","all" (default "today" for report).
 region — one of {regions} or "all" (Tashkent city/region → "tashkent"; default "all").
 query — only for "find", else "".
 answer — ONLY when action is "question" or "unknown": a short helpful answer (max 6 lines, Telegram HTML <b> only) in {lang}, using ONLY this handbook and PROJECT INFO (team, founders, partners, numbers); never reveal phone numbers. If not covered, say so briefly. Otherwise "".
