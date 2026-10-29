@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from html import escape
 from pathlib import Path
 
@@ -138,9 +138,34 @@ class ProjectParticipationAdmin(ExportMixin, admin.ModelAdmin):
                         q[k] = (request.GET[k] in ("1", "true", "on")) if isinstance(v, bool) else type(v)(request.GET[k])
                     except ValueError:
                         pass
-            img = C.render("Muhammadaziz Khabibullayev", timezone.localdate().strftime("%d.%m.%Y"), "YQ-001043", q,
-                           slug=slug, event_title="Daraxt ekish — Yunusobod")
+            name = C.display_name(request.GET.get("name", "")) if request.GET.get("name", "").strip() else "Muhammadaziz Khabibullayev"
+            img = C.render(name, timezone.localdate().strftime("%d.%m.%Y"), "YQ-001043", q,
+                           slug=slug, event_title=request.GET.get("event", "").strip() or "Daraxt ekish — Yunusobod")
             return HttpResponse(C.to_jpg(img, max_w=1200), content_type="image/jpeg")
+
+        if request.GET.get("make"):
+            # 🖨 сертификат на любое имя (вручную): без QR — у такого сертификата нет записи об участии для проверки
+            name = C.display_name(request.GET.get("name", ""))
+            if name == "—":
+                self.message_user(request, trn("cert_make_noname"), messages.ERROR)
+                return HttpResponseRedirect(here)
+            raw_date = request.GET.get("date", "").strip()
+            try:
+                date_text = datetime.strptime(raw_date, "%Y-%m-%d").strftime("%d.%m.%Y") if raw_date else timezone.localdate().strftime("%d.%m.%Y")
+            except ValueError:
+                date_text = raw_date
+            q = dict(lay, qr_show=False)
+            img = C.render(name, date_text, request.GET.get("number", "").strip(), q, slug=slug,
+                           event_title=request.GET.get("event", "").strip())
+            import re as _re
+            base = _re.sub(r"[^\w\-]+", "_", name, flags=_re.UNICODE).strip("_")[:40] or "sertifikat"
+            if request.GET.get("fmt") == "jpg":
+                resp = HttpResponse(C.to_jpg(img, quality=92), content_type="image/jpeg")
+                resp["Content-Disposition"] = f'attachment; filename="sertifikat_{base}.jpg"'
+            else:
+                resp = HttpResponse(C.to_pdf(img), content_type="application/pdf")
+                resp["Content-Disposition"] = f'attachment; filename="sertifikat_{base}.pdf"'
+            return resp
 
         if request.method == "POST":
             act = request.POST.get("act")

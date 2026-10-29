@@ -67,4 +67,25 @@ r = c.post(url, {"act": "new", "name": "Kitob kuni", "emoji": "📚"})
 check(r.status_code == 302 and "kitob-kuni" in r["Location"], "➕ новый дизайн")
 c.post(url, {"d": "qish", "act": "reset"}); check(C.design_for(win) == "qish" and C.template_path("qish").name == "qish.png", "↩ сброс ❄️ Qish → снова встроенный зимний")
 c.post(url, {"d": slug, "act": "reset"}); check(slug not in [d["slug"] for d in C.designs()], "🗑 свой дизайн удалён")
+
+# 🖨 сертификат на любое имя
+check("cert-make" in c.get(url + "?d=bahor").content.decode(), "блок «🖨 Istalgan ism bilan sertifikat» на странице")
+r = c.get(url, {"d": "bahor", "make": "1", "name": "aziza rahimova", "event": "Daraxt ekish", "date": "2026-10-20", "fmt": "pdf"})
+check(r.status_code == 200 and r["Content-Type"] == "application/pdf" and r.content[:4] == b"%PDF"
+      and "sertifikat_Aziza_Rahimova.pdf" in r["Content-Disposition"], "PDF на введённое имя (имя → «Aziza Rahimova»)")
+r = c.get(url, {"d": "qish", "make": "1", "name": "Jasur Tursunov", "fmt": "jpg"})
+check(r.status_code == 200 and r["Content-Type"] == "image/jpeg" and r.content[:2] == b"\xff\xd8", "JPG, дата по умолчанию — сегодня")
+seen = {}
+orig_render = C.render
+def spy(name, date_text, number, lay=None, slug=None, event_title="", verify_url=""):
+    seen.update(name=name, date=date_text, slug=slug, qr=(lay or {}).get("qr_show"), event=event_title)
+    return orig_render(name, date_text, number, lay, slug=slug, event_title=event_title, verify_url=verify_url)
+C.render = spy
+c.get(url, {"d": "kuz", "make": "1", "name": "Dilnoza Karimova", "event": "Plogging", "date": "2026-10-20"})
+C.render = orig_render
+check(seen == {"name": "Dilnoza Karimova", "date": "20.10.2026", "slug": "kuz", "qr": False, "event": "Plogging"},
+      "выбранный дизайн, дата 20.10.2026, мероприятие; без QR-проверки")
+r = c.get(url, {"d": "kuz", "make": "1", "name": "   "})
+check(r.status_code == 302, "пустое имя → назад с ошибкой, файл не отдаём")
+check(c.get(url, {"d": "kuz", "preview": "1", "name": "Bekzod Aliyev"}).status_code == 200, "предпросмотр с введённым именем")
 print(f"OK: {ok} проверок")

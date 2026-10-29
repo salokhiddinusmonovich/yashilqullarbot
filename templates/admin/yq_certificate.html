@@ -35,6 +35,11 @@
   .cert-btns .reset { background: var(--body-bg); color: var(--body-loud-color); border: 1px solid var(--hairline-color); }
   .cert-prev { border-radius: 16px; overflow: hidden; border: 1px solid var(--hairline-color); box-shadow: 0 10px 30px rgba(0,0,0,.12); background: #fff; }
   .cert-prev img { display: block; width: 100%; }
+  .cert-make { background: #f0fdf4; border-color: #86efac; }
+  .cert-make label { display: block; font-size: .8rem; font-weight: 600; margin: 0 0 8px; }
+  .cert-make input { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--hairline-color); font-size: .95rem; }
+  .cert-make .mk-row { display: flex; gap: 10px; } .cert-make .mk-row > * { flex: 1; }
+  .cert-make button { background: #16a34a; color: #fff; padding: 10px 16px; border-radius: 12px; border: 0; font-weight: 700; cursor: pointer; }
   .cert-announce { background: #fff7ed; border-color: #fdba74; }
   .cert-announce button { background: #ea580c; color: #fff; padding: 10px 16px; border-radius: 12px; border: 0; font-weight: 700; cursor: pointer; }
   .warn { padding: 10px 12px; border-radius: 12px; background: #fef9c3; color: #854d0e; font-size: .82rem; margin-bottom: 12px; }
@@ -102,6 +107,21 @@
         </div>
         <p class="cert-hint">⏰ {% yq "cert_auto_note" %}</p>
       </form>
+      <form method="get" class="cert-box cert-make" target="_blank">
+        <input type="hidden" name="d" value="{{ slug }}"><input type="hidden" name="make" value="1">
+        <h3>{% yq "cert_make" %}</h3>
+        <p class="cert-hint">{% yq "cert_make_hint" %}</p>
+        <label>{% yq "cert_make_name" %}<input name="name" id="mk-name" required placeholder="Aziza Rahimova" autocomplete="off"></label>
+        <label>{% yq "cert_make_event" %}<input name="event" id="mk-event" placeholder="Daraxt ekish — Yunusobod" autocomplete="off"></label>
+        <div class="mk-row">
+          <label>{% yq "cert_make_date" %}<input type="date" name="date" value="{% now "Y-m-d" %}"></label>
+          <label>{% yq "cert_make_number" %}<input name="number" placeholder="YQ-…" autocomplete="off"></label>
+        </div>
+        <div class="mk-row">
+          <button type="submit" name="fmt" value="pdf">{% yq "cert_make_pdf" %}</button>
+          <button type="submit" name="fmt" value="jpg">{% yq "cert_make_jpg" %}</button>
+        </div>
+      </form>
       <form method="post" class="cert-box cert-announce" onsubmit="return confirm('{% yq "cert_announce" %}?')">{% csrf_token %}
         <h3>{% yq "cert_announce" %}</h3>
         <p class="cert-hint">{% yq "cert_announce_hint" %}</p>
@@ -121,9 +141,13 @@
     function upd() {
       const p = new URLSearchParams({ d: "{{ slug }}", preview: "1" });
       document.querySelectorAll(".lay").forEach(el => p.set(el.name, el.type === "checkbox" ? (el.checked ? "1" : "0") : el.value));
+      const nm = document.getElementById("mk-name").value.trim(), ev = document.getElementById("mk-event").value.trim();
+      if (nm) p.set("name", nm); if (ev) p.set("event", ev);
       clearTimeout(t); t = setTimeout(() => { img.src = "?" + p.toString(); }, 250);
     }
     document.querySelectorAll(".lay").forEach(el => el.addEventListener("input", upd));
+    // имя/мероприятие из блока «🖨» — сразу в предпросмотр
+    ["mk-name", "mk-event"].forEach(id => document.getElementById(id).addEventListener("input", upd));
   })();
 </script>
 {% endblock %}
