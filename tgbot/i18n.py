@@ -1071,6 +1071,7 @@ TEXTS = {
     "adm_btn_attended": {"uz": "✅ Kelganlar", "ru": "✅ Пришедшие", "en": "✅ Attended"},
     "adm_btn_add": {"uz": "➕ Odam qo'shish", "ru": "➕ Добавить человека", "en": "➕ Add a person"},
     "adm_btn_msg": {"uz": "✉️ Xabar yuborish", "ru": "✉️ Написать участникам", "en": "✉️ Message participants"},
+    "adm_btn_photos": {"uz": "📸 Rasm qo'shish", "ru": "📸 Добавить фото", "en": "📸 Add photos"},
     "adm_btn_events_back": {"uz": "⬅️ Tadbirlar", "ru": "⬅️ Мероприятия", "en": "⬅️ Events"},
     "adm_btn_done": {"uz": "✔️ Tugatish", "ru": "✔️ Готово", "en": "✔️ Done"},
     "adm_btn_cancel": {"uz": "❌ Bekor qilish", "ru": "❌ Отмена", "en": "❌ Cancel"},
@@ -1081,9 +1082,9 @@ TEXTS = {
     "adm_btn_remove_admin": {"uz": "👑 Adminlikni olish", "ru": "👑 Снять админку", "en": "👑 Remove admin"},
     "adm_no_events": {"uz": "Tadbirlar yo'q.", "ru": "Мероприятий нет.", "en": "No events."},
     "adm_events_title": {
-        "uz": "📅 <b>Tadbirlar</b> (oxirgi 15)\n🟢 faol · ⚪️ yopilgan\nRaqamlar: <b>kelgan / yozilgan</b>\n\n👇 Tadbirni tanlang",
-        "ru": "📅 <b>Мероприятия</b> (последние 15)\n🟢 активно · ⚪️ закрыто\nЦифры: <b>пришли / записались</b>\n\n👇 Выберите мероприятие",
-        "en": "📅 <b>Events</b> (latest 15)\n🟢 active · ⚪️ closed\nNumbers: <b>attended / registered</b>\n\n👇 Pick an event",
+        "uz": "📅 <b>Tadbirlar</b> (so'nggi 60)\n🟢 faol · ⚪️ yopilgan\nRaqamlar: <b>kelgan / yozilgan</b>\n\n👇 Tadbirni tanlang",
+        "ru": "📅 <b>Мероприятия</b> (последние 60)\n🟢 активно · ⚪️ закрыто\nЦифры: <b>пришли / записались</b>\n\n👇 Выберите мероприятие",
+        "en": "📅 <b>Events</b> (latest 60)\n🟢 active · ⚪️ closed\nNumbers: <b>attended / registered</b>\n\n👇 Pick an event",
     },
     "adm_event_card": {
         "uz": "📅 <b>{title}</b>\n🗓 {date} · {region}\n📍 {place}\n{active}\n\n"
@@ -1144,6 +1145,35 @@ TEXTS = {
         "en": "➕ Who should we add? Type:\n• <code>@username</code>\n• phone number\n• full name\n• email\n• Telegram ID\n\n"
               "You can add several people one after another.\n"
               "<i>If the event is today or already passed, the person is marked as attended right away (+10 points).</i>",
+    },
+    "adm_photo_prompt": {
+        "uz": "📸 Shu tadbir uchun rasm yuboring (bir nechtasini birdan ham, albom ham bo'ladi).\n"
+              "Hozir galeriyada: <b>{n}</b> ta rasm.\n\n"
+              "<i>Bu rasmlar to'g'ridan-to'g'ri saytdagi shu blokning galeriyasiga tushadi — "
+              "\"natija\"/statistika uchun emas, eski tadbirlarga ham rasm qo'shish mumkin.</i>",
+        "ru": "📸 Отправьте фото для этого мероприятия (можно несколько сразу, альбомом).\n"
+              "Сейчас в галерее: <b>{n}</b> фото.\n\n"
+              "<i>Эти фото попадают прямо в галерею этого блока на сайте — не в статистику/«итоги», "
+              "так можно добавить фото и в старые мероприятия.</i>",
+        "en": "📸 Send photos for this event (several at once, or an album, both work).\n"
+              "Gallery right now: <b>{n}</b> photo(s).\n\n"
+              "<i>These go straight into this block's gallery on the website — not into the "
+              "stats/\"results\" photos — so you can backfill old events too.</i>",
+    },
+    "adm_photo_ok": {
+        "uz": "✅ Saqlandi. Galeriyada hozir: <b>{n}</b> ta rasm. Yana yuborishingiz mumkin.",
+        "ru": "✅ Сохранено. В галерее сейчас: <b>{n}</b> фото. Можно отправить ещё.",
+        "en": "✅ Saved. Gallery now has <b>{n}</b> photo(s). You can send more.",
+    },
+    "adm_photo_err": {
+        "uz": "❌ Rasmni saqlab bo'lmadi. Qayta urinib ko'ring.",
+        "ru": "❌ Не удалось сохранить фото. Попробуйте ещё раз.",
+        "en": "❌ Couldn't save the photo. Please try again.",
+    },
+    "adm_photo_hint": {
+        "uz": "📸 Shu yerga rasm (yoki bir nechta rasm/albom) yuboring.",
+        "ru": "📸 Пришлите сюда фото (можно несколько/альбом).",
+        "en": "📸 Send a photo here (or several / an album).",
     },
     "adm_not_found": {
         "uz": "❌ Topilmadi. Boshqacha yozib ko'ring (masalan @username yoki telefon).",

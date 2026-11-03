@@ -31,7 +31,7 @@ from asgiref.sync import sync_to_async
 from django.db.models import Count, Q
 from django.utils import timezone
 
-from app_telegram.models import TGUser, EcoProject, ProjectParticipation
+from app_telegram.models import TGUser, EcoProject, ProjectParticipation, EcoProjectImage
 from tgbot.i18n import (
     t, variants, region_label, role_label, status_label, provider_label, LANG_NAMES, ROLES, REGIONS,
 )
@@ -45,6 +45,7 @@ class AdminStates(StatesGroup):
     search_user = State()
     add_participant = State()
     event_message = State()
+    add_photos = State()   # 📸 добавить/забэкфилить фото мероприятия прямо в галерею блока на сайте
 
 
 # ─────────────────────────── доступ ───────────────────────────
@@ -158,7 +159,7 @@ def _with_counts(qs):
 
 
 @sync_to_async
-def _events(limit=15):
+def _events(limit=60):
     return list(_with_counts(EcoProject.objects.all()).order_by('-date')[:limit])
 
 
@@ -194,6 +195,7 @@ def event_kb(pid) -> InlineKeyboardMarkup:
     kb.add(InlineKeyboardButton(t("adm_btn_noshow"), callback_data=f"adm:evn:{pid}"))
     kb.add(InlineKeyboardButton(t("adm_btn_add"), callback_data=f"adm:evadd:{pid}"))
     kb.add(InlineKeyboardButton(t("adm_btn_msg"), callback_data=f"adm:evmsg:{pid}"))
+    kb.add(InlineKeyboardButton(t("adm_btn_photos"), callback_data=f"adm:evph:{pid}"))
     kb.add(InlineKeyboardButton(t("adm_btn_events_back"), callback_data="adm:events"))
     return kb
 
@@ -569,6 +571,66 @@ async def event_message_send(message: types.Message, state: FSMContext):
                          reply_markup=back_kb(f"adm:ev:{pid}", "adm_btn_back_event"))
 
 
+# ─────────────────────────── фото мероприятия → галерея блока на сайте ───────────────────────────
+# Отдельно от /natija (app_telegram/impact.py): там фото идут координатору региона для
+# цифр/статистики (и теперь тоже зеркалируются сюда), здесь — админ может докинуть фото
+# в ЛЮБОЕ мероприятие, включая старые, у которых есть только обложка.
+
+@sync_to_async
+def _gallery_count(pid: int) -> int:
+    return EcoProjectImage.objects.filter(project_id=pid).count()
+
+
+@sync_to_async
+def _save_gallery_photo(pid: int, data: bytes) -> int:
+    from django.core.files.base import ContentFile
+    from django.db.models import Max
+    import uuid
+    next_order = (EcoProjectImage.objects.filter(project_id=pid).aggregate(m=Max('order'))['m'] or 0) + 1
+    img = EcoProjectImage(project_id=pid, order=next_order)
+    img.image.save(f"{uuid.uuid4().hex[:12]}.jpg", ContentFile(data), save=True)
+    return EcoProjectImage.objects.filter(project_id=pid).count()
+
+
+async def cb_event_photos(call, state, pid):
+    await AdminStates.add_photos.set()
+    await state.update_data(project_id=int(pid))
+    n = await _gallery_count(int(pid))
+    await call.message.answer(t("adm_photo_prompt", n=n), reply_markup=back_kb(f"adm:ev:{pid}", "adm_btn_done"))
+
+
+async def event_photo_input(message: types.Message, state: FSMContext):
+    if not await is_admin(message.bot, message.from_user.id):
+        return
+    pid = (await state.get_data()).get("project_id")
+    done_kb = back_kb(f"adm:ev:{pid}", "adm_btn_done")
+    buf = BytesIO()
+    try:
+        if message.photo:
+            await message.photo[-1].download(destination_file=buf)
+        elif message.document and (message.document.mime_type or "").startswith("image/"):
+            await message.document.download(destination_file=buf)
+        else:
+            return
+        n = await _save_gallery_photo(pid, buf.getvalue())
+    except Exception:
+        logger.exception("admin gallery photo")
+        await message.answer(t("adm_photo_err"), reply_markup=done_kb)
+        return
+    # альбом приходит пачкой сообщений — не плодим подпись на каждое фото пачки
+    mg = message.media_group_id
+    data = await state.get_data()
+    if mg and data.get("mg") == mg:
+        return
+    await state.update_data(mg=mg)
+    await message.answer(t("adm_photo_ok", n=n), reply_markup=done_kb)
+
+
+async def event_photos_text(message: types.Message, state: FSMContext):
+    pid = (await state.get_data()).get("project_id")
+    await message.answer(t("adm_photo_hint"), reply_markup=back_kb(f"adm:ev:{pid}", "adm_btn_done"))
+
+
 # ─────────────────────────── люди ───────────────────────────
 
 async def cb_find(call, state):
@@ -705,6 +767,7 @@ CALLBACKS = {
     "evx": cb_event_excel,
     "evadd": cb_event_add,
     "evmsg": cb_event_msg,
+    "evph": cb_event_photos,
     "addu": cb_add_user,
     "usersx": cb_users_excel,
     "rep": cb_report,
@@ -730,3 +793,6 @@ def register_admin_panel(dp: Dispatcher):
     dp.register_message_handler(add_participant_query, state=AdminStates.add_participant)
     dp.register_message_handler(search_user_query, state=AdminStates.search_user)
     dp.register_message_handler(event_message_send, state=AdminStates.event_message, content_types=types.ContentTypes.ANY)
+    dp.register_message_handler(event_photo_input, state=AdminStates.add_photos,
+                                content_types=[types.ContentType.PHOTO, types.ContentType.DOCUMENT])
+    dp.register_message_handler(event_photos_text, state=AdminStates.add_photos, content_types=types.ContentTypes.TEXT)

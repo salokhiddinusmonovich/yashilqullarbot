@@ -107,7 +107,19 @@ def add_photo(pid: int, data: bytes) -> str | None:
     r.rpush(f"imp:ph:{pid}", rel)
     r.sadd("imp:events", pid)
     cache.delete(TOTALS_KEY)
+    _mirror_to_gallery(pid, rel)
     return rel
+
+
+def _mirror_to_gallery(pid: int, rel: str):
+    """Фото из /natija сразу попадает и в галерею блока на сайте (EcoProjectImage) —
+    чтобы его не нужно было вручную перезаливать туда через Django-админку."""
+    from django.db.models import Max
+    from .models import EcoProject, EcoProjectImage
+    if not EcoProject.objects.filter(id=pid).exists():
+        return
+    next_order = (EcoProjectImage.objects.filter(project_id=pid).aggregate(m=Max('order'))['m'] or 0) + 1
+    EcoProjectImage.objects.create(project_id=pid, image=rel, order=next_order)
 
 
 def clear_photos(pid: int):
