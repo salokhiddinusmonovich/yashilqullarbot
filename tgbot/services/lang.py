@@ -54,6 +54,11 @@ def _params():
         decode_responses=True,
         socket_timeout=2,
         socket_connect_timeout=2,
+        # Explicit cap: without this redis-py's default pool is unbounded, and
+        # a burst of concurrent calls (e.g. a langs_of() broadcast, or a backlog
+        # of updates right after a deploy restart) can open far more connections
+        # than this process ever needs — contributing to "Too many connections".
+        max_connections=20,
     )
 
 
