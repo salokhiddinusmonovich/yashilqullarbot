@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌿</text></svg>">
+<link rel="icon" type="image/svg+xml" href="{{ yq_season_logo }}">
 {% endblock %}
 
 {% block extrastyle %}
@@ -134,8 +134,9 @@
   #branding h1 a { display: inline-flex; align-items: center; gap: 10px; }
   .yq-logo {
     width: 34px; height: 34px; border-radius: 10px; display: inline-grid; place-items: center;
-    background: rgba(255, 255, 255, .14); font-size: 19px;
+    background: rgba(255, 255, 255, .14); font-size: 19px; overflow: hidden; flex-shrink: 0;
   }
+  .yq-logo img { width: 100%; height: 100%; object-fit: contain; display: block; }
   .yq-logo-sub { font-weight: 500; font-size: .78rem; opacity: .75; letter-spacing: 0; }
   #user-tools { font-size: .82rem; }
   #user-tools a, #logout-form button { border-bottom: none; }
@@ -231,7 +232,7 @@
 {% block branding %}
 <h1 id="site-name">
   <a href="{% url 'admin:index' %}">
-    <span class="yq-logo">🌿</span>
+    <span class="yq-logo"><img src="{{ yq_season_logo }}" alt=""></span>
     <span>Yashil Qo'llar <span class="yq-logo-sub">admin</span></span>
   </a>
 </h1>
