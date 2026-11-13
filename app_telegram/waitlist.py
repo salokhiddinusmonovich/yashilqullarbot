@@ -61,7 +61,7 @@ def count(pid: int) -> int:
 def promote(project) -> list:
     """Пока есть свободные места — записываем первых из очереди. Возвращает список записанных."""
     from .models import TGUser, ProjectParticipation
-    from .services import region_group
+    from .services import region_group, noshow_block
     if not project or not project.is_active:
         return []
     promoted = []
@@ -76,7 +76,7 @@ def promote(project) -> list:
                 break
             r.zrem(_key(project.id), first[0])
             user = TGUser.objects.filter(id=int(first[0])).first()
-            if not user or project.region not in region_group(user.region):
+            if not user or project.region not in region_group(user.region) or noshow_block(user, project):
                 continue
             _, created = ProjectParticipation.objects.get_or_create(user=user, project=project, defaults={'status': 'approved'})
             if created:

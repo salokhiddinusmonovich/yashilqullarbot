@@ -793,6 +793,8 @@ class WaitView(_Auth):
                 return Response({"result": "region"})
             if ProjectParticipation.objects.filter(user=user, project=project).exists():
                 return Response({"result": "already"})
+            if services.noshow_block(user, project):
+                return Response({"result": "noshow"})
             waitlist.join(user, project)
             result = "waiting"
         lang = lang_of_sync(user.tg_id) if user.tg_id else "uz"

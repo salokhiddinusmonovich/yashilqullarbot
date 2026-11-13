@@ -1,0 +1,47 @@
+# Push в main → тесты → (если зелёные) деплой на сервер по SSH (scripts/deploy.sh).
+# Нужны секреты репозитория (Settings → Secrets and variables → Actions):
+#   DEPLOY_HOST         — IP сервера
+#   DEPLOY_SSH_KEY      — приватный ключ (его публичная половина на сервере в authorized_keys с command="…deploy.sh")
+#   DEPLOY_KNOWN_HOSTS  — строка из `ssh-keyscan -t ed25519 <IP>` (чтобы не подключиться к подменённому серверу)
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:          # кнопка «Run workflow» — задеплоить вручную
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false   # два пуша подряд — деплои по очереди, не одновременно
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: "Зависимости (как в tests/ — aiogram без зависимостей, redis 5 для fakeredis)"
+        run: |
+          grep -viE "^(aiohttp|greenlet|aiogram|django|redis)==" requirements.txt > /tmp/req.txt
+          pip install -q -r /tmp/req.txt -r tests/requirements.txt aiohttp greenlet "Django==4.2.4"
+          pip install -q "aiogram==2.25.1" --no-deps
+      - name: Тесты
+        run: python tests/run.py
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Деплой на сервер
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # ключ на сервере ограничен одной командой (deploy.sh) — что бы мы ни передали, выполнится только она
+          ssh -i ~/.ssh/deploy -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 root@"$HOST" deploy

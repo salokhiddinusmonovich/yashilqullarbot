@@ -24,6 +24,15 @@ async def user_start(
 
     # _args — продолжение после «✅ Я подписался» (ссылку запомнил tgbot/middlewares/subscription.py)
     args = _args if _args is not None else message.get_args()
+    if not args and _args is None:
+        # подписался на канал и прислал обычный /start вместо «✅ Obuna bo'ldim» — ссылку (ref_/qr_/login_)
+        # берём ту, с которой человек пришёл, иначе «Пригласи друга» терял приглашение
+        from tgbot.services import subscription as sub
+        args = await sub.pop_start(message.from_user.id)
+        if args == "spot":
+            from .spots import spot_start
+            await spot_start(message, state)
+            return
 
     await state.finish()
 

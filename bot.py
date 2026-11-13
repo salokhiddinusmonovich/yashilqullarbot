@@ -163,7 +163,9 @@ async def main():
             host=config.redis.host,
             port=config.redis.port,
             db=5,
-            pool_size=10,
+            # 10 было мало: после рестарта Telegram отдаёт накопившиеся апдейты пачкой, и пул redis-py
+            # кидал «ConnectionError: Too many connections» (это лимит пула на стороне бота, не Redis).
+            pool_size=100,
             prefix='bot_fsm'
         )
     else:

@@ -437,6 +437,10 @@ class JoinProjectView(views.APIView):
  
     def post(self, request, pk):
         project = get_object_or_404(EcoProject, pk=pk)
+        from app_telegram.services import noshow_block
+        if not ProjectParticipation.objects.filter(user=request.user, project=project).exists() and noshow_block(request.user, project):
+            return Response({"result": "noshow", "detail": "Siz oldingi tadbirga yozilib kelmadingiz — keyingi 2 ta tadbirga yozila olmaysiz."},
+                            status=status.HTTP_403_FORBIDDEN)
         participation, created = ProjectParticipation.objects.get_or_create(
             user=request.user, project=project
         )

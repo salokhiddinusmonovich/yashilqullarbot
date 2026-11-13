@@ -617,6 +617,12 @@ TEXTS = {
         "en": "😕 You haven't joined yet. Tap «📢 Join the channel», press «Join» there and come back.",
     },
     "sub_ok": {"uz": "✅ Rahmat! Xush kelibsiz", "ru": "✅ Спасибо! Добро пожаловать", "en": "✅ Thanks! Welcome"},
+    # ⛔ записался и не пришёл → следующие 2 мероприятия нельзя (app_telegram/services.py, noshow_block)
+    "event_noshow": {
+        "uz": "⛔ <b>Siz oldingi tadbirga yozilib, kelmadingiz.</b>\nShuning uchun keyingi <b>2 ta tadbirga</b> yozila olmaysiz — undan keyingisiga yana yozilishingiz mumkin.\n\nYozilgan bo'lsangiz, albatta keling — joyingiz boshqa volontyorga kerak edi 🌿",
+        "ru": "⛔ <b>Вы записались на прошлое мероприятие и не пришли.</b>\nПоэтому на <b>следующие 2 мероприятия</b> записаться нельзя — на следующее после них снова можно.\n\nЕсли записались — обязательно приходите: ваше место могло достаться другому волонтёру 🌿",
+        "en": "⛔ <b>You signed up for the previous event and didn't come.</b>\nSo you can't sign up for the <b>next 2 events</b> — from the one after them you can again.\n\nIf you sign up, please come — your spot could have gone to another volunteer 🌿",
+    },
     "event_subscribe_first": {
         "uz": "⚠️ <b>Ro'yxatdan o'tish uchun avval kanalimizga a'zo bo'ling!</b>\nKanalga a'zo bo'lib, qayta bosing.",
         "ru": "⚠️ <b>Чтобы записаться, сначала подпишитесь на наш канал!</b>\nПосле подписки нажмите ещё раз.",

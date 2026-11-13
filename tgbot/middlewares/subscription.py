@@ -22,8 +22,9 @@ class SubscriptionMiddleware(BaseMiddleware):
             return
         if await sub.check(message.bot, message.from_user.id):
             return
-        if message.text and message.text.startswith("/start"):
-            await sub.remember_start(message.from_user.id, message.get_args() or "")
+        # запоминаем только ссылку С аргументом: повторный пустой /start не должен стереть ref_/qr_/login_
+        if message.text and message.text.startswith("/start") and message.get_args():
+            await sub.remember_start(message.from_user.id, message.get_args())
         await message.answer(t("sub_gate"), reply_markup=subscription_keyboard())
         raise CancelHandler()
 

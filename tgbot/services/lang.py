@@ -54,11 +54,9 @@ def _params():
         decode_responses=True,
         socket_timeout=2,
         socket_connect_timeout=2,
-        # Explicit cap: without this redis-py's default pool is unbounded, and
-        # a burst of concurrent calls (e.g. a langs_of() broadcast, or a backlog
-        # of updates right after a deploy restart) can open far more connections
-        # than this process ever needs — contributing to "Too many connections".
-        max_connections=20,
+        # Без max_connections: у redis-py при достижении лимита пула сразу ConnectionError
+        # «Too many connections» (не ждёт). Язык и проверка подписки читаются на КАЖДОЕ сообщение,
+        # так что лимит здесь сам ронял бы бота при пачке апдейтов после рестарта.
     )
 
 

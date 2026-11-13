@@ -23,11 +23,9 @@ services:
     restart: always
     # appendonly + volume — языки юзеров, статистика и состояния бота
     # переживают пересоздание контейнера (docker compose down/up).
-    # --maxclients: a post-deploy restart replays the backlog of queued Telegram
-    # updates, and aiogram's RedisStorage2 can open connections faster than its
-    # pool_size=10 cap effectively limits them under that burst (bot.py) — this
-    # headroom keeps Redis serving instead of rejecting with "Too many connections".
-    command: redis-server --appendonly yes --maxclients 4096
+    # «Too many connections» — это лимит пула redis-py в боте (bot.py, pool_size), а не сервера Redis
+    # (у него по умолчанию maxclients 10000), поэтому команду не трогаем — иначе Redis пересоздаётся при деплое.
+    command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
 

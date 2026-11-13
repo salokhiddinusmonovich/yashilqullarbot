@@ -4,6 +4,7 @@
 тексты — в местах вызова (tgbot/i18n.py, фронт Mini App).
 """
 import re
+from datetime import timedelta
 
 from django.db import transaction
 from django.db.models import Count, F, Q
@@ -127,10 +128,41 @@ def parse_qr(text: str):
     return int(m.group(1)) if m else None
 
 
+NOSHOW_SKIP = 2                      # записался и не пришёл → на столько следующих мероприятий записаться нельзя
+NOSHOW_GRACE = timedelta(hours=24)   # сутки после мероприятия: координатор/админ ещё может отметить задним числом
+
+
+def noshow_block(user: TGUser, project: EcoProject):
+    """
+    «Записался и не пришёл» → следующие NOSHOW_SKIP мероприятий его региона записаться нельзя,
+    с третьего — снова можно. Возвращает пропущенное мероприятие (EcoProject), если `project`
+    попадает в эти NOSHOW_SKIP, иначе None.
+    Неявкой считаем только мероприятия, где реально отмечали людей (есть хоть один «пришёл»):
+    если координатор вообще не сканировал — наказывать людей не за что. Отменённые (is_active=False)
+    не считаются ни как неявка, ни как «пропущенное» мероприятие. Отметили задним числом — блок снимается сам.
+    """
+    if not user or not project or not project.date:
+        return None
+    missed = (ProjectParticipation.objects
+              .filter(user=user, status__in=('approved', 'pending'), project__is_active=True,
+                      project__date__lt=min(project.date, timezone.now() - NOSHOW_GRACE))
+              .filter(project__participants__status='attended')
+              .select_related('project').distinct().order_by('-project__date')[:5])
+    regions = region_group(user.region) if user.region else None
+    for p in missed:
+        nxt = EcoProject.objects.filter(is_active=True, date__gt=p.project.date)
+        if regions:
+            nxt = nxt.filter(region__in=regions)
+        if project.id in list(nxt.order_by('date', 'id').values_list('id', flat=True)[:NOSHOW_SKIP]):
+            return p.project
+    return None
+
+
 def join_event(user: TGUser, project_id: int):
     """
     Запись на мероприятие. Возвращает (code, project):
-    ok / already / gone / full / region.
+    ok / already / gone / full / region / noshow.
+    "noshow" — записался на прошлое и не пришёл: следующие NOSHOW_SKIP мероприятий нельзя (noshow_block).
     "region" — мероприятие не в регионе человека: записываться можно только
     в своём (Ташкент-город и область — один регион). Смотреть чужие можно.
     Проверку подписки на канал делает вызывающий (это сетевой запрос).
@@ -142,6 +174,8 @@ def join_event(user: TGUser, project_id: int):
         return "already", project
     if project.region not in region_group(user.region):
         return "region", project
+    if noshow_block(user, project):                 # раньше «мест нет» — чтобы не предлагать очередь
+        return "noshow", project
     if project.participants.exclude(status='rejected').count() >= project.max_participants:
         return "full", project
     _, created = ProjectParticipation.objects.get_or_create(
