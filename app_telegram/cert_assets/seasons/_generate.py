@@ -1,6 +1,11 @@
-"""Генерация сезонных дизайнов сертификата (HTML/SVG → Chrome → PNG 1754×1240)."""
-import math, random, sys
-S = sys.argv[1]
+"""Генерация сезонных дизайнов сертификата (HTML/SVG → Chrome → PNG 1754×1240).
+
+  python _generate.py   → kuz.png, qish.png, bahor.png, yoz.png рядом с этим файлом
+Логотипы (Yashil Qo'llar, BTR, OEP, O'zbekiston Volontyorlari Assotsiatsiyasi) и подпись — в src/.
+"""
+import math, random, subprocess, tempfile
+from pathlib import Path
+HERE = Path(__file__).resolve().parent
 MAPLE = "M0,-50 L8,-30 L22,-38 L18,-18 L38,-22 L30,-8 L46,2 L24,8 L28,24 L8,16 L4,42 L0,30 L-4,42 L-8,16 L-28,24 L-24,8 L-46,2 L-30,-8 L-38,-22 L-18,-18 L-22,-38 L-8,-30 Z"
 LEAF = "M0,-40 C22,-26 24,10 0,40 C-24,10 -22,-26 0,-40 Z"
 SEASONS = {
@@ -77,7 +82,8 @@ def corner_svg(season, c):
         g.append(f'<g transform="translate({x:.0f},{y:.0f}) rotate({r.uniform(0, 360):.0f}) scale({s:.2f})"><path d="{shape}" fill="{col}" opacity=".55"/></g>')
     return f'<svg width="170" height="160" xmlns="http://www.w3.org/2000/svg">{"".join(g)}</svg>'
 
-for season, c in SEASONS.items():
+PROFILE = tempfile.mkdtemp()   # один профиль Chrome на все сезоны: шрифты Google скачиваются один раз (прогрев ниже)
+for season, c in [("kuz", SEASONS["kuz"])] + list(SEASONS.items()):
     html = f"""<!doctype html><html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@700;800&family=Manrope:wght@500;700;800&family=Playfair+Display:ital,wght@1,500&display=block" rel="stylesheet">
 <style>
@@ -89,7 +95,9 @@ for season, c in SEASONS.items():
  .panel {{ position:absolute; right:0; top:0; }}
  .frame {{ position:absolute; left:34px; top:34px; width:1146px; height:1172px; border:2px solid {c["accent"]}40; border-right:none; border-radius:28px 0 0 28px; }}
  .frame2 {{ position:absolute; left:48px; top:48px; width:1132px; height:1144px; border:1px solid {c["accent"]}22; border-right:none; border-radius:20px 0 0 20px; }}
- .logos {{ position:absolute; left:{575 - 250}px; top:98px; width:500px; }}
+ .logos {{ position:absolute; left:575px; top:104px; transform:translateX(-50%); display:flex; align-items:center; gap:20px; }}
+ .logos img {{ height:64px; display:block; }} .logos img.uva {{ height:56px; }}
+ .logos i {{ width:2px; height:44px; background:rgba(0,0,0,.12); }}
  .title {{ position:absolute; left:60px; width:1030px; top:268px; text-align:center; font:800 116px/1 Unbounded, sans-serif; letter-spacing:.06em; color:{c["title_c"]}; }}
  .sub {{ position:absolute; left:60px; width:1030px; top:408px; text-align:center; font:800 28px/1 Manrope; letter-spacing:.45em; color:{c["accent2"]}; }}
  .sub2 {{ position:absolute; left:60px; width:1030px; top:452px; text-align:center; font:700 19px/1 Manrope; letter-spacing:.34em; color:{c["muted"]}; text-transform:uppercase; }}
@@ -98,12 +106,12 @@ for season, c in SEASONS.items():
  .nameline {{ position:absolute; left:190px; width:770px; top:668px; height:2px; background:{c["accent"]}55; }}
  .dateline {{ position:absolute; left:300px; width:190px; top:1046px; height:2px; background:{c["muted"]}66; }}
  .datelbl {{ position:absolute; left:300px; width:190px; top:1060px; text-align:center; font:600 17px Manrope; color:{c["muted"]}; letter-spacing:.08em; }}
- .sign {{ position:absolute; left:{720 - 95}px; top:958px; width:190px; }}
+ .sign {{ position:absolute; left:631px; top:964px; width:178px; }}   /* подпись + «Founder of Yashil Qo'llar» (src/signature.png) */
  .corner {{ position:absolute; left:40px; bottom:30px; }}
 </style></head><body><div class="page">
  <div class="panel">{panel_svg(season, c)}</div>
  <div class="frame"></div><div class="frame2"></div>
- <img class="logos" src="logos.png">
+ <div class="logos"><img src="src/logo_yq.png"><i></i><img src="src/logo_btr.png"><i></i><img src="src/logo_oep.png"><i></i><img class="uva" src="src/logo_uva.png"></div>
  <div class="title">CERTIFICATE</div>
  <div class="sub">OF APPRECIATION</div>
  <div class="sub2">Minnatdorchilik sertifikati</div>
@@ -111,9 +119,15 @@ for season, c in SEASONS.items():
  <div class="pres">This certificate is proudly presented to</div>
  <div class="nameline"></div>
  <div class="dateline"></div><div class="datelbl">Date · Sana</div>
- <img class="sign" src="signature.png">
+ <img class="sign" src="src/signature.png">
  <div class="corner">{corner_svg(season, c)}</div>
  <div class="grain"></div>
 </div></body></html>"""
-    open(f"{S}/cert3/{season}.html", "w").write(html)
-print("ok")
+    f = HERE / f"_{season}.html"; f.write_text(html)
+    subprocess.run(["google-chrome", "--headless=new", "--hide-scrollbars", f"--user-data-dir={PROFILE}",
+                    "--force-device-scale-factor=1", "--window-size=1754,1540", "--virtual-time-budget=8000",
+                    "--allow-file-access-from-files", f"--screenshot={HERE / f'{season}.png'}", f.as_uri()], check=True, capture_output=True)
+    f.unlink()
+    from PIL import Image   # headless Chrome съедает низ окна → снимаем с запасом и режем до листа
+    Image.open(HERE / f"{season}.png").convert("RGB").crop((0, 0, 1754, 1240)).save(HERE / f"{season}.png", optimize=True)
+    print("✓", season)
