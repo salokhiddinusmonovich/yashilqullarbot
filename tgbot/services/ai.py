@@ -38,6 +38,10 @@ GEMMA_ON = os.environ.get("AI_GEMMA", "1") != "0" and bool(GEMMA)
 # Llama — ответы текстом (свой дневной лимит), Whisper — голосовые, понимает узбекский.
 GROQ_KEY = os.environ.get("GROQ_API_KEY", "").strip()
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
+# Модели Groq по очереди: у каждой свой бесплатный дневной лимит (llama-3.1-8b-instant — ~14 400 запросов/день),
+# кончился у одной — берём следующую. Свой список: GROQ_MODELS=модель1,модель2
+GROQ_MODELS = [m for m in dict.fromkeys(
+    [GROQ_MODEL] + [x.strip() for x in os.environ.get("GROQ_MODELS", "openai/gpt-oss-120b,llama-3.1-8b-instant,openai/gpt-oss-20b").split(",")]) if m]
 GROQ_STT = os.environ.get("GROQ_STT_MODEL", "whisper-large-v3").strip()
 GROQ_URL = "https://api.groq.com/openai/v1"
 DAILY_LIMIT = int(os.environ.get("AI_DAILY_LIMIT", "0"))   # 0 — без личного лимита
@@ -59,7 +63,7 @@ class Unavailable(Exception):
 
 async def _cooling() -> bool:
     """Все модели на лимите?"""
-    for m in (MODELS + ([GEMMA] if GEMMA_ON else []) if API_KEY else []) + ([f"groq:{GROQ_MODEL}"] if GROQ_KEY else []):
+    for m in (MODELS + ([GEMMA] if GEMMA_ON else []) if API_KEY else []) + ([f"groq:{m}" for m in GROQ_MODELS] if GROQ_KEY else []):
         if not await _dead_ttl(m):
             return False
     return True
@@ -159,16 +163,33 @@ async def _on_429(model: str, data, msg: str) -> float:
 
 
 async def _groq_chat(system: str, history: list, text: str, json_mode: bool, max_tokens: int) -> str:
-    """Groq (OpenAI-совместимый API). Бросает Unavailable; при лимите помечает модель."""
-    global LAST_ERROR
-    key = f"groq:{GROQ_MODEL}"
-    if not GROQ_KEY or await _dead_ttl(key):
+    """Groq: модели GROQ_MODELS по очереди (у каждой свой лимит). Все на лимите → Unavailable("rate limit")."""
+    if not GROQ_KEY:
         raise Unavailable("groq off")
+    limited = False
+    for model in GROQ_MODELS:
+        if await _dead_ttl(f"groq:{model}"):
+            limited = True
+            continue
+        try:
+            return await _groq_one(model, system, history, text, json_mode, max_tokens)
+        except Unavailable as e:
+            if str(e) == "rate limit":
+                limited = True
+            elif str(e).startswith("network"):
+                raise
+    raise Unavailable("rate limit" if limited else "groq failed")
+
+
+async def _groq_one(model: str, system: str, history: list, text: str, json_mode: bool, max_tokens: int) -> str:
+    """Один запрос к одной модели Groq (OpenAI-совместимый API). При лимите помечает модель «отдыхать»."""
+    global LAST_ERROR
+    key = f"groq:{model}"
     msgs = [{"role": "system", "content": system + ("\nReturn ONLY a JSON object." if json_mode else "")}]
     for q, a in (history or [])[-2:]:
         msgs += [{"role": "user", "content": q}, {"role": "assistant", "content": a}]
     msgs.append({"role": "user", "content": text})
-    body = {"model": GROQ_MODEL, "messages": msgs, "temperature": 0.3, "max_tokens": min(max_tokens, 1500)}
+    body = {"model": model, "messages": msgs, "temperature": 0.3, "max_tokens": min(max_tokens, 1500)}
     if json_mode:
         body["response_format"] = {"type": "json_object"}
     try:
@@ -178,7 +199,7 @@ async def _groq_chat(system: str, history: list, text: str, json_mode: bool, max
                 retry = float(r.headers.get("retry-after", "30") or 30)
     except (aiohttp.ClientError, TimeoutError) as e:
         LAST_ERROR = f"groq network: {e}"
-        raise Unavailable(str(e))
+        raise Unavailable(f"network: {e}")
     if status == 200:
         try:
             out = (data["choices"][0]["message"]["content"] or "").strip()
@@ -189,11 +210,13 @@ async def _groq_chat(system: str, history: list, text: str, json_mode: bool, max
         LAST_ERROR = "groq: empty answer"
         raise Unavailable("empty answer")
     msg = (data or {}).get("error", {}).get("message", "") if isinstance(data, dict) else str(data)
-    LAST_ERROR = f"groq {GROQ_MODEL}: HTTP {status} {msg[:200]}"
+    LAST_ERROR = f"groq {model}: HTTP {status} {msg[:200]}"
     log.warning(LAST_ERROR)
     if status == 429:
         await _mark_dead(key, _until_daily_reset() if "per day" in msg.lower() or "(RPD)" in msg or "(TPD)" in msg else max(retry, 20))
         raise Unavailable("rate limit")
+    if status in (400, 404) and ("model" in msg.lower() and ("not" in msg.lower() or "decommission" in msg.lower())):
+        await _mark_dead(key, 86400)            # модель убрали/переименовали — сутки её не трогаем
     raise Unavailable(f"groq http {status}")
 
 
@@ -319,7 +342,7 @@ async def models_state() -> str:
     lines = []
     names = (MODELS + ([GEMMA + " (zaxira, faqat matn)"] if GEMMA_ON else [])) if API_KEY else []
     if GROQ_KEY:
-        names += [f"groq:{GROQ_MODEL} (matn)", f"groq:{GROQ_STT} (ovoz → matn)"]
+        names += [f"groq:{m} (matn)" for m in GROQ_MODELS] + [f"groq:{GROQ_STT} (ovoz → matn)"]
     else:
         lines.append("• Groq: ulanmagan (GROQ_API_KEY yo'q) — ovoz va matn uchun qo'shimcha bepul limit beradi")
     for m in names:
@@ -526,17 +549,52 @@ FACTS:
 - You can't register people, give points or check anyone in — just explain how.
 - Formatting: Telegram HTML only (<b>bold</b>), no Markdown, no tables, no headings.
 
+EVENTS:
+- UPCOMING EVENTS below are real, from the database. «When is the next event?» → name the nearest ones (title, date, city) and tell them to sign up in @yashilqollarbot.
+- No upcoming events (or none in their city) → say it straight and confident: new dates aren't out yet, they'll be announced in the channel @yashilqollar and in @yashilqollarbot — stay tuned. Never make up a date.
+{skip}
+UPCOMING EVENTS (next 45 days):
+{events}
+
 HANDBOOK:
 {kb}"""
 
+SKIP = "SKIP"
+_SKIP_RULE = ("- This message MIGHT be just chat between people. If it is NOT a question or request that the bot should answer "
+              "(small talk, people talking to each other, jokes, reactions), reply with exactly: SKIP\n")
 
-async def group_answer(question: str, asker: str = "", context: str = "") -> str:
-    """Ответ в группе в фирменном стиле. context — сообщение, на которое человек ответил (если есть)."""
+
+def _upcoming_events_sync() -> str:
+    from datetime import timedelta
+    from django.utils import timezone
+    from app_telegram.models import EcoProject
+    from tgbot.i18n import region_label
+    now = timezone.now()
+    qs = (EcoProject.objects.filter(is_active=True, date__gte=now, date__lte=now + timedelta(days=45)).order_by("date")[:15])
+    lines = [f"- {timezone.localtime(e.date):%d.%m.%Y %H:%M} · {e.title} · {region_label(e.region, 'uz') if e.region else '—'}"
+             + (f" · {e.location}" if getattr(e, "location", "") else "") for e in qs]
+    return "\n".join(lines) or "(none announced yet)"
+
+
+async def group_answer(question: str, asker: str = "", context: str = "", allow_skip: bool = False) -> str:
+    """
+    Ответ в группе в фирменном стиле. context — сообщение, на которое человек ответил (если есть).
+    allow_skip — сообщение лишь ПОХОЖЕ на вопрос (без «?», без обращения к боту): ИИ может ответить SKIP → молчим.
+    """
+    from asgiref.sync import sync_to_async
     q = question[:1000]
-    prompt = (f"[Earlier message they are replying to]\n{context}\n\n" if context else "") + (f"[{asker} asks]\n" if asker else "") + q
-    system = _GROUP_SYSTEM.format(kb=await knowledge())
-    small = (_GROUP_SYSTEM.format(kb=await knowledge_small(q, "uz")), [], prompt)
-    text = await _generate(system, [{"role": "user", "parts": [{"text": prompt}]}], max_tokens=1024, small=small)
+    try:
+        events = await sync_to_async(_upcoming_events_sync)()
+    except Exception:
+        log.exception("upcoming events")
+        events = "(unknown)"
+    prompt = (f"[Earlier message they are replying to]\n{context}\n\n" if context else "") + (f"[{asker} writes]\n" if asker else "") + q
+    fmt = dict(events=events, skip=_SKIP_RULE if allow_skip else "")
+    system = _GROUP_SYSTEM.format(kb=await knowledge(), **fmt)
+    small = (_GROUP_SYSTEM.format(kb=await knowledge_small(q, "uz"), **fmt), [], prompt)
+    text = (await _generate(system, [{"role": "user", "parts": [{"text": prompt}]}], max_tokens=1024, small=small)).strip()
+    if allow_skip and text.strip(" .!\"'`").upper().startswith(SKIP):
+        return ""
     return _safe_html(text)
 
 

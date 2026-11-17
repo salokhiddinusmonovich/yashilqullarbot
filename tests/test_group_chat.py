@@ -25,8 +25,11 @@ async def nothing(*a, **k): return True
 async def get_me(): return types.User(id=999, is_bot=True, first_name="YQ", username="yashilqollarbot")
 bot.send_message = send_message; bot.send_chat_action = nothing; bot.get_me = get_me
 ai.enabled = lambda: True
-async def fake_answer(q, asker="", context=""):
-    ASKED.append((q, asker, context)); return "Короче, бро — чётко 💪"
+SKIPNEXT = [False]
+async def fake_answer(q, asker="", context="", allow_skip=False):
+    ASKED.append((q, asker, context, allow_skip))
+    if allow_skip and SKIPNEXT[0]: return ""
+    return "Короче, бро — чётко 💪"
 ai.group_answer = fake_answer
 
 import bot as BOT
@@ -52,6 +55,18 @@ async def main():
     check(not r and not ASKED, "обычная болтовня без вопроса — молчит")
     r = await run(upd("nima?"))
     check(not r, "«nima?» (меньше 3 слов) — не вопрос к боту")
+    r = await run(upd("когда будет у вас еще event"))
+    check(r and ASKED and ASKED[0][3] is True, "вопрос БЕЗ «?» («когда будет у вас еще event») → ответ, ИИ может решить SKIP")
+    r = await run(upd("keyingi tadbir qachon bo'ladi"))
+    check(r and ASKED[0][3] is True, "узбекский без «?» (qachon) → ответ")
+    r = await run(upd("sertifikat berishadimi endi"))
+    check(r, "узбекское «-mi» без «?» (berishadimi) → ответ")
+    SKIPNEXT[0] = True
+    r = await run(upd("как дела у тебя братан"))
+    check(ASKED and not r, "похоже на вопрос, но болтовня → ИИ сказал SKIP → бот молчит")
+    SKIPNEXT[0] = False
+    r = await run(upd("Sertifikat qayerdan olsam bo'ladi?"))
+    check(r and ASKED[0][3] is False, "явный вопрос со «?» — отвечает всегда (без SKIP)")
     bot_msg = {"message_id": 5, "date": 0, "text": "Короче, бро — чётко 💪", "chat": {"id": -1001, "type": "supergroup"},
                "from": {"id": 999, "is_bot": True, "first_name": "YQ", "username": "yashilqollarbot"}}
     r = await run(upd("a nechida boshlanadi", reply_to=bot_msg))
@@ -81,6 +96,8 @@ async def main():
 asyncio.get_event_loop().run_until_complete(main())
 
 # стиль: в инструкции есть «дерзко, но без грубости»
+check("SKIP" in ai._SKIP_RULE and "UPCOMING EVENTS" in ai._GROUP_SYSTEM and "Never make up a date" in ai._GROUP_SYSTEM,
+      "инструкция: реальные ближайшие мероприятия, без выдуманных дат, «SKIP» для болтовни")
 check("Never insult" in ai._GROUP_SYSTEM and "SAME language" in ai._GROUP_SYSTEM and "ONLY the HANDBOOK" in ai._GROUP_SYSTEM,
       "инструкция стиля: дерзко, но без оскорблений; язык вопроса; факты о проекте только из справочника")
 print(f"OK: {ok} проверок")

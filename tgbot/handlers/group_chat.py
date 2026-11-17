@@ -3,7 +3,9 @@
 
 Когда отвечает:
   • бота упомянули (@yashilqollarbot …) или ответили на его сообщение — всегда;
-  • вопрос со знаком «?» (от 3 слов) — если GROUP_AI_MODE=questions (по умолчанию).
+  • вопрос со знаком «?» (от 3 слов) — если GROUP_AI_MODE=questions (по умолчанию);
+  • похоже на вопрос и без «?» (qachon/qayerda/…mi, когда/где/как/есть ли, when/how…) — ИИ сам решает:
+    вопрос к нам → отвечает, болтовня людей между собой → «SKIP», бот молчит.
     Чтобы бот ВИДЕЛ обычные сообщения группы: @BotFather → /setprivacy → Disable (или сделать бота админом).
 Только в разрешённых группах (GROUP_AI_CHATS: username или id через запятую) — в чужой группе молчит.
 Анти-спам: одному человеку — не чаще раза в USER_COOLDOWN c, на группу — не больше CHAT_HOURLY ответов в час.
@@ -41,8 +43,29 @@ def allowed(chat: types.Chat) -> bool:
     return (chat.username or "").lower() in ALLOWED or str(chat.id) in ALLOWED
 
 
+# слова-вопросы: узбекский (латиница/кириллица), русский, английский
+Q_WORDS = {
+    "qachon", "qayerda", "qayerga", "qayer", "qanday", "qanaqa", "qancha", "nechta", "necha", "nima", "nimaga", "nega", "kim", "kimga",
+    "qaysi", "nimalar", "qachongacha", "қачон", "қаерда", "қандай", "қанча", "нечта", "нима", "нега", "ким", "қайси",
+    "когда", "где", "куда", "как", "какой", "какая", "какие", "что", "почему", "зачем", "кто", "сколько", "можно", "есть", "подскажите",
+    "скажите", "объясните", "when", "where", "how", "what", "why", "who", "which", "can", "could", "is", "are", "does", "do",
+}
+_W = re.compile(r"[\w'ʻʼ‘’]+", re.U)
+
+
 def _is_question(text: str) -> bool:
-    return text.rstrip().endswith("?") and len(re.findall(r"\w+", text)) >= 3
+    """Явный вопрос: со знаком «?» (от 3 слов)."""
+    return text.rstrip().endswith("?") and len(_W.findall(text)) >= 3
+
+
+def _maybe_question(text: str) -> bool:
+    """Похоже на вопрос без «?»: «когда будет у вас ещё event», «tadbir qachon bo'ladi», «sertifikat bormi»."""
+    words = [w.lower().replace("ʻ", "'").replace("ʼ", "'").replace("‘", "'").replace("’", "'") for w in _W.findall(text)]
+    if len(words) < 3:
+        return False
+    return (any(w in Q_WORDS for w in words)
+            or any(len(w) > 4 and w.endswith(("mi", "мi", "ми")) for w in words)      # uz: bormi, bo'ladimi, mumkinmi
+            or "ли" in words)
 
 
 async def _rate_ok(chat_id: int, user_id: int) -> bool:
@@ -71,7 +94,9 @@ async def group_message(message: types.Message):
     mentioned = tag in text.lower()
     reply_to_bot = bool(message.reply_to_message and message.reply_to_message.from_user
                         and message.reply_to_message.from_user.id == me.id)
-    if not (mentioned or reply_to_bot or (MODE == "questions" and _is_question(text))):
+    explicit = mentioned or reply_to_bot or (MODE == "questions" and _is_question(text))
+    maybe = not explicit and MODE == "questions" and _maybe_question(text)
+    if not (explicit or maybe):
         return
     question = re.sub(re.escape(tag), "", text, flags=re.I).strip(" ,:—-") or text
     if not await _rate_ok(message.chat.id, message.from_user.id):
@@ -84,15 +109,16 @@ async def group_message(message: types.Message):
     if ai.enabled():
         try:
             await message.bot.send_chat_action(message.chat.id, "typing")
-            answer = await ai.group_answer(question, message.from_user.first_name or "", context)
-            await message.reply(answer, disable_web_page_preview=True)
+            answer = await ai.group_answer(question, message.from_user.first_name or "", context, allow_skip=maybe)
+            if answer:                    # пусто = ИИ решил, что это болтовня, а не вопрос к нам
+                await message.reply(answer, disable_web_page_preview=True)
             return
         except ai.Unavailable as e:
             log.warning("group ai unavailable: %s | %s", e, ai.LAST_ERROR)
         except Exception:
             log.exception("group ai")
     # ИИ недоступен: на прямое обращение — готовый ответ из справочника или честное «позже»; на просто «?» — молчим
-    if mentioned or reply_to_bot:
+    if explicit and (mentioned or reply_to_bot):
         entry = faq.match(question)
         if entry:
             await message.reply(faq.answer(entry, "uz"))
