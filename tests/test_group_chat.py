@@ -93,7 +93,49 @@ async def main():
     r = await run(upd("Ertaga havo qanday bo'ladi?"))
     check(not r, "ИИ на лимите и просто вопрос — молчит, не спамит")
 
+STICK, REACT = [], []
+async def get_sticker_set(name):
+    return types.StickerSet(name=name, title="t", is_animated=False, stickers=[
+        {"file_id": "S_LOL", "file_unique_id": "u1", "width": 1, "height": 1, "is_animated": False, "emoji": "😂"},
+        {"file_id": "S_COOL", "file_unique_id": "u2", "width": 1, "height": 1, "is_animated": False, "emoji": "😎"}])
+async def send_sticker(chat_id, sticker, **k): STICK.append(sticker)
+async def request(method, data=None, *a, **k): REACT.append((method, data)); return True
+bot.get_sticker_set = get_sticker_set; bot.send_sticker = send_sticker; bot.request = request
+
+async def fun():
+    async def tagged(q, asker="", context="", allow_skip=False): return "Ха, чётко бро 😎\nREACT:🔥\nSTICKER:😂"
+    ai.group_answer = tagged
+    r = await run(upd("@yashilqollarbot qalesan bro", user={"id": 8001, "is_bot": False, "first_name": "Ali"}))
+    check(r and "REACT" not in r[0][1] and "STICKER" not in r[0][1], "теги REACT/STICKER из текста вырезаны")
+    check(STICK == ["S_LOL"], "стикер с нужным эмодзи из пака MemesMusa")
+    check(REACT and REACT[0][0] == "setMessageReaction" and "🔥" in REACT[0][1]["reaction"], "реакция 🔥 на сообщение")
+    STICK.clear()
+    await run(upd("@yashilqollarbot yana bitta", user={"id": 8002, "is_bot": False, "first_name": "Ali"}))
+    check(not STICK, f"второй стикер подряд — нет (не чаще раза в {G.STICKER_GAP} c)")
+    check(G.split_tags("Salom\nREACT:🤡") == ("Salom", "🤡", ""), "split_tags")
+
+async def resilient():
+    # Gemini зависает (asyncio.TimeoutError в Python 3.10) / модель отключили (404) → не падаем, отвечает Groq
+    import importlib
+    A = importlib.import_module("tgbot.services.ai")
+    A.API_KEY, A.GROQ_KEY = "k", "g"
+    calls = []
+    async def post(model, body):
+        calls.append(model)
+        if model == A.MODELS[0]: raise asyncio.TimeoutError()
+        return 404, {"error": {"message": "no longer available"}}
+    async def groq(system, history, text, json_mode, max_tokens): return "Groq ответил"
+    A._post, A._groq_chat = post, groq
+    out = await A._generate("s", [{"role": "user", "parts": [{"text": "q"}]}], small=("s", [], "q"))
+    check(out == "Groq ответил" and len(calls) == len(A.MODELS), "Gemini завис/404 → бот не падает, отвечает Groq")
+    check(await A._dead_ttl(A.MODELS[1]) > 3600, "отключённая модель (404) пропускается сутки")
+    calls.clear()
+    out = await A._generate("s", [], small=("s", [], "q"), groq_first=True)
+    check(out == "Groq ответил" and not calls, "в группе Groq первым — Gemini даже не трогаем")
+
 asyncio.get_event_loop().run_until_complete(main())
+asyncio.get_event_loop().run_until_complete(fun())
+asyncio.get_event_loop().run_until_complete(resilient())
 
 # стиль: в инструкции есть «дерзко, но без грубости»
 check("SKIP" in ai._SKIP_RULE and "UPCOMING EVENTS" in ai._GROUP_SYSTEM and "Never make up a date" in ai._GROUP_SYSTEM,

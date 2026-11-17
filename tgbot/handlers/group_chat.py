@@ -28,7 +28,13 @@ ALLOWED = {x.strip().lstrip("@").lower() for x in os.environ.get("GROUP_AI_CHATS
 MODE = os.environ.get("GROUP_AI_MODE", "questions").strip().lower()      # questions | mention
 USER_COOLDOWN = int(os.environ.get("GROUP_AI_USER_COOLDOWN", "20"))
 CHAT_HOURLY = int(os.environ.get("GROUP_AI_CHAT_HOURLY", "60"))
-SERVICE_TG = 777000                                                         # «Telegram»: автопересылка постов канала
+SERVICE_TG = 777000
+# 😎 стикеры: паки через запятую (t.me/addstickers/<ИМЯ> → ИМЯ). ИИ пишет «STICKER:😂» — шлём стикер с этим эмодзи.
+STICKER_SETS = [x.strip().split("/")[-1] for x in os.environ.get("GROUP_STICKER_SETS", "MemesMusa").split(",") if x.strip()]
+STICKER_GAP = int(os.environ.get("GROUP_STICKER_GAP", "90"))             # не чаще одного стикера на группу за N c
+REACTIONS = {"👍", "🔥", "😁", "🤣", "💯", "👏", "🤝", "😎", "🫡", "❤", "🎉", "🤔", "👀", "🙏"}
+_TAG = re.compile(r"^\s*(REACT|STICKER)\s*:\s*(\S+)\s*$", re.I | re.M)
+_stickers = {}                                                         # «Telegram»: автопересылка постов канала
 
 _me = {}
 
@@ -81,6 +87,53 @@ async def _rate_ok(chat_id: int, user_id: int) -> bool:
         return True                       # Redis недоступен — не молчим из-за него
 
 
+def split_tags(answer: str) -> tuple[str, str, str]:
+    """«ответ\nREACT:🔥\nSTICKER:😂» → (ответ, реакция, эмодзи стикера)."""
+    react = sticker = ""
+    for kind, emo in _TAG.findall(answer):
+        if kind.upper() == "REACT":
+            react = emo
+        else:
+            sticker = emo
+    return _TAG.sub("", answer).strip(), react, sticker
+
+
+async def _sticker_for(bot, emoji: str) -> str | None:
+    import random
+    if "all" not in _stickers:
+        files = []
+        for name in STICKER_SETS:
+            try:
+                st = await bot.get_sticker_set(name)
+                files += [(x.emoji or "", x.file_id) for x in st.stickers]
+            except Exception as e:
+                log.warning("sticker set %s: %s", name, e)
+        _stickers["all"] = files
+    files = _stickers["all"]
+    if not files:
+        return None
+    same = [f for e, f in files if emoji and emoji.strip("\ufe0f") in e]
+    return random.choice(same or [f for _, f in files])
+
+
+async def _fun(message: types.Message, react: str, sticker: str):
+    if react and react.strip("\ufe0f") in {r.strip("\ufe0f") for r in REACTIONS}:
+        try:      # setMessageReaction — в aiogram 2 нет метода, зовём Bot API напрямую
+            import json
+            await message.bot.request("setMessageReaction", {"chat_id": message.chat.id, "message_id": message.message_id,
+                                                             "reaction": json.dumps([{"type": "emoji", "emoji": react}], ensure_ascii=False)})
+        except Exception as e:
+            log.warning("reaction: %s", e)
+    if sticker and STICKER_SETS:
+        try:
+            if await _aclient().set(f"gai:st:{message.chat.id}", 1, ex=STICKER_GAP, nx=True):
+                fid = await _sticker_for(message.bot, sticker)
+                if fid:
+                    await message.bot.send_sticker(message.chat.id, fid)
+        except Exception as e:
+            log.warning("sticker: %s", e)
+
+
 async def group_message(message: types.Message):
     if not allowed(message.chat) or not message.from_user or message.from_user.is_bot:
         return
@@ -111,7 +164,10 @@ async def group_message(message: types.Message):
             await message.bot.send_chat_action(message.chat.id, "typing")
             answer = await ai.group_answer(question, message.from_user.first_name or "", context, allow_skip=maybe)
             if answer:                    # пусто = ИИ решил, что это болтовня, а не вопрос к нам
-                await message.reply(answer, disable_web_page_preview=True)
+                text_out, react, sticker = split_tags(answer)
+                if text_out:
+                    await message.reply(text_out, disable_web_page_preview=True)
+                await _fun(message, react, sticker)
             return
         except ai.Unavailable as e:
             log.warning("group ai unavailable: %s | %s", e, ai.LAST_ERROR)

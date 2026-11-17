@@ -27,7 +27,9 @@ log = logging.getLogger(__name__)
 API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 MODEL = os.environ.get("GEMINI_MODEL", "").strip()
 # Имена моделей у Google меняются — пробуем по очереди, рабочую запоминаем (_working)
-MODELS = [m for m in dict.fromkeys([MODEL, "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-flash-latest"]) if m]
+# 2.x Google отключил (HTTP 404 «no longer available») — свежие первыми; отключённую модель пропускаем сутки
+MODELS = [m for m in dict.fromkeys([MODEL, "gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-flash-lite-latest",
+                                    "gemini-2.5-flash", "gemini-2.5-flash-lite"]) if m]
 _working = None
 LAST_ERROR = ""
 # Запасная модель — Gemma через тот же бесплатный ключ: только текст, без system_instruction и JSON-режима,
@@ -92,7 +94,7 @@ async def take_quota(tg_id: int) -> bool:
 
 
 async def _post(model: str, body: dict):
-    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=40)) as s:
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=25)) as s:
         async with s.post(URL.format(model=model), json=body, headers={"x-goog-api-key": API_KEY}) as resp:
             return resp.status, await resp.json(content_type=None)
 
@@ -197,7 +199,7 @@ async def _groq_one(model: str, system: str, history: list, text: str, json_mode
             async with s.post(f"{GROQ_URL}/chat/completions", json=body, headers={"Authorization": f"Bearer {GROQ_KEY}"}) as r:
                 status, data = r.status, await r.json(content_type=None)
                 retry = float(r.headers.get("retry-after", "30") or 30)
-    except (aiohttp.ClientError, TimeoutError) as e:
+    except (aiohttp.ClientError, asyncio.TimeoutError, TimeoutError) as e:
         LAST_ERROR = f"groq network: {e}"
         raise Unavailable(f"network: {e}")
     if status == 200:
@@ -234,7 +236,7 @@ async def transcribe(audio: bytes) -> str:
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60)) as s:
             async with s.post(f"{GROQ_URL}/audio/transcriptions", data=form, headers={"Authorization": f"Bearer {GROQ_KEY}"}) as r:
                 status, data = r.status, await r.json(content_type=None)
-    except (aiohttp.ClientError, TimeoutError) as e:
+    except (aiohttp.ClientError, asyncio.TimeoutError, TimeoutError) as e:
         LAST_ERROR = f"groq stt network: {e}"
         raise Unavailable(str(e))
     if status == 200 and (data or {}).get("text", "").strip():
@@ -247,7 +249,8 @@ async def transcribe(audio: bytes) -> str:
     raise Unavailable("stt failed")
 
 
-async def _generate(system: str, contents: list, json_mode=False, max_tokens=4096, small: tuple | None = None) -> str:
+async def _generate(system: str, contents: list, json_mode=False, max_tokens=4096, small: tuple | None = None,
+                    groq_first: bool = False) -> str:
     """
     Запрос к ИИ. Модели Gemini по очереди (у каждой СВОЙ бесплатный лимит); модели на лимите
     пропускаем, пока не «отдохнут». Все Gemini исчерпаны — запасная Gemma (если передан
@@ -261,6 +264,11 @@ async def _generate(system: str, contents: list, json_mode=False, max_tokens=409
         raise Unavailable("no key")
     order = (([_working] if _working and _working != GEMMA else []) + [m for m in MODELS if m != _working]) if API_KEY else []
     limited = False
+    if groq_first and small is not None and GROQ_KEY:     # группа: Groq отвечает за 1–2 c, Gemini — запасной
+        try:
+            return await _groq_chat(small[0], small[1], small[2], json_mode, max_tokens)
+        except Unavailable as e:
+            limited = str(e) == "rate limit"
     for model in order:
         if await _dead_ttl(model):
             limited = True
@@ -269,9 +277,12 @@ async def _generate(system: str, contents: list, json_mode=False, max_tokens=409
         for attempt in range(3):
             try:
                 status, data = await _post(model, _body(system, contents, json_mode, tokens, model, thinking_off))
-            except (aiohttp.ClientError, TimeoutError) as e:
-                LAST_ERROR = f"network: {e}"
-                raise Unavailable(str(e))
+            except (aiohttp.ClientError, asyncio.TimeoutError, TimeoutError) as e:
+                # модель зависла/сеть — не падаем, пробуем следующую (и дальше Groq)
+                LAST_ERROR = f"{model}: network/timeout {e!r}"
+                log.warning("gemini %s", LAST_ERROR)
+                await _mark_dead(model, 120)
+                break
             msg = (data or {}).get("error", {}).get("message", "") if isinstance(data, dict) else str(data)
             if status == 200:
                 text, finish = _extract(data)
@@ -296,6 +307,8 @@ async def _generate(system: str, contents: list, json_mode=False, max_tokens=409
                 break
             if status in (400, 403) and "API key" in msg:
                 raise Unavailable("bad key")
+            if status == 404:                       # модель отключили/переименовали — сутки не трогаем
+                await _mark_dead(model, 86400)
             break
     # ── запасные (только текст): Groq, потом Gemma ──
     if small is not None and GROQ_KEY:
@@ -308,7 +321,7 @@ async def _generate(system: str, contents: list, json_mode=False, max_tokens=409
         cfg = {"temperature": 0.3, "maxOutputTokens": min(max_tokens, 2048)}
         try:
             status, data = await _post(GEMMA, {"contents": gemma_contents, "generationConfig": cfg})
-        except (aiohttp.ClientError, TimeoutError) as e:
+        except (aiohttp.ClientError, asyncio.TimeoutError, TimeoutError) as e:
             LAST_ERROR = f"network: {e}"
             raise Unavailable(str(e))
         if status == 200:
@@ -549,6 +562,11 @@ FACTS:
 - You can't register people, give points or check anyone in — just explain how.
 - Formatting: Telegram HTML only (<b>bold</b>), no Markdown, no tables, no headings.
 
+FUN (optional, after the answer, each on its own last line):
+- REACT:<emoji> — put a reaction on their message when it fits. Allowed: 👍 🔥 😁 🤣 💯 👏 🤝 😎 🫡 ❤ 🎉 🤔 👀 🙏
+- STICKER:<emoji> — send a sticker when the vibe is fun/hype/thanks (rarely, ~1 of 4 answers). Emoji = the mood: 😂 🔥 😎 👍 🤝 🎉 🙏 😅 🤔 💪
+Never use them on serious or sad messages.
+
 EVENTS:
 - UPCOMING EVENTS below are real, from the database. «When is the next event?» → name the nearest ones (title, date, city) and tell them to sign up in @yashilqollarbot.
 - No upcoming events (or none in their city) → say it straight and confident: new dates aren't out yet, they'll be announced in the channel @yashilqollar and in @yashilqollarbot — stay tuned. Never make up a date.
@@ -592,7 +610,7 @@ async def group_answer(question: str, asker: str = "", context: str = "", allow_
     fmt = dict(events=events, skip=_SKIP_RULE if allow_skip else "")
     system = _GROUP_SYSTEM.format(kb=await knowledge(), **fmt)
     small = (_GROUP_SYSTEM.format(kb=await knowledge_small(q, "uz"), **fmt), [], prompt)
-    text = (await _generate(system, [{"role": "user", "parts": [{"text": prompt}]}], max_tokens=1024, small=small)).strip()
+    text = (await _generate(system, [{"role": "user", "parts": [{"text": prompt}]}], max_tokens=1024, small=small, groq_first=True)).strip()
     if allow_skip and text.strip(" .!\"'`").upper().startswith(SKIP):
         return ""
     return _safe_html(text)
