@@ -21,6 +21,7 @@ setup_django()
 # --- 2. ТЕПЕРЬ ИМПОРТЫ ХЕНДЛЕРОВ (ОНИ ТЕПЕРЬ НЕ УПАДУТ) ---
 from tgbot.config import load_config
 from tgbot.handlers.subscriptions import register_subscription
+from tgbot.handlers.group_chat import register_group_chat
 from tgbot.filters.admin import AdminFilter
 from tgbot.handlers.admin import register_admin
 from tgbot.handlers.start import register_user
@@ -87,6 +88,7 @@ def register_all_filters(dp):
 
 def register_all_handlers(dp):
     # ── Работает ВСЕГДА, независимо от режима ──
+    register_group_chat(dp)          # 💬 ассистент в группах (@yashilqollarchat) — ПЕРВЫМ: всё из групп только сюда
     register_admin(dp)               # админ-панель — не относится к Mini App вообще
     register_spots_start(dp)         # t.me/<бот>?start=spot — «📍 Iflos joy» из Mini App (раньше общего /start)
     register_user(dp)                # /start — точка входа
