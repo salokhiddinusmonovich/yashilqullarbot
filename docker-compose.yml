@@ -32,6 +32,9 @@ services:
   web:
     container_name: yashilqollar-web
     restart: always          # без этого после перезагрузки сервера сайт/API/Mini App не поднимались
+    logging:            # логи контейнера не растут бесконечно (диск забивался)
+      driver: json-file
+      options: { max-size: "20m", max-file: "3" }
     build:
       context: .
       dockerfile: Dockerfile.web
@@ -75,6 +78,9 @@ services:
       - DJANGO_SETTINGS_MODULE=dj_ac.settings
     command: python bot.py
     restart: always
+    logging:            # логи контейнера не растут бесконечно (диск забивался)
+      driver: json-file
+      options: { max-size: "20m", max-file: "3" }
     depends_on:
       db:
         condition: service_healthy

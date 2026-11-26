@@ -44,6 +44,9 @@ healthy() {
 docker compose up -d --build bot web
 if healthy; then
   echo "✅ готово: ${after:0:7}"
+  # старые образы от прошлых сборок копились (было 120+ ГБ) — удаляем те, что не нужны ни одному контейнеру
+  docker image prune -f >/dev/null 2>&1 || true
+  docker builder prune -f --filter until=168h >/dev/null 2>&1 || true
   exit 0
 fi
 

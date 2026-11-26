@@ -234,10 +234,15 @@ LOGGING = {
         'console': {
             'class': 'logging.StreamHandler',
         },
+        # 🚨 ошибки 500 сайта/API — в Telegram (app_telegram/alerts.py)
+        'telegram': {
+            '()': 'app_telegram.alerts.TelegramAlertHandler',
+            'service': 'web',
+        },
     },
     'loggers': {
         'django.request': {
-            'handlers': ['console'],
+            'handlers': ['console', 'telegram'],
             'level': 'ERROR',
             'propagate': True,
         },

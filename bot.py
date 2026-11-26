@@ -155,6 +155,9 @@ async def main():
         level=logging.INFO,
         format=u'%(filename)s:%(lineno)d #%(levelname)-8s [%(asctime)s] - %(name)s - %(message)s',
     )
+    # 🚨 ошибки — в Telegram (app_telegram/alerts.py; ALERT_CHAT_ID или BACKUP_CHAT_ID)
+    from app_telegram.alerts import TelegramAlertHandler
+    logging.getLogger().addHandler(TelegramAlertHandler("bot"))
     logger.info("Starting bot")
 
     config = load_config(".env")
@@ -182,6 +185,12 @@ async def main():
     register_all_middlewares(dp, config)
     register_all_filters(dp)
     register_all_handlers(dp)
+
+    async def on_error(update, exc):
+        # ошибка в любом хендлере: в лог с трассировкой → TelegramAlertHandler отправит в чат
+        logger.error("Ошибка при обработке апдейта %s: %r", getattr(update, "update_id", "?"), exc, exc_info=exc)
+        return True
+    dp.register_errors_handler(on_error)
 
     # Кнопка Mini App рядом с полем ввода (если задан MINIAPP_URL)
     await setup_menu_button(bot)

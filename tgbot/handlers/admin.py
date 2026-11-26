@@ -52,7 +52,7 @@ async def _broadcast(tg_ids, send):
                 await asyncio.sleep(e.timeout)
                 continue  # одна повторная попытка после паузы от Telegram
             except Exception as e:
-                logger.error("Ошибка отправки на %s: %s", tg_id, e)
+                logger.warning("Ошибка отправки на %s: %s", tg_id, e)   # удалённый аккаунт и т.п. — не авария
                 errors += 1
             break
         await asyncio.sleep(0.05)  # ~20 сообщений/сек — ниже лимита Telegram
