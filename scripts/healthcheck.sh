@@ -47,14 +47,18 @@ if [ ${#problems[@]} -eq 0 ]; then
 fi
 
 summary="$(printf '%s; ' "${problems[@]}")"
+down=0; printf '%s' "$summary" | grep -qE '(db|redis|web|bot):|не отвечает' && down=1
 if [ "$prev" != "$summary" ]; then             # новая или другая проблема — сообщаем один раз
+  if [ $down -eq 1 ]; then
+    hint="Пробую поднять: docker compose up -d. Логи: docker compose logs --tail=50 bot web"
+  else
+    hint="Освободить место: docker image prune -a -f && docker builder prune -a -f && journalctl --vacuum-size=300M"
+  fi
   tg "❌ Yashil Qo'llar ($now): ${summary%; }
-Пробую поднять: docker compose up -d. Логи: docker compose logs --tail=50 bot web"
+$hint"
   echo "[$now] $summary"
 fi
 echo "$summary" > "$STATE"
 # пробуем поднять упавшее (тома с данными не трогаются)
-if printf '%s' "$summary" | grep -qE '(db|redis|web|bot):|не отвечает'; then
-  $DC up -d >/dev/null 2>&1 || true
-fi
+[ $down -eq 1 ] && { $DC up -d >/dev/null 2>&1 || true; }
 exit 1

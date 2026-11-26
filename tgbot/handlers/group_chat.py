@@ -31,7 +31,7 @@ CHAT_HOURLY = int(os.environ.get("GROUP_AI_CHAT_HOURLY", "60"))
 SERVICE_TG = 777000
 # 😎 стикеры: паки через запятую (t.me/addstickers/<ИМЯ> → ИМЯ). ИИ пишет «STICKER:😂» — шлём стикер с этим эмодзи.
 STICKER_SETS = [x.strip().split("/")[-1] for x in os.environ.get("GROUP_STICKER_SETS", "MemesMusa").split(",") if x.strip()]
-STICKER_GAP = int(os.environ.get("GROUP_STICKER_GAP", "90"))             # не чаще одного стикера на группу за N c
+STICKER_GAP = int(os.environ.get("GROUP_STICKER_GAP", "45"))             # не чаще одного стикера на группу за N c
 REACTIONS = {"👍", "🔥", "😁", "🤣", "💯", "👏", "🤝", "😎", "🫡", "❤", "🎉", "🤔", "👀", "🙏"}
 _TAG = re.compile(r"^\s*(REACT|STICKER)\s*:\s*(\S+)\s*$", re.I | re.M)
 _stickers = {}                                                         # «Telegram»: автопересылка постов канала
@@ -64,14 +64,22 @@ def _is_question(text: str) -> bool:
     return text.rstrip().endswith("?") and len(_W.findall(text)) >= 3
 
 
+# просьбы/предложения без вопроса: «hamkorlik taklifim bor edi», «adminlar lich tashlab yuboringlar», «помогите»
+REQ_STEMS = ("taklif", "hamkor", "admin", "iltimos", "yordam", "kerak", "murojaat", "ro'yxat", "qo'shil", "volontyor",
+             "предлож", "сотрудни", "админ", "помог", "подскаж", "нужн", "хочу", "партн", "волонт",
+             "partner", "sponsor", "collab", "help", "join", "volunteer", "how")
+
+
 def _maybe_question(text: str) -> bool:
-    """Похоже на вопрос без «?»: «когда будет у вас ещё event», «tadbir qachon bo'ladi», «sertifikat bormi»."""
+    """Похоже на вопрос или просьбу без «?»: «когда будет у вас ещё event», «tadbir qachon bo'ladi», «sertifikat bormi»,
+    «hamkorlik taklifim bor edi», «adminlar lich tashlab yuboringlar». Решает ИИ: обращение к нам → отвечает, болтовня → SKIP."""
     words = [w.lower().replace("ʻ", "'").replace("ʼ", "'").replace("‘", "'").replace("’", "'") for w in _W.findall(text)]
     if len(words) < 3:
         return False
     return (any(w in Q_WORDS for w in words)
             or any(len(w) > 4 and w.endswith(("mi", "мi", "ми")) for w in words)      # uz: bormi, bo'ladimi, mumkinmi
-            or "ли" in words)
+            or "ли" in words
+            or any(w.startswith(REQ_STEMS) for w in words))
 
 
 async def _rate_ok(chat_id: int, user_id: int) -> bool:
@@ -148,7 +156,9 @@ async def group_message(message: types.Message):
     reply_to_bot = bool(message.reply_to_message and message.reply_to_message.from_user
                         and message.reply_to_message.from_user.id == me.id)
     explicit = mentioned or reply_to_bot or (MODE == "questions" and _is_question(text))
-    maybe = not explicit and MODE == "questions" and _maybe_question(text)
+    under_post = bool(message.reply_to_message and (message.reply_to_message.sender_chat
+                                                     or getattr(message.reply_to_message, "is_automatic_forward", False)))
+    maybe = not explicit and MODE == "questions" and (_maybe_question(text) or (under_post and len(_W.findall(text)) >= 3))
     if not (explicit or maybe):
         return
     question = re.sub(re.escape(tag), "", text, flags=re.I).strip(" ,:—-") or text

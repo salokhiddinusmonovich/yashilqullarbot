@@ -61,6 +61,15 @@ async def main():
     check(r and ASKED[0][3] is True, "узбекский без «?» (qachon) → ответ")
     r = await run(upd("sertifikat berishadimi endi"))
     check(r, "узбекское «-mi» без «?» (berishadimi) → ответ")
+    r = await run(upd("Assalomu alaykum hamkorlik taklifim bor edi"))
+    check(r and ASKED and ASKED[0][3] is True, "предложение о сотрудничестве без вопроса → бот отвечает")
+    r = await run(upd("Adminlar lich tashlab yuboringlar iltimos"))
+    check(r and ASKED and ASKED[0][3] is True, "просьба к админам → бот отвечает")
+    post = {"message_id": 7, "date": 0, "text": "Yangi tadbir!", "chat": {"id": -1001, "type": "supergroup"},
+            "sender_chat": {"id": -100555, "type": "channel", "title": "Yashil Qo'llar"}, "is_automatic_forward": True,
+            "from": {"id": 777000, "is_bot": False, "first_name": "Telegram"}}
+    r = await run(upd("zor ekan bu safar boraman", reply_to=post))
+    check(r and ASKED and ASKED[0][3] is True, "комментарий под постом канала → ИИ решает, ответить или SKIP")
     SKIPNEXT[0] = True
     r = await run(upd("как дела у тебя братан"))
     check(ASKED and not r, "похоже на вопрос, но болтовня → ИИ сказал SKIP → бот молчит")
@@ -138,6 +147,8 @@ asyncio.get_event_loop().run_until_complete(fun())
 asyncio.get_event_loop().run_until_complete(resilient())
 
 # стиль: в инструкции есть «дерзко, но без грубости»
+check("yashilqollar@gmail.com" in ai._GROUP_SYSTEM and "about every second answer" in ai._GROUP_SYSTEM,
+      "инструкция: сотрудничество → почта/админы; стикер примерно в каждом втором лёгком ответе")
 check("SKIP" in ai._SKIP_RULE and "UPCOMING EVENTS" in ai._GROUP_SYSTEM and "Never make up a date" in ai._GROUP_SYSTEM,
       "инструкция: реальные ближайшие мероприятия, без выдуманных дат, «SKIP» для болтовни")
 check("Never insult" in ai._GROUP_SYSTEM and "SAME language" in ai._GROUP_SYSTEM and "ONLY the HANDBOOK" in ai._GROUP_SYSTEM,
